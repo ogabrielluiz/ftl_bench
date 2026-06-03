@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Env / secrets
+.env
+*.local
+
+# Runtime artifacts
+runs/
+logs/
+*.log
+trajectories/
+state.json
+action.json
+
+# OS
+.DS_Store
+
+# Build
+build/
+dist/
