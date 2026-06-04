@@ -17,6 +17,10 @@ pkill -f "FTL Faster Than Light/FTL.app/Contents/MacOS/FTL" 2>/dev/null || true
 sleep 2
 bash "$HERE/scripts/deploy_dev.sh" >/dev/null
 rm -f "$SAVE/ftl_agent_observation.json" "$SAVE/ftl_agent_action.json" "$SAVE/FTL_HS.log"
+# Clear Hyperspace's crash flag. It's written at launch and removed only on a CLEAN
+# exit, so our pkill (or an actual crash) leaves it behind -> the next launch shows
+# the "CRASH DETECTED" recovery menu, which intercepts New Game and hangs start_game.
+rm -f "$SAVE/hs_crash.flag"
 
 # Keep FTL ticking while unfocused so we never need to force it frontmost (App Nap
 # off → its loop runs in the background; the bridge injects menu clicks regardless
