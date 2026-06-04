@@ -77,7 +77,7 @@ The MCP server (`adapter/ftl_mcp_server.py`) exposes the env as tools for an LLM
 
 ### Known gaps / next
 - **Reset-from-in-game** needs a "return to menu" binding (new-game flow only runs from the menu; for now `restart_ftl.sh` reaches it) — needs a Hyperspace rebuild.
-- **Store** transactions (M3 deferred), beam weapons, richer event-choice text.
+- **Store** transactions (M3 deferred) and beam weapons (M3 deferred).
 
 ## Related
 

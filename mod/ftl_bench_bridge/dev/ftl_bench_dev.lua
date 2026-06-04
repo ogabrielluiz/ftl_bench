@@ -139,8 +139,9 @@ local function add_m3_obs(obs)
         for i = 0, ev_choices:size() - 1 do
           local c = ev_choices[i]
           if c then
+            -- ChoiceText::text is a plain std::string (already resolved), not a TextString.
             local ctext = ""
-            local okc, t = pcall(function() return c.text:GetText() end)
+            local okc, t = pcall(function() return c.text end)
             if okc and type(t) == "string" then ctext = t end
             choices[#choices + 1] = { index = i, text = ctext }
           end
