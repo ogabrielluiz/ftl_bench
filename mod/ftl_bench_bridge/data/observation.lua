@@ -26,7 +26,6 @@ local function ship_snapshot(mgr)
     systems = {},
     crew = {},
     weapons = {},
-    shields = {},
   }
 
   local sys_list = mgr.vSystemList
@@ -72,17 +71,18 @@ local function ship_snapshot(mgr)
     end
   end
 
+  -- Shields::shields is a single Shield struct (NOT a vector): .charger is the
+  -- charge progress within the current layer; .power is a ShieldPower struct with
+  -- .first = current charged layers, .second = max layers.
   local shield_sys = mgr.shieldSystem
   if shield_sys then
-    local shields = shield_sys.shields
-    if shields then
-      for i = 0, shields:size() - 1 do
-        local s = shields[i]
-        snap.shields[#snap.shields + 1] = {
-          charger = s.charger,
-          power = s.power,
-        }
-      end
+    local sh = shield_sys.shields
+    if sh then
+      snap.shields = {
+        charger = sh.charger,
+        layers = sh.power.first,
+        max_layers = sh.power.second,
+      }
     end
   end
 
