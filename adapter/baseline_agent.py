@@ -9,6 +9,7 @@ Run:  cd harness && uv run python ../adapter/baseline_agent.py --jumps 5 [--new]
 from __future__ import annotations
 
 import argparse
+import time
 import sys
 from pathlib import Path
 
@@ -38,22 +39,78 @@ def player_hull(o):
     return (o.player_ship or {}).get("hull", {}).get("current")
 
 
+def player_oxygen(o):
+    return (o.player_ship or {}).get("oxygen_pct")
+
+
+def operational_weapons(o):
+    """Player weapons that are powered (can actually deal damage)."""
+    return [w for w in (o.player_ship or {}).get("weapons", []) if w.get("powered")]
+
+
+def min_crew_health(o):
+    alive = [c for c in (o.player_ship or {}).get("crew", []) if not c.get("dead")]
+    hp = [c.get("health_current", 100) for c in alive]
+    return min(hp) if hp else 0
+
+
+def flee_reason(o, hull_floor):
+    """Why we should bail out of this fight, or None to keep fighting. Watches more
+    than hull: a destroyed oxygen system suffocates a full-hull ship, and a fight you
+    can't deal damage in is unwinnable (the seed-7 death: hull 21, O2 gone, no weapons)."""
+    hull = player_hull(o) or 0
+    if hull <= hull_floor:
+        return f"hull {hull}"
+    o2 = player_oxygen(o)
+    if o2 is not None and o2 <= 25:
+        return f"oxygen {o2}%"
+    if min_crew_health(o) <= 25:
+        return f"crew health {min_crew_health(o):.0f}"
+    return None
+
+
 def power_core(sess, o):
-    """Allocate power to shields, then weapons, then engines (best-effort)."""
+    """Allocate power to shields, then weapons, then engines (best-effort).
+    Skips silently if an action ack lags (don't crash the run on a transient)."""
     sys = systems(o)
     for sid in (SHIELDS, WEAPONS, ENGINES):
         s = sys.get(sid)
         if s and s.get("power_max"):
-            o = sess.step([set_system_power(sid, s["power_max"])], advance_frames=15)
+            try:
+                o = sess.step([set_system_power(sid, s["power_max"])], advance_frames=15)
+            except TimeoutError:
+                pass
     return o
 
 
-def fight(sess, o, log):
-    """Target the enemy's weapons room (or room 0) and fire until it's destroyed
-    or we take too much damage."""
+def _flee(sess, o, log):
+    """Jump away from combat to any reachable beacon (FTL flee)."""
+    beac = (o.map or {}).get("connected_beacons", [])
+    if not beac:
+        return o, "stuck"
+    try:
+        o = sess.jump(beac[0]["index"], advance_frames=260)
+        log(f"  fled to beacon {beac[0]['index']} (hull {player_hull(o)})")
+        return o, "flee"
+    except Exception:  # noqa: BLE001
+        return o, "low"
+
+
+def fight(sess, o, log, flee_below=8):
+    """Target the enemy's weapons room (then shields, then any) and fire until it's
+    destroyed; bail out (flee) on hull/oxygen/crew danger or if we have no powered
+    weapons to win with. Returns (obs, outcome)."""
     o = power_core(sess, o)
+    # Can't deal damage with no powered weapons — sitting here just suffocates/burns
+    # us down (the seed-7 death). Leave instead of looping in an unwinnable fight.
+    if not operational_weapons(o):
+        log("  no operational weapons — can't win, fleeing")
+        return _flee(sess, o, log)
+    why = flee_reason(o, flee_below)
+    if why:
+        log(f"  unsafe ({why}) — fleeing before engaging")
+        return _flee(sess, o, log)
     rooms = (o.enemy_ship or {}).get("rooms", [])
-    # prefer the enemy weapons room, else shields, else first room
     target = None
     for want in (WEAPONS, SHIELDS):
         target = next((r["room_id"] for r in rooms if r.get("system_id") == want), None)
@@ -62,62 +119,87 @@ def fight(sess, o, log):
     if target is None and rooms:
         target = rooms[0]["room_id"]
     if target is None:
-        return o
+        return o, "no_target"
     log(f"  combat: target enemy room {target}, enemy hull {enemy_hull(o)}")
-    # aim each powered weapon at the room (persistent target + autofire)
-    for w in (o.player_ship or {}).get("weapons", []):
-        if w.get("powered"):
-            o = sess.fire_weapon(w["slot"], target, advance_frames=30)
-    # let it play out
-    for _ in range(20):
+    for w in operational_weapons(o):
+        o = sess.fire_weapon(w["slot"], target, advance_frames=30)
+    for _ in range(25):
         if not o.enemy_ship or (enemy_hull(o) or 0) <= 0:
             log(f"  enemy destroyed (player hull {player_hull(o)})")
-            return o
-        if (player_hull(o) or 0) <= 6:
-            log(f"  hull critical ({player_hull(o)}) — disengaging")
-            return o
+            return o, "kill"
+        why = flee_reason(o, flee_below)
+        if why:
+            log(f"  unsafe ({why}) — fleeing")
+            return _flee(sess, o, log)
+        if not operational_weapons(o):  # weapons knocked out mid-fight
+            log("  weapons knocked out — fleeing")
+            return _flee(sess, o, log)
         o = sess.step([], advance_frames=200)
-        log(f"    ...enemy hull {enemy_hull(o)}, player hull {player_hull(o)}")
-    return o
+    return o, "timeout"
+
+
+def _pick_beacon(o):
+    """Prefer an unvisited, non-dangerous beacon; fall back to any unvisited, then any."""
+    beac = (o.map or {}).get("connected_beacons", [])
+    for pred in (lambda b: b.get("visited") == 0 and not b.get("danger_zone"),
+                 lambda b: b.get("visited") == 0,
+                 lambda b: True):
+        cand = [b for b in beac if pred(b)]
+        if cand:
+            return cand[0]["index"]
+    return None
 
 
 def play(sess, jumps, log):
+    """Play until `jumps` FTL jumps are made (not iterations), the ship dies, or we
+    get stuck. Resolves events, fights (fleeing when low), and navigates."""
     o = sess.observe()
     if not o.game_started:
         log("not in a run; resetting")
         o = sess.start_game("continue")
-    stats = {"jumps": 0, "events": 0, "combats": 0, "kills": 0}
+    stats = {"jumps": 0, "events": 0, "combats": 0, "kills": 0, "fled": 0}
     o = power_core(sess, o)
 
-    for _ in range(jumps):
-        o = sess.observe()
-        if o.choice_box_open and (o.event or {}).get("choices"):
-            choices = o.event["choices"]
-            txt = (o.event.get("text") or "").replace("\n", " ")[:70]
-            log(f"event: {txt!r} -> choosing 0/{len(choices)}")
-            o = sess.choose_event(0, advance_frames=90)
-            stats["events"] += 1
-            continue
-        if o.enemy_ship and (enemy_hull(o) or 0) > 0:
-            o = fight(sess, o, log)
-            stats["combats"] += 1
-            eh = enemy_hull(o)
-            if not o.enemy_ship or (eh is not None and eh <= 0):
-                stats["kills"] += 1
-            continue
-        beacons = (o.map or {}).get("connected_beacons", [])
-        if not beacons:
-            log("no beacons to jump to; stopping")
-            break
-        tgt = next((b["index"] for b in beacons if b.get("visited") == 0),
-                   beacons[0]["index"])
-        log(f"jump -> beacon {tgt} (fuel {(o.player_ship or {}).get('resources',{}).get('fuel')})")
+    iters, timeouts = 0, 0
+    while stats["jumps"] < jumps and iters < jumps * 8:
+        iters += 1
         try:
-            o = sess.jump(tgt, advance_frames=260)
-            stats["jumps"] += 1
-        except Exception as e:  # noqa: BLE001
-            log(f"jump failed: {e}; stopping")
-            break
+            o = sess.observe()
+        except Exception:  # noqa: BLE001
+            time.sleep(0.2); continue
+        if (player_hull(o) or 0) <= 0:
+            log("ship destroyed"); break
+        try:
+            if o.choice_box_open and (o.event or {}).get("choices"):
+                txt = (o.event.get("text") or "").replace("\n", " ")[:60]
+                sess.choose_event(0, advance_frames=90)
+                stats["events"] += 1
+                log(f"event: {txt!r} -> chose 0")
+            elif o.enemy_ship and (enemy_hull(o) or 0) > 0:
+                _, outcome = fight(sess, o, log)
+                stats["combats"] += 1
+                if outcome == "kill":
+                    stats["kills"] += 1
+                elif outcome == "flee":
+                    stats["fled"] += 1
+                    stats["jumps"] += 1  # fleeing is an FTL jump
+            else:
+                tgt = _pick_beacon(o)
+                if tgt is None:
+                    log("no beacons to jump to; stopping"); break
+                fuel = (o.player_ship or {}).get("resources", {}).get("fuel")
+                log(f"jump -> beacon {tgt} (fuel {fuel})")
+                o = sess.jump(tgt, advance_frames=260)
+                stats["jumps"] += 1
+                power_core(sess, o)
+            timeouts = 0
+        except TimeoutError:
+            # The action usually still landed; the ack just lagged (chained event,
+            # warp animation). Re-observe next loop and continue.
+            timeouts += 1
+            log(f"action ack timed out (recoverable) [{timeouts}]")
+            if timeouts >= 4:
+                log("too many consecutive timeouts; stopping"); break
 
     o = sess.observe()
     log(f"\n== run summary == hull {player_hull(o)}/30  "
@@ -139,7 +221,7 @@ def main():
             args.record, meta={"agent": "baseline", "seed": args.seed, "jumps": args.jumps})
     sess = AgentSession(recorder=recorder)
     if args.new:
-        sess.start_game("new", seed=args.seed)
+        sess.reset_episode(seed=args.seed)   # clean fresh run, even from in-game
 
     def log(msg):
         print(msg, flush=True)

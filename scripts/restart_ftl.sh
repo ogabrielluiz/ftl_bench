@@ -18,11 +18,21 @@ sleep 2
 bash "$HERE/scripts/deploy_dev.sh" >/dev/null
 rm -f "$SAVE/ftl_agent_observation.json" "$SAVE/ftl_agent_action.json" "$SAVE/FTL_HS.log"
 
-open "$FTL"
-# FTL freezes its loop when it is not the frontmost window, so keep it foremost
-# until the bridge's dev script has loaded and is streaming observations.
-for i in $(seq 1 25); do
-  open "$FTL" 2>/dev/null || true
+# Keep FTL ticking while unfocused so we never need to force it frontmost (App Nap
+# off → its loop runs in the background; the bridge injects menu clicks regardless
+# of focus). This avoids `osascript activate`, which LAUNCHES a second, vanilla,
+# bridge-less FTL via LaunchServices if the app isn't registered yet (the "two FTL
+# open" duplicate).
+defaults write com.example.FTL NSAppSleepDisabled -bool YES 2>/dev/null || true
+defaults write com.example.FTL LSAppNapIsDisabled -bool YES 2>/dev/null || true
+
+# Launch the Hyperspace.command launcher DIRECTLY — it sets DYLD_INSERT_LIBRARIES
+# and execs FTL so the bridge dylib is injected. Do NOT use `open "$FTL"`: on this
+# Steam install LaunchServices starts the vanilla MacOS/FTL binary directly, the
+# dylib is never inserted, and you get a bridge-less FTL that hangs (no pause, no
+# observation stream). That bridge-less launch was the "frozen FTL" failure mode.
+"$FTL/Contents/MacOS/Hyperspace.command" >"$SAVE/launch_out.txt" 2>&1 &
+for i in $(seq 1 30); do
   if grep -q "dev script loaded" "$SAVE/FTL_HS.log" 2>/dev/null \
      && [ -f "$SAVE/ftl_agent_observation.json" ]; then
     echo "bridge live after ~${i}s"
@@ -30,6 +40,9 @@ for i in $(seq 1 25); do
   fi
   sleep 1
 done
+# Safety net: never leave a duplicate running (it would corrupt the shared obs file).
+n=$(pgrep -f "FTL Faster Than Light/FTL.app/Contents/MacOS/FTL" | wc -l | tr -d ' ')
+[ "$n" -gt 2 ] && echo "WARNING: $n FTL processes (expected 1 game = parent+child)"
 
 if [ "$MODE" != "none" ]; then
   ( cd "$HERE/harness" && FTL_BENCH_MODE="$MODE" uv run python - <<'PY'

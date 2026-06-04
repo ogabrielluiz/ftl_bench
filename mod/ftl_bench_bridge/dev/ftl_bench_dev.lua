@@ -126,6 +126,10 @@ local function add_m3_obs(obs)
           index = i, known = loc.known, visited = loc.visited,
           danger_zone = loc.dangerZone, boss = loc.boss,
           nebula = loc.nebula, has_event = (loc.event ~= nil),
+          -- exit_beacon: jumping here advances to the next sector (the goal beacon).
+          -- fleet: the rebel pursuit fleet has reached this beacon (deadly — avoid).
+          exit_beacon = loc.beacon, new_sector = loc.newSector,
+          quest = loc.questLoc, fleet = loc.fleetChanging,
         }
       end
     end
@@ -171,7 +175,36 @@ local function add_m3_obs(obs)
       end
     end
     obs.enemy_ship.rooms = rooms
+    -- enemy weapons (so the agent knows when the enemy is about to fire)
+    local ewl = enemy:GetWeaponList()
+    if ewl then
+      local ew = {}
+      for i = 0, ewl:size() - 1 do
+        local w = ewl[i]
+        if w then
+          local okc, cur = pcall(function() return w.cooldown.first end)
+          local okm, mx = pcall(function() return w.cooldown.second end)
+          ew[#ew + 1] = { slot = i, powered = w.powered,
+                          charge = okc and cur or nil, charge_max = okm and mx or nil }
+        end
+      end
+      obs.enemy_ship.weapons = ew
+    end
   end
+
+  -- incoming projectiles aimed at the player (combat danger awareness)
+  pcall(function()
+    local space = world.space
+    if not space then return end
+    local projs = space.projectiles
+    if not projs then return end
+    local incoming = 0
+    for i = 0, projs:size() - 1 do
+      local p = projs[i]
+      if p and p.targetId == 0 then incoming = incoming + 1 end
+    end
+    obs.incoming_projectiles = incoming
+  end)
 
   -- in-game menu inspection (for return-to-menu work)
   local ok_mc, mc = pcall(Hyperspace.benchmark_menu_button_count)
@@ -204,6 +237,25 @@ local function add_m3_obs(obs)
       end
     end
   end
+
+  -- enrich player systems with ion / repair / hack status (drives repair & power)
+  pcall(function()
+    if not (player and obs.player_ship and obs.player_ship.systems) then return end
+    local sl = player.vSystemList
+    if not sl then return end
+    for i = 0, sl:size() - 1 do
+      local sys = sl[i]
+      local ps = obs.player_ship.systems[i + 1]
+      if sys and ps then
+        local oi, ion = pcall(function() return sys:Ioned() end)
+        if oi then ps.ioned = ion end
+        local onr, nr = pcall(function() return sys:NeedsRepairing() end)
+        if onr then ps.needs_repair = nr end
+        local oh, he = pcall(function() return sys.iHackEffect end)
+        if oh and type(he) == "number" then ps.hacked = he > 0 end
+      end
+    end
+  end)
 end
 
 ------------------------------------------------------------------
@@ -298,10 +350,13 @@ _G.ftl_bench_tick = function()
   if S.resetting then
     set_frozen(false)
     S.reset_throttle = (S.reset_throttle or 0) + 1
-    if S.reset_throttle == 2 then
-      pcall(Hyperspace.benchmark_return_to_menu)     -- open menu + select Main Menu
-    elseif S.reset_throttle > 2 and S.reset_throttle % 12 == 0 then
-      pcall(Hyperspace.benchmark_confirm_menu)        -- confirm the "lose progress" warning
+    if S.reset_throttle % 10 == 0 then
+      if gui.choiceBoxOpen then
+        pcall(Hyperspace.benchmark_choose_event, 0)  -- clear any (chained) event first
+      else
+        pcall(Hyperspace.benchmark_return_to_menu)   -- open menu + select Main Menu
+        pcall(Hyperspace.benchmark_confirm_menu)      -- confirm the "lose progress" warning
+      end
     end
     write_observation()
     return
