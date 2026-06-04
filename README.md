@@ -6,7 +6,7 @@ FTL is a real-time-with-pause roguelike: resource management, risk under uncerta
 
 ## Why Hyperspace
 
-Hyperspace is an open-source C++ "exe mod" that exposes FTL's engine to **Lua via SWIG bindings**. It already lets scripts both *read* full game state (`Hyperspace.ships.player`/`.enemy`, crew, systems, weapons, map) and *drive* the simulation (move crew, allocate power, jump, fire). Crucially, it also supports **seeded runs** with the seed exposed to Lua (since ~v1.6.0), which gives us reproducibility for free. Where actions aren't yet bound (weapon room-targeting, event-choice selection, store buy/sell), we extend Hyperspace itself with new SWIG bindings rather than resorting to brittle screen/input automation.
+Hyperspace is an open-source C++ "exe mod" that exposes FTL's engine to **Lua via SWIG bindings**. It already lets scripts *read* full game state (`Hyperspace.ships.player`/`.enemy`, crew, systems, weapons, map) and *drive* much of the simulation (move crew, allocate power, teleport, toggle cloak). It also supports **seeded runs** with the seed readable from Lua, the basis for reproducibility. Where capabilities aren't yet bound — the harness **transport** (the Lua sandbox disables `io`/sockets), JSON serialization, and a few UI-driven actions (weapon room-targeting, event-choice confirm, jump trigger, store) — we extend Hyperspace itself with new SWIG bindings rather than resorting to brittle screen/input automation. The source-grounded map of what's exposed vs. what we build is in [`docs/deepdive/hyperspace-lua-surface.md`](docs/deepdive/hyperspace-lua-surface.md).
 
 ## Architecture (four layers)
 

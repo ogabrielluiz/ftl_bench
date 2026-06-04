@@ -4,7 +4,7 @@
 **Status:** Draft (design phase)
 **Goal:** A reproducible agent-evaluation benchmark that lets LLM coding agents play *FTL: Faster Than Light* through an intent-level interface built on the FTL-Hyperspace Lua API.
 
-> **Grounding note:** The action/state-surface claims in §5–§7 are being verified file-by-file against the cloned Hyperspace source (`~/Projects/FTL-Hyperspace`, v1.22.2). The source-level findings live in `docs/deepdive/` and supersede any web-derived claim here on conflict.
+> **Grounding note:** §5–§7 have been reconciled against a file-by-file deepdive of the cloned Hyperspace source (`~/Projects/FTL-Hyperspace`, v1.22.2). Full findings: [`docs/deepdive/hyperspace-lua-surface.md`](../deepdive/hyperspace-lua-surface.md) — authoritative on conflict. Key corrections folded in below: (1) **transport is the hard blocker** — the Lua sandbox disables `io`/`os`/sockets, so the harness link needs a new C++ binding + a JSON binding; (2) **jump is a gap**, not an exposed action; (3) **seed-setting needs a binding** (reading works today).
 
 ---
 
@@ -54,7 +54,7 @@ Four layers, each independently testable:
 
 ## 4. The real-time → turn-based control model
 
-FTL is real-time-with-pause; an LLM decides in seconds. The bridge keeps the sim **paused by default** and unpauses in controlled increments under harness policy.
+FTL is real-time-with-pause; an LLM decides in seconds. The bridge keeps the sim **paused by default** and unpauses in controlled increments under harness policy. Mechanism (no new C++ required for the basic loop): freeze with `Hyperspace.FPS.SpeedFactor = 0` (the same trick Hyperspace uses during loading) or `App.gui.bPaused = true`, gate inside the `ON_TICK` internal-event hook, and resume by restoring `SpeedFactor = 1`. A dedicated `CFPS:StepFrames(n)` binding is a likely robustness add if Lua-side toggling races pending animations (tracked spike).
 
 - **Event-driven gating (default).** Run until the next *significant event*, then re-pause and request an action. Significant events are drawn from Hyperspace's callback taxonomy (combat start, enemy weapon charged/about-to-fire, projectile incoming, system damaged, crew low-health/death, jump arrival, event/store screen shown, hull damage). Mirrors expert human micro-pausing.
 - **Fixed-tick gating (option).** Unpause for *N* frames, re-pause. Cheaper, simpler; risks missing reaction windows.
@@ -105,25 +105,26 @@ The agent issues *intents*, not clicks. Each maps to one or more Lua calls in th
 | `target_weapon` | weapon_slot, enemy_room | **gap — extend Hyperspace** (WeaponControl/CombatControl binding) |
 | `fire_weapons` | slots[] / autofire | partly exposed; firing path may need a binding |
 | `activate_system` | cloak / hacking / mind-control / battery / teleport | mostly exposed via system objects |
-| `jump` | beacon_id | StarMap / `TeleportSystem:InitiateTeleport` (exposed) |
-| `choose_event` | choice_index | **gap — extend Hyperspace** (ChoiceBox/EventButtons binding) |
-| `store_transaction` | buy/sell, item | **gap — extend Hyperspace** (Store_Extend binding) |
-| `end_turn` | — | harness resumes the sim |
+| `jump` | beacon_id | **gap — extend Hyperspace** (`StarMap` has no `Jump()` binding; add `StarMap_Extend:InitiateJump(Location*)`) |
+| `choose_event` | choice_index | **gap — extend Hyperspace** (`ChoiceBox.selectedChoice` is read-only; add `:ConfirmChoice(index)`) |
+| `store_transaction` | buy/sell, item | **gap — extend Hyperspace** (`Store`/`StoreBox` unbound; highest-effort gap, deferrable from v1) |
+| `end_turn` | — | harness resumes the sim (`FPS.SpeedFactor = 1`) |
 
-**Extend, don't hack.** The three gaps are closed by adding first-class SWIG/Lua bindings in an extended Hyperspace fork (the open-source C++ layer is built for this), **not** by OS-level input synthesis. Input synthesis is permitted only as a throwaway stopgap to unblock harness development before the bindings land, and is never part of the shipped benchmark.
+**Extend, don't hack.** The gaps are closed by adding first-class SWIG/Lua bindings in an extended Hyperspace fork (the open-source C++ layer is built for this), **not** by OS-level input synthesis. The blocking new bindings cluster in four UI-driven actions — **weapon-target-and-fire, event-choice-confirm, jump-trigger, store** — of which the first three are low/medium effort and store is the only high-effort item (deferrable from a v1 that skips shops). Input synthesis is never part of the shipped benchmark. The full file-level extension task list (P0/P1/P2) is in the deepdive §10.
 
 ## 7. Feasibility assessment
 
-| Area | Rating | Basis |
+| Area | Rating | Basis (deepdive-confirmed) |
 |---|---|---|
-| State extraction | **HIGH** | Rich Lua read surface; FTLAV proves savefile extraction as fallback |
-| Power / crew / jump control | **HIGH** | Bindings exist (`MoveToRoom`, `IncreasePower`, jump/teleport) |
-| Weapon-targeting + UI actions (event/store) | **MEDIUM → HIGH** | Not cleanly bound today; closed by extending Hyperspace SWIG layer |
-| Turn-gating a real-time game | **MEDIUM** | Pause exists + per-frame hook; reaction-window policy is real work |
-| Determinism / seeding | **HIGH** | Seeded runs; seed exposed to Lua (~v1.6.0); caveat: pin mods+version+AE |
-| Transport (Lua ↔ harness) | **HIGH** | File-polling is robust; socket if sandbox allows |
+| State extraction | **HIGH** | Rich read surface live today (`ShipManager` player+enemy, crew, systems, weapons, map). Needs a JSON binding to serialize (none bundled). |
+| Power / crew / teleport control | **HIGH** | Exposed: `IncreasePower`/`SetPowerCap`, `MoveToRoom`/`SetTask`, `TeleportSystem:InitiateTeleport`, cloak/battery toggles |
+| Weapon-targeting, event-choice, jump | **MEDIUM** | Not bound today; thin C++ wrappers over existing logic — low/med effort, low risk |
+| Store transactions | **LOW→MED** | `Store`/`StoreBox` fully unbound; highest-effort gap. **Deferrable from v1.** |
+| Turn-gating a real-time game | **MEDIUM** | Pause works via `FPS.SpeedFactor=0` + `ON_TICK` hook, no new C++; `StepFrames` may be needed for animation races (spike) |
+| Determinism / seeding | **HIGH** | Seeded runs real; seed *readable* in Lua. *Setting* needs a `SetRunSeed` binding (low effort). Pin mods+version+AE+difficulty. |
+| Transport (Lua ↔ harness) | **MEDIUM** | ⚠️ **Hard blocker.** Lua sandbox disables `io`/`os`/`package`/sockets (`lua/linit.c`). Requires a new C++ binding: file bridge (`Hyperspace.Benchmark.write/read`) or AF_UNIX/named-pipe socket. |
 
-**Overall: FEASIBLE.** Critical path = (a) the Hyperspace action-binding extensions for targeting/events/store, and (b) the event-driven gating policy. Both are bounded engineering, not open research.
+**Overall: FEASIBLE.** Critical path, in order: **(1) transport binding + JSON** (the structural root — everything depends on it), **(2) the four UI-action bindings** (weapon-target-and-fire, event-choice-confirm, jump, store), **(3) deterministic frame-step + seed-setter**. All bounded engineering over an existing SWIG layer, not open research. See deepdive §10 for the prioritized file-level work list and §11 for the spikes.
 
 ## 8. Benchmark layer
 
@@ -134,21 +135,26 @@ The agent issues *intents*, not clicks. Each maps to one or more Lua calls in th
 
 ## 9. Risks & open spikes
 
-1. **Reaction-window gating** — can event-driven pausing reliably surface sub-second decisions? *Spike: instrument a combat encounter.*
-2. **Lua sandbox IO** — does Hyperspace's Lua expose `io`/sockets, or must transport be a Hyperspace-provided helper / file polling? *Spike: inspect `lua/` runtime setup.* (→ deepdive)
-3. **Action-gap reverse engineering** — locating the right C++ functions to hook for weapon targeting / event choice / store. *Spike: deepdive + a prototype binding.*
-4. **Seed scope** — confirm exactly what the seed determinizes (map, events, combat RNG) and any non-determinism that leaks. *Spike.*
-5. **Headless / throughput** — can FTL+Hyperspace run fast/headless enough for many eval episodes? *Spike.*
+Resolved by the deepdive: Lua sandbox IO (✗ disabled — transport needs C++) and action-gap locations (mapped to files in deepdive §10). Remaining spikes (full list in deepdive §11):
+
+1. **Pause/step race (highest priority)** — does the `SpeedFactor=0`/`bPaused` toggle cleanly freeze mid-combat, or do animations slip a frame? Decides whether the simple polling loop suffices or `CFPS:StepFrames(n)` is mandatory.
+2. **Transport latency budget** — measure file-bridge vs. socket round-trip; picks the transport and whether real-time-ish play is viable vs. strictly turn-based.
+3. **Choice-confirm execution path** — verify a new `ChoiceBox:ConfirmChoice()` actually runs the event's consequences, not just a UI highlight.
+4. **Internal-event firing order** — document when `PROJECTILE_FIRE`/`DAMAGE_*`/cooldown updates fire relative to damage resolution (pre- vs post-damage state at re-pause).
+5. **Weapon target-room round-trip** — confirm `SetWeaponTargetRoom` → `Fire()` hits the intended enemy room end-to-end.
+6. **Seed completeness** — with fixed seed + identical mods/version, do map/events/boss-fleet reproduce bit-for-bit? Is mid-run `mt19937` checkpointing needed, or is run-start seeding enough?
+7. **Headless / throughput** — can FTL+Hyperspace run fast/headless enough for many eval episodes?
 
 ## 10. Build sequence (informs the implementation plan)
 
-1. **Deepdive** the Hyperspace Lua surface → `docs/deepdive/` (in progress).
-2. **State-read prototype**: Lua bridge emits `Observation` JSON over file transport; harness reads it. (HIGH-confidence, no extensions.)
-3. **Gating prototype**: per-frame hook + pause; event-driven decision points.
-4. **Exposed-action prototype**: power/crew/jump via existing bindings, end-to-end agent loop on a micro-scenario.
-5. **Hyperspace extensions**: SWIG bindings for targeting, event-choice, store.
-6. **Harness + adapter**: gym API, MCP tools, episode/seed/scoring/logging.
-7. **Scenario library + metrics**; first benchmark report.
+1. ✅ **Deepdive** the Hyperspace Lua surface → [`docs/deepdive/hyperspace-lua-surface.md`](../deepdive/hyperspace-lua-surface.md).
+2. **Transport + JSON bindings** (deepdive P0 #1–#2): the structural root. C++ file-bridge or AF_UNIX socket + JSON encode/decode. Nothing else can be exercised end-to-end until this exists.
+3. **State-read prototype**: Lua bridge serializes `Observation` JSON through the transport; harness reads it.
+4. **Gating prototype**: `ON_TICK` + `SpeedFactor` pause; event-driven decision points. Run the pause-race spike (deepdive §11.1).
+5. **Exposed-action prototype**: power/crew/teleport via existing bindings — end-to-end agent loop on a micro-scenario.
+6. **Action-gap bindings** (deepdive P0 #3–#5,7): weapon-target-and-fire, event-choice-confirm, jump-trigger, seed-setter. (Store deferred — P2 #16.)
+7. **Harness + adapter**: gym API, MCP tools, episode/seed/scoring/logging.
+8. **Scenario library + metrics**; first benchmark report.
 
 ---
 
