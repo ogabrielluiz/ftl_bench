@@ -73,6 +73,7 @@ class AgentSession:
         user_folder: Path | str = DEFAULT_USER_FOLDER,
         poll_interval: float = 0.01,
         step_timeout: float = 5.0,
+        recorder=None,
     ) -> None:
         self.user_folder = Path(user_folder)
         self.obs_path = self.user_folder / "ftl_agent_observation.json"
@@ -81,6 +82,7 @@ class AgentSession:
         self.poll_interval = poll_interval
         self.step_timeout = step_timeout
         self.action_seq = 0
+        self.recorder = recorder  # optional TrajectoryRecorder
 
     def observe(self) -> Observation:
         """Latest validated observation (no action issued)."""
@@ -125,10 +127,13 @@ class AgentSession:
         # re-paused, so the timeout must exceed the frame budget's wall-clock
         # (~60 fps) plus warp/animation slack and poll margin.
         timeout = max(self.step_timeout, advance_frames / 45.0 + 3.0)
-        return self._wait_for(
-            lambda obs: obs.last_action_seq == self.action_seq and obs.paused,
+        obs = self._wait_for(
+            lambda o: o.last_action_seq == self.action_seq and o.paused,
             timeout=timeout,
         )
+        if self.recorder is not None:
+            self.recorder.record("step", payload["actions"], obs)
+        return obs
 
     # ---- autonomy: start a game from the menu without a human click ----
     def start_game(
@@ -140,11 +145,14 @@ class AgentSession:
             timeout = max(timeout, 30.0)  # New Game -> CONFIRM -> hangar Start is multi-step
         self._sync_seq()
         self.action_seq += 1
+        acts = [start_game(mode, seed)]
         self._write_action_atomic(
-            {"seq": self.action_seq, "advance_frames": 0,
-             "actions": [start_game(mode, seed)]}
+            {"seq": self.action_seq, "advance_frames": 0, "actions": acts}
         )
-        return self._wait_for(lambda o: o.game_started, timeout=timeout)
+        obs = self._wait_for(lambda o: o.game_started, timeout=timeout)
+        if self.recorder is not None:
+            self.recorder.record("start_game", acts, obs)
+        return obs
 
     # ---- M3 convenience helpers (sensible per-action frame budgets) ----
     def jump(self, beacon_index: int, advance_frames: int = 240) -> Observation:

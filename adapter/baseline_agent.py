@@ -14,7 +14,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "harness" / "src"))
 
-from ftl_bench import AgentSession, set_system_power  # noqa: E402
+from ftl_bench import (  # noqa: E402
+    AgentSession,
+    TrajectoryRecorder,
+    load_trajectory,
+    score_trajectory,
+    set_system_power,
+)
 
 # system ids
 SHIELDS, ENGINES, OXYGEN, WEAPONS = 0, 1, 2, 3
@@ -123,15 +129,27 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--jumps", type=int, default=5)
     ap.add_argument("--new", action="store_true", help="start a fresh run first")
+    ap.add_argument("--seed", type=int, default=None, help="seed for --new")
+    ap.add_argument("--record", default=None, help="path to write a trajectory JSONL")
     args = ap.parse_args()
-    sess = AgentSession()
+
+    recorder = None
+    if args.record:
+        recorder = TrajectoryRecorder(
+            args.record, meta={"agent": "baseline", "seed": args.seed, "jumps": args.jumps})
+    sess = AgentSession(recorder=recorder)
     if args.new:
-        sess.start_game("new")
+        sess.start_game("new", seed=args.seed)
 
     def log(msg):
         print(msg, flush=True)
 
     play(sess, args.jumps, log)
+
+    if args.record:
+        score = score_trajectory(load_trajectory(args.record))
+        log(f"\n== score == {score}")
+        log(f"trajectory: {args.record}")
 
 
 if __name__ == "__main__":
