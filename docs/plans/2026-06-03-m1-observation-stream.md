@@ -28,9 +28,11 @@
 
   **Bug found & fixed during Task 8:** the bridge originally shipped `data/hyperspace.xml` (plain), which **replaced** Hyperspace's own `hyperspace.xml` and dropped its `<version>` tag → "Wrong version of Hyperspace detected" warning. Fixed by switching to **`data/hyperspace.xml.append`** (bare `<scripts>` node), which merges instead of clobbering. Re-patched from vanilla and re-verified: version check now logs `Mod requests '^1.22.2' vs Hyperspace '1.22.2'`, no warning, stream intact.
 
-  **Still open (needs a started game, GUI click):** the `std::pair` access form (`.first/.second` vs `[0]/[1]`) in `observation.lua` — only exercised once `game_started=true` (i.e. a New Game is started and player-ship fields are read). The menu-level stream (`game_started=false`) is fully verified.
+  **Second bug found & fixed in a started run:** `observation.lua` read `shieldSystem.shields` as a vector (`shields:size()`), but `Shields::shields` is a single `Shield` struct (`.charger` + `.power` `ShieldPower{.first,.second}`). The throw was discarded by `pcall` every tick, so no in-run snapshot was ever written (made `game_started` look stuck). Fixed to read `charger`/`layers`/`max_layers`. Note: errors surfaced via on-screen `print` spam — useful, but consider rate-limiting in M2.
 
-**🎉 Milestone 1 is functionally complete** — the read-only observation pipeline works live end-to-end (game → C++ binding → Lua bridge → file → Python harness). The only remaining check is the in-combat pair-access form (Task 8.4), which needs a started game.
+  **Pair-access form RESOLVED:** the error landing *after* hull/reactor/systems/crew/weapons proved `.first/.second` is correct; confirmed in a live run — hull `30/30`, 8 systems, 3 crew (`health 100/100`), 2 weapons, shields `1/1` all populate. (`weapons[].cooldown` is `null` for an unpowered weapon — correct: NaN cooldown → `null`.)
+
+**✅ Milestone 1 is COMPLETE and fully verified live** — read-only observation pipeline works end-to-end (game → C++ binding → Lua bridge → file → Python harness), at the menu (`game_started=false`) and in a started run with all player-ship fields populating correctly. Ready for M2 (pause-gating + action dispatch).
 
 ---
 
