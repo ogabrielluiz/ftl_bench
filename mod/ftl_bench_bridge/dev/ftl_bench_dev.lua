@@ -43,16 +43,22 @@ local function apply_set_system_power(mgr, act)
   if not sys then return end
   local target = act.level or 0
   local current = sys.powerState.first
-  local guard = 0
-  while current < target and guard < 16 do
-    sys:IncreasePower(1, false)
-    current = sys.powerState.first
-    guard = guard + 1
+  -- Increase ALL needed bars in ONE call. IncreasePower(1) one-at-a-time fails on the
+  -- weapons system: a single bar can't half-arm a multi-power weapon, so after the
+  -- 1-power Artemis takes a bar the 2-power Burst Laser is never armed. IncreasePower
+  -- (target-current) respects weapon-arming boundaries and powers both. If reactor-
+  -- limited it stops short on its own; retry smaller as a fallback.
+  if current < target then
+    local ok = pcall(function() return sys:IncreasePower(target - current, false) end)
+    local guard = 0
+    while sys.powerState.first < target and guard < 16 do  -- fallback: 1 bar at a time
+      if not sys:IncreasePower(1, false) then break end
+      guard = guard + 1
+    end
   end
-  guard = 0
-  while current > target and guard < 16 do
+  local guard = 0
+  while sys.powerState.first > target and guard < 16 do
     sys:DecreasePower(false)
-    current = sys.powerState.first
     guard = guard + 1
   end
 end
@@ -141,9 +147,28 @@ local function add_m3_obs(obs)
   local world = Hyperspace.App and Hyperspace.App.world
   if not world then return end
 
-  -- jump_charged: is it safe to initiate a jump now? (drive recharged, not warping)
-  -- The agent waits on this instead of spamming no-op jumps while the FTL drive charges.
+  -- jump_charged: is it safe to initiate a jump now? (recharged in combat / always OK out)
   pcall(function() obs.jump_charged = jump_ready(Hyperspace.ships and Hyperspace.ships.player) end)
+
+  -- Per-weapon firing state, COMBAT-ONLY and not mid-warp (reading ProjectileFactory
+  -- pointers during a jump teardown is the freeze class). required_power lets an agent
+  -- tell the 2-power Burst Laser from the 1-power Artemis; fire_when_ready/has_target
+  -- say whether a charged weapon will actually fire.
+  pcall(function()
+    local pl = Hyperspace.ships and Hyperspace.ships.player
+    local en = Hyperspace.ships and Hyperspace.ships.enemy
+    local ps = obs.player_ship
+    if not (pl and en and ps and ps.weapons) or pl.bJumping then return end
+    local wl = pl:GetWeaponList()
+    for i = 0, wl:size() - 1 do
+      local pf = wl[i]; local ow = ps.weapons[i + 1]
+      if pf and ow then
+        pcall(function() ow.required_power = pf.requiredPower end)
+        pcall(function() ow.fire_when_ready = pf.fireWhenReady end)
+        pcall(function() ow.has_target = (pf.currentShipTarget ~= nil) end)
+      end
+    end
+  end)
 
   -- connected beacons reachable from the current location (jump targets)
   local sm = world.starMap
