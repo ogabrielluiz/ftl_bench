@@ -71,6 +71,13 @@ end
 
 -- M3 actions (thin wrappers over the new C++ bindings)
 local function apply_jump(act)
+  -- Defensive: don't re-trigger a jump while one is already in progress. Re-issuing
+  -- jump_to_beacon mid-warp (e.g. the harness retrying after a slow-ack timeout) is a
+  -- real hazard for the StarMap travel state. NOTE: this does NOT resolve the seed-11
+  -- beacon-3 freeze (which still hangs with this guard on -> the hang is tied to that
+  -- specific destination, not the re-trigger). bJumping spans FTL-engage..arrival.
+  local p = Hyperspace.ships and Hyperspace.ships.player
+  if p and p.bJumping then return end
   Hyperspace.benchmark_jump_to_beacon(act.beacon_index or 0)
 end
 
@@ -98,7 +105,10 @@ local function dispatch_actions(actions)
     elseif act.type == "fire_weapon" then
       apply_fire_weapon(act)
     elseif act.type == "leave_sector" then
-      pcall(Hyperspace.benchmark_leave_sector)   -- exit beacon -> next sector
+      -- same mid-warp guard as apply_jump: don't re-trigger during the inter-sector warp
+      if not (mgr and mgr.bJumping) then
+        pcall(Hyperspace.benchmark_leave_sector)  -- exit beacon -> next sector
+      end
     elseif act.type == "open_menu" then
       pcall(Hyperspace.benchmark_open_menu)
     elseif act.type == "menu_command" then

@@ -267,12 +267,14 @@ def play(sess, jumps, log):
                 power_core(sess, o)
             timeouts = 0
         except TimeoutError:
-            # The action usually still landed; the ack just lagged (chained event,
-            # warp animation). Re-observe next loop and continue.
+            # An ack can lag transiently (long warp/arrival), but persistent timeouts
+            # mean the game-side loop is actually wedged (Hyperspace's freeze watchdog
+            # fires) -- the harness can't unstick that, so bail promptly rather than
+            # hammer a frozen game.
             timeouts += 1
-            log(f"action ack timed out (recoverable) [{timeouts}]")
+            log(f"action ack timed out [{timeouts}]")
             if timeouts >= 4:
-                log("too many consecutive timeouts; stopping"); break
+                log("too many consecutive timeouts (game may be frozen); stopping"); break
 
     o = sess.observe()
     log(f"\n== run summary == hull {player_hull(o)}/30  "

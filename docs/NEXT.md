@@ -48,6 +48,21 @@ into `FTL.app/Contents/MacOS/`, `codesign -f -s - --deep`, relaunch (Allow mic o
    transition SIGBUS guard). Root-cause the crash (likely a projectile/teardown race) so
    the agent can also flee a sector mid-combat.
 
+## Known issues
+
+- **Reproducible game freeze (seed 11, beacon 3).** Hyperspace's own freeze watchdog
+  fires: the game loop hangs when the agent jumps to a specific destination (connected
+  beacon index 3 on seed 11, after a flee). Confirmed real with a 15s obs-staleness
+  watchdog (`$CLAUDE_JOB_DIR/tmp/freeze_watchdog.sh`); NOT a watchdog false-positive
+  (a 4s threshold *does* false-fire on normal multi-second warps — keep any watchdog
+  >12s). The mid-warp re-trigger guard (apply_jump/leave_sector skip while `bJumping`)
+  does NOT fix it, so the hang is tied to that destination's event/encounter, not the
+  harness retrying. Next step: attach `lldb` to the frozen FTL pid and dump the hung
+  main-thread stack to see whether it's in the game engine, a Hyperspace hook, or the
+  bridge's per-tick Lua. The autonomous restart recovers (force-quit + clean relaunch),
+  so a run can resume — but the episode is lost. Run the harness with an external
+  freeze-watchdog until root-caused, so a hang can't leave a blocking Hyperspace dialog.
+
 ## Operating notes
 
 - Keep FTL un-napped: `defaults write com.example.FTL NSAppSleepDisabled -bool YES`
