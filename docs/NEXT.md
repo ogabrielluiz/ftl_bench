@@ -1,9 +1,18 @@
 # ftl_bench — next steps
 
-Status as of this session: **M1–M6 working end-to-end and live-verified** (see README).
+Status as of this session: **M1–M6 working end-to-end and live-verified** (see README),
+**plus sector progression, richer observation, and a smarter baseline.**
 An agent can reset (continue/new, seeded), observe, and act (power, crew, jump,
-event-choice, fire) through the harness, the MCP adapter, or the scripted baseline
-agent; runs are recorded and scored.
+event-choice, fire, leave-sector) through the harness, the MCP adapter, or the scripted
+baseline agent; runs are recorded and scored. The baseline navigates a full sector to
+the exit beacon and **crosses into the next sector** (`leave_sector`), fleeing on
+oxygen/weapon/crew danger and escalating event choices.
+
+Done this session (was rebuild-gated): **`leave_sector` binding** (exit beacon → next
+sector; refuses during combat to dodge a transition SIGBUS), **exit-beacon + position +
+rebel-fleet + sector-choice observation**, **crash-flag-aware restart** (recovers from a
+crashed/killed FTL), **launch via `Hyperspace.command` directly** (no `open` → vanilla
+bridge-less hang; no `osascript activate` → duplicate instance).
 
 ## Needs a Hyperspace C++ rebuild (do when present — a rebuild re-triggers the mic dialog)
 
@@ -28,11 +37,16 @@ into `FTL.app/Contents/MacOS/`, `codesign -f -s - --deep`, relaunch (Allow mic o
    (a single combat, an escape, a store-allocation) + a runner that scores each.
 6. **A real LLM agent** over the MCP adapter (vs the scripted baseline) — and a small
    eval harness that runs N seeded episodes and aggregates `score_trajectory`.
-7. **Richer observation**: incoming projectiles / weapon ETA, per-system ion/hack,
-   reactor breakdown, crew skills — all readable from Lua, just add to `observation.lua`
-   / the dev script.
-8. **Better baseline agent**: smarter event choices (avoid combat when weak), flee when
-   low hull (charge engines + jump), buy at stores once #2 lands.
+7. **Richer observation** (mostly ✅): incoming projectiles, weapon charge/ETA, per-system
+   ion/hack, exit beacon + positions, rebel fleet, sector-choice flag are done. Remaining:
+   reactor breakdown detail, crew skills.
+8. **Better baseline agent** (partly ✅): exit navigation, flee on O2/weapon/crew danger,
+   event-choice escalation, stalemate-flee, and sector crossing are done. Remaining:
+   active **crew repair** (move crew to a destroyed O2/weapons room instead of fleeing),
+   FTL-charge-aware combat fleeing, buy at stores once #2 lands.
+9. **Combat-time sector flee**: `leave_sector` currently refuses with a live enemy (the
+   transition SIGBUS guard). Root-cause the crash (likely a projectile/teardown race) so
+   the agent can also flee a sector mid-combat.
 
 ## Operating notes
 

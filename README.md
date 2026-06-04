@@ -58,6 +58,9 @@ An agent can play FTL through a turn-based loop, all **verified live** on FTL 1.
 | **Reproducible seeds** (`start_game('new', seed=…)` → identical map) | ✅ M4 |
 | **MCP adapter** (LLM agent plays via tools) + scripted baseline agent | ✅ M5 |
 | **Trajectory recording + scoring** (decisions, jumps, kills, hull, survival) | ✅ M6 |
+| **Sector progression** (`leave_sector` at the exit beacon → next sector) | ✅ |
+| **Richer observation** (exit beacon + position, rebel fleet, sector-choice flag, incoming fire) | ✅ |
+| **Smarter baseline** (exit navigation, flee on O2/weapon/crew danger, event-choice escalation, stalemate-flee) | ✅ |
 
 ### Quick start (game already built; see `scripts/`)
 ```bash
