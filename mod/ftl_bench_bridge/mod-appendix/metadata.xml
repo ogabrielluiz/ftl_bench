@@ -1,0 +1,7 @@
+<metadata>
+  <title>ftl_bench Observation Bridge</title>
+  <threadUrl></threadUrl>
+  <author>ftl_bench</author>
+  <version>0.1.0 (M1)</version>
+  <description>Read-only observation stream: writes a throttled JSON snapshot of live FTL game state to ftl_agent_observation.json each tick.</description>
+</metadata>
