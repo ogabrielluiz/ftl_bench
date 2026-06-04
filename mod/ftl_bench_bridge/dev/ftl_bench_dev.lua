@@ -170,9 +170,14 @@ local function add_m3_obs(obs)
     end
   end)
 
-  -- connected beacons reachable from the current location (jump targets)
+  -- connected beacons reachable from the current location (jump targets).
+  -- GUARD: skip the whole starMap read during a warp -- iterating currentLoc.
+  -- connectedLocations while WorldManager rebuilds locations on arrival reads freed
+  -- pointers and freezes WorldManager::OnLoop (the residual eval freeze, 2026-06-04).
+  -- The agent never acts mid-warp, so missing this for the warp frames is harmless.
   local sm = world.starMap
-  if sm and sm.currentLoc and obs.map then
+  local _plj = Hyperspace.ships and Hyperspace.ships.player
+  if sm and sm.currentLoc and obs.map and not (_plj and _plj.bJumping) then
     local beacons = {}
     local connected = sm.currentLoc.connectedLocations
     for i = 0, connected:size() - 1 do
@@ -430,6 +435,7 @@ _G.ftl_bench_tick = function()
         pcall(Hyperspace.benchmark_advance_menu)
       end
     end
+    S.obs_fresh = false
     write_observation()
     return
   end
@@ -456,6 +462,7 @@ _G.ftl_bench_tick = function()
         pcall(Hyperspace.benchmark_confirm_menu)      -- confirm the "lose progress" warning
       end
     end
+    S.obs_fresh = false
     write_observation()
     return
   end
@@ -464,13 +471,15 @@ _G.ftl_bench_tick = function()
     S.frame_budget = S.frame_budget - 1
     if S.frame_budget == 0 then
       set_frozen(true)
-      write_observation()
+      write_observation()        -- advance complete: state changed, rebuild
+      S.obs_fresh = true
     end
     return
   end
 
   set_frozen(true)
 
+  local applied = false
   local ok, action_str = pcall(Hyperspace.read_json_action)
   if ok and action_str and action_str ~= "" then
     local dok, action = pcall(json.decode, action_str)
@@ -489,16 +498,25 @@ _G.ftl_bench_tick = function()
       if not is_reset then
         local aok, aerr = pcall(dispatch_actions, action.actions)
         if not aok then log_err("dispatch error: " .. tostring(aerr)) end
+        applied = true
         S.frame_budget = action.advance_frames or 30
         if S.frame_budget > 0 then
           set_frozen(false)
+          S.obs_fresh = false      -- about to advance; rebuild fresh on re-freeze
           return
         end
       end
     end
   end
 
-  write_observation()
+  -- Rebuild the observation ONLY on a state change (an action was applied) or the first
+  -- frozen tick of this idle period -- not every idle frame. While the agent "thinks" the
+  -- frozen state doesn't change; rebuilding (iterating volatile game collections) ~60x/sec
+  -- was pure waste AND set up the next advance to spin (the residual freeze).
+  if applied or not S.obs_fresh then
+    write_observation()
+    S.obs_fresh = true
+  end
 end
 
 print("[ftl_bench] dev script loaded (M2 turn-based loop)")
