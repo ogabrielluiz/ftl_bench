@@ -17,13 +17,15 @@
 - **Tasks 4–6 (mod)** — `json.lua`, `observation.lua`, `bridge.lua`, `hyperspace.xml`, `metadata.xml` committed (`3b61220`). All pass `luac -p`; XML well-formed; `json.lua` **encode+decode round-trips** under real Lua.
 - **Task 7 (harness)** — `ObservationClient` committed (`c2a2f5e`); **`7 passed`**. Cross-language contract verified: real `json.lua` encode → Python `ObservationClient` parse/validate.
 
-**Blocked (need the human + a game install):**
-- **Task 1 (build)** — arm64 setup phase succeeded (swig 4.4.1 installed). Setup then **fails at the x86-Homebrew-under-Rosetta step, which requires interactive `sudo`** an automated agent can't supply. Unblock by running once, interactively:
-  ```bash
-  arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  ```
-  then re-run `bash buildscripts/ci/setup-macos.sh` (idempotent) → vcpkg bootstrap (~20–30 min) → `bash buildscripts/build-one-variant.sh build-darwin-1.6.13-release amd64-darwin-ftl ON Release "$PWD/vcpkg"`.
-- **Task 8 (in-game verification)** — **no `FTL.app` is installed on this Mac.** Needs FTL + the built dylib to run. This also resolves the two runtime open-items: the real `getUserFolder()` path and the `std::pair` access form (`.first/.second` vs `[0]/[1]`) in `observation.lua`.
+- **Task 1 (build) — DONE.** After the human ran the one-time `arch -x86_64 … Homebrew` install, `setup-macos.sh` completed (x86 SDL2 + vcpkg) and the Release build produced **`build-darwin-1.6.13-release/Hyperspace.1.6.13.amd64.dylib`** (12.1 MB, `BUILD_EXIT=0`). **Our binding is verified in the generated wrapper** (`hyperspaceLUA_wrap.cxx`): `{ "write_json_observation", _wrap_write_json_observation }` is registered, the wrapper marshals `char const *` → `hs_benchmark_write_observation` → bool, and the symbol is exported in the dylib (`T __Z30hs_benchmark_write_observationPKc`). So Tasks 2–3 are proven on-platform.
+
+**Staged for Task 8 (install assets in `dist/`, gitignored; helpers in `scripts/`):**
+- `dist/Hyperspace.1.6.13.amd64.dylib`, `dist/Hyperspace.command`, `dist/hyperspace.ftl` (Hyperspace data mod, 391 files), `dist/ftl_bench_bridge.ftl` (our mod).
+- `scripts/install_macos.sh` — copies dylib+command into `FTL.app`, patches `Info.plist` (`CFBundleExecutable`→`Hyperspace.command`), codesigns. (FTLMan mod-apply is the one manual GUI step it prints.)
+- `scripts/verify_observation.sh` — waits for `ftl_agent_observation.json`, confirms `tick` advances, runs `ObservationClient` on the live file.
+
+**Blocked only on (in progress):**
+- **Task 8 (in-game verification)** — **FTL is being installed on this Mac.** Once installed: run `scripts/install_macos.sh` → apply the two mods in FTLMan (hyperspace.ftl then ftl_bench_bridge.ftl) → start a game → `scripts/verify_observation.sh`. This resolves the two runtime open-items: the real `getUserFolder()` path and the `std::pair` access form (`.first/.second` vs `[0]/[1]`) in `observation.lua`.
 
 ---
 
