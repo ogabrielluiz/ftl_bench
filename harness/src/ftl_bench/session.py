@@ -118,6 +118,8 @@ class AgentSession:
     # ---- autonomy: start a game from the menu without a human click ----
     def start_game(self, mode: str = "continue", timeout: float = 12.0) -> Observation:
         """Continue/new-game from the menu; waits until the run is loaded."""
+        if mode == "new":
+            timeout = max(timeout, 30.0)  # New Game -> CONFIRM -> hangar Start is multi-step
         try:
             cur = self.client.read_latest()
             self.action_seq = max(self.action_seq, cur.last_action_seq or 0)

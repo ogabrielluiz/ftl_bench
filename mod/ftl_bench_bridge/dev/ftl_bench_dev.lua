@@ -225,18 +225,29 @@ _G.ftl_bench_tick = function()
         for _, act in ipairs(action.actions or {}) do
           if act.type == "start_game" then
             if act.mode == "new" then
-              pcall(Hyperspace.benchmark_new_game)
+              S.starting_new = true       -- multi-step flow, driven below
+              S.menu_throttle = 0
             else
               pcall(Hyperspace.benchmark_continue_game)
+              S.starting_new = false
             end
           end
         end
         S.last_applied_seq = action.seq
       end
     end
+    -- New game is a 3-click flow (New Game -> CONFIRM -> hangar Start); step it
+    -- every ~25 ticks so each screen has time to transition before the next click.
+    if S.starting_new then
+      S.menu_throttle = (S.menu_throttle or 0) + 1
+      if S.menu_throttle % 25 == 0 then
+        pcall(Hyperspace.benchmark_advance_menu)
+      end
+    end
     write_observation()
     return
   end
+  S.starting_new = false   -- in a run now; stop driving the menu
 
   if S.frame_budget > 0 then
     S.frame_budget = S.frame_budget - 1
