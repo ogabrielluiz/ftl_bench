@@ -195,7 +195,7 @@ def play(sess, jumps, log):
     # always a safe "leave/continue"), then the middle ones -- this avoids walking into a
     # "Fight the ship" option that sits before the leave choice.
     ev = {"text": None, "order": [], "step": 0}
-    iters, timeouts, combat_streak, leave_tries = 0, 0, 0, 0
+    iters, timeouts, combat_streak, leave_tries, jump_wait = 0, 0, 0, 0, 0
     while stats["jumps"] < jumps and iters < jumps * 8:
         iters += 1
         try:
@@ -254,6 +254,14 @@ def play(sess, jumps, log):
                     log(f"at exit beacon, waiting to leave [{leave_tries}] (combat/fuel?)")
                     if leave_tries >= 8:
                         log("can't leave the exit beacon; stopping"); break
+            elif o.raw and o.raw.get("jump_charged") is False:
+                # FTL drive still recharging (e.g. just after a flee) -> wait for free
+                # rather than spend a jump attempt on a no-op (the bridge ignores jumps
+                # until the drive is ready, to avoid the CommandGui::OnLoop freeze).
+                jump_wait += 1
+                if jump_wait > 15:
+                    log("FTL drive won't charge here; stopping"); break
+                o = sess.step([], advance_frames=240)
             else:
                 tgt = _pick_beacon(o)
                 if tgt is None:
@@ -263,7 +271,7 @@ def play(sess, jumps, log):
                 o = sess.jump(tgt, advance_frames=260)
                 stats["jumps"] += 1
                 ev["text"] = None           # new beacon -> fresh event, start at choice 0
-                combat_streak = leave_tries = 0
+                combat_streak = leave_tries = jump_wait = 0
                 power_core(sess, o)
             timeouts = 0
         except TimeoutError:

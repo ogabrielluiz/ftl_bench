@@ -70,14 +70,23 @@ local function apply_move_crew(mgr, act)
 end
 
 -- M3 actions (thin wrappers over the new C++ bindings)
+-- True only when it is SAFE to initiate a jump: there's a player ship, it's not
+-- already warping, and the FTL drive has finished recharging.
+-- ROOT CAUSE of the seed-11 beacon-3 freeze (found via `sample` of the hung process:
+-- the game-loop thread was spinning in FTL's CommandGui::OnLoop): forcing
+-- starMap.readyToTravel while the FTL drive was still charging -- e.g. jumping again
+-- immediately after a flee -- puts the engine in an inconsistent warp state and it
+-- spins forever. jump_timer.first < jump_timer.second means "still charging".
+local function jump_ready(p)
+  if not p or p.bJumping then return false end
+  local ready = true
+  pcall(function() ready = p.jump_timer.first >= p.jump_timer.second end)
+  return ready
+end
+
 local function apply_jump(act)
-  -- Defensive: don't re-trigger a jump while one is already in progress. Re-issuing
-  -- jump_to_beacon mid-warp (e.g. the harness retrying after a slow-ack timeout) is a
-  -- real hazard for the StarMap travel state. NOTE: this does NOT resolve the seed-11
-  -- beacon-3 freeze (which still hangs with this guard on -> the hang is tied to that
-  -- specific destination, not the re-trigger). bJumping spans FTL-engage..arrival.
   local p = Hyperspace.ships and Hyperspace.ships.player
-  if p and p.bJumping then return end
+  if not jump_ready(p) then return end       -- wait out the FTL-drive recharge
   Hyperspace.benchmark_jump_to_beacon(act.beacon_index or 0)
 end
 
@@ -105,8 +114,9 @@ local function dispatch_actions(actions)
     elseif act.type == "fire_weapon" then
       apply_fire_weapon(act)
     elseif act.type == "leave_sector" then
-      -- same mid-warp guard as apply_jump: don't re-trigger during the inter-sector warp
-      if not (mgr and mgr.bJumping) then
+      -- same FTL-drive guard as apply_jump: only leave when the drive is charged and
+      -- we're not already warping (forcing it mid-warp/charging spins CommandGui::OnLoop)
+      if jump_ready(mgr) then
         pcall(Hyperspace.benchmark_leave_sector)  -- exit beacon -> next sector
       end
     elseif act.type == "open_menu" then
@@ -125,6 +135,10 @@ end
 local function add_m3_obs(obs)
   local world = Hyperspace.App and Hyperspace.App.world
   if not world then return end
+
+  -- jump_charged: is it safe to initiate a jump now? (drive recharged, not warping)
+  -- The agent waits on this instead of spamming no-op jumps while the FTL drive charges.
+  pcall(function() obs.jump_charged = jump_ready(Hyperspace.ships and Hyperspace.ships.player) end)
 
   -- connected beacons reachable from the current location (jump targets)
   local sm = world.starMap

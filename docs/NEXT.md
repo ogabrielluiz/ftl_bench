@@ -50,18 +50,22 @@ into `FTL.app/Contents/MacOS/`, `codesign -f -s - --deep`, relaunch (Allow mic o
 
 ## Known issues
 
-- **Reproducible game freeze (seed 11, beacon 3).** Hyperspace's own freeze watchdog
-  fires: the game loop hangs when the agent jumps to a specific destination (connected
-  beacon index 3 on seed 11, after a flee). Confirmed real with a 15s obs-staleness
-  watchdog (`$CLAUDE_JOB_DIR/tmp/freeze_watchdog.sh`); NOT a watchdog false-positive
-  (a 4s threshold *does* false-fire on normal multi-second warps — keep any watchdog
-  >12s). The mid-warp re-trigger guard (apply_jump/leave_sector skip while `bJumping`)
-  does NOT fix it, so the hang is tied to that destination's event/encounter, not the
-  harness retrying. Next step: attach `lldb` to the frozen FTL pid and dump the hung
-  main-thread stack to see whether it's in the game engine, a Hyperspace hook, or the
-  bridge's per-tick Lua. The autonomous restart recovers (force-quit + clean relaunch),
-  so a run can resume — but the episode is lost. Run the harness with an external
-  freeze-watchdog until root-caused, so a hang can't leave a blocking Hyperspace dialog.
+- ~~**Reproducible game freeze (seed 11, beacon 3).**~~ ✅ FIXED. Root-caused by
+  `sample`-ing the hung process: the game-loop thread was spinning in FTL's
+  `CommandGui::OnLoop()` because the bridge forced `starMap.readyToTravel` while the FTL
+  drive was still recharging (the agent jumping right after a flee) — an inconsistent
+  warp state the engine loops on forever. Fix (Lua, no rebuild): the bridge gates every
+  jump/sector-leave on `jump_ready` (player ship present, not `bJumping`, and
+  `jump_timer.first >= jump_timer.second`); the obs exposes `jump_charged` so the agent
+  waits out the recharge for free instead of spending no-op jump attempts. Verified: the
+  deterministic seed-11 case clears beacon 3 with no freeze; a healthy seed-7 run jumps
+  normally (fuel decrements, no stalls). Diagnostic tooling kept in
+  `$CLAUDE_JOB_DIR/tmp/freeze_sampler.sh` (sample-then-kill on a >12s obs-staleness hang;
+  a watchdog threshold <12s false-fires on normal multi-second warps).
+- **Baseline flee-loop on a crippled ship.** A badly damaged ship (engines/O2 down) can
+  flee repeatedly and its FTL drive recharges too slowly to jump (the agent then stops
+  with "drive won't charge here"). Not a freeze — a policy gap: the baseline should keep
+  engines powered (faster FTL charge) and repair/leave instead of flee-looping.
 
 ## Operating notes
 
