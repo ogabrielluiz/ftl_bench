@@ -78,7 +78,12 @@ end
 -- immediately after a flee -- puts the engine in an inconsistent warp state and it
 -- spins forever. jump_timer.first < jump_timer.second means "still charging".
 local function jump_ready(p)
-  if not p or p.bJumping then return false end
+  if not p or p.bJumping then return false end       -- never start a jump mid-warp
+  -- The FTL-drive recharge (jump_timer) only gates jumps IN combat; out of combat the
+  -- timer sits idle (e.g. 0/85) yet you can jump freely. Gating on it out of combat
+  -- deadlocks (the jump is what charges it).
+  local enemy = Hyperspace.ships and Hyperspace.ships.enemy
+  if not enemy then return true end
   local ready = true
   pcall(function() ready = p.jump_timer.first >= p.jump_timer.second end)
   return ready
@@ -169,6 +174,12 @@ local function add_m3_obs(obs)
     pcall(function() obs.map.current_pos = { x = sm.currentLoc.loc.x, y = sm.currentLoc.loc.y } end)
     -- at_exit: standing on the sector exit beacon -> leave_sector can advance the sector
     pcall(function() obs.map.at_exit = sm.currentLoc.beacon end)
+    -- exit_pos: scan sector locations for the exit beacon, but ONLY in a stable state.
+    -- Iterating sm.locations during a jump/warp/sector-transition reads Location pointers
+    -- that the engine is tearing down -> hangs the game loop (the freeze, found 2026-06-04).
+    -- Guard on not-jumping + not choosing-a-new-sector; the exit is static within a sector.
+    local pl_j = Hyperspace.ships and Hyperspace.ships.player
+    if (not (pl_j and pl_j.bJumping)) and (not sm.bChoosingNewSector) then
     pcall(function()
       local locs = sm.locations
       for j = 0, locs:size() - 1 do
@@ -179,6 +190,7 @@ local function add_m3_obs(obs)
         end
       end
     end)
+    end  -- close the not-jumping / not-choosing-sector guard around the exit_pos scan
     pcall(function() obs.map.choosing_new_sector = sm.bChoosingNewSector end)
     pcall(function() obs.map.out_of_fuel = sm.outOfFuel end)
   end
@@ -240,18 +252,20 @@ local function add_m3_obs(obs)
   end
 
   -- incoming projectiles aimed at the player (combat danger awareness)
-  pcall(function()
-    local space = world.space
-    if not space then return end
-    local projs = space.projectiles
-    if not projs then return end
-    local incoming = 0
-    for i = 0, projs:size() - 1 do
-      local p = projs[i]
-      if p and p.targetId == 0 then incoming = incoming + 1 end
-    end
-    obs.incoming_projectiles = incoming
-  end)
+  -- ISOLATION 2026-06-04: DISABLED — iterating space.projectiles every tick reads
+  -- volatile pointers that go bad during a jump/teardown (freeze suspect).
+  -- pcall(function()
+  --   local space = world.space
+  --   if not space then return end
+  --   local projs = space.projectiles
+  --   if not projs then return end
+  --   local incoming = 0
+  --   for i = 0, projs:size() - 1 do
+  --     local p = projs[i]
+  --     if p and p.targetId == 0 then incoming = incoming + 1 end
+  --   end
+  --   obs.incoming_projectiles = incoming
+  -- end)
 
   -- in-game menu inspection (for return-to-menu work)
   local ok_mc, mc = pcall(Hyperspace.benchmark_menu_button_count)
