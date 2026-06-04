@@ -10,6 +10,23 @@
 
 ---
 
+## Execution status — 2026-06-03
+
+**Done & committed (code-verified without the game):**
+- **Tasks 2–3 (C++ binding + SWIG)** — `Benchmark_Extend.{h,cpp}` + `hyperspace.i` edits committed to the Hyperspace fork (`5c53212f`). **As-built change vs. this draft:** implemented as **free functions** (`bool hs_benchmark_write_observation(const char* json_str)`), *not* static struct methods — the codebase exposes free functions (`srandom32→setRandomSeed`), and only that style yields the top-level `Hyperspace.write_json_observation(...)` the bridge calls. `const char*`/`bool` signature avoids `std_string.i` (not `%include`d). Anchors confirmed: include after `hyperspace.i:32`; binding after the `srandom32` block at `hyperspace.i:455`. `read`/`set` are implemented in C++ but **not** SWIG-bound yet (M2). CMake auto-globs root `*.cpp` — no CMake edit needed.
+- **Tasks 4–6 (mod)** — `json.lua`, `observation.lua`, `bridge.lua`, `hyperspace.xml`, `metadata.xml` committed (`3b61220`). All pass `luac -p`; XML well-formed; `json.lua` **encode+decode round-trips** under real Lua.
+- **Task 7 (harness)** — `ObservationClient` committed (`c2a2f5e`); **`7 passed`**. Cross-language contract verified: real `json.lua` encode → Python `ObservationClient` parse/validate.
+
+**Blocked (need the human + a game install):**
+- **Task 1 (build)** — arm64 setup phase succeeded (swig 4.4.1 installed). Setup then **fails at the x86-Homebrew-under-Rosetta step, which requires interactive `sudo`** an automated agent can't supply. Unblock by running once, interactively:
+  ```bash
+  arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  ```
+  then re-run `bash buildscripts/ci/setup-macos.sh` (idempotent) → vcpkg bootstrap (~20–30 min) → `bash buildscripts/build-one-variant.sh build-darwin-1.6.13-release amd64-darwin-ftl ON Release "$PWD/vcpkg"`.
+- **Task 8 (in-game verification)** — **no `FTL.app` is installed on this Mac.** Needs FTL + the built dylib to run. This also resolves the two runtime open-items: the real `getUserFolder()` path and the `std::pair` access form (`.first/.second` vs `[0]/[1]`) in `observation.lua`.
+
+---
+
 ## File Structure
 
 | Path | Responsibility |
