@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-SCHEMA_VERSION = 1
+SUPPORTED_SCHEMA_VERSIONS = (1, 2)
 REQUIRED_FIELDS = ("schema_version", "tick", "seed", "game_started")
 
 
@@ -25,6 +25,7 @@ class Observation:
     game_started: bool
     paused: bool = False
     choice_box_open: bool = False
+    last_action_seq: Optional[int] = None  # M2: harness ack key (None until first action)
     player_ship: Optional[dict[str, Any]] = None
     enemy_ship: Optional[dict[str, Any]] = None
     map: Optional[dict[str, Any]] = None
@@ -38,9 +39,9 @@ class Observation:
                     f"missing required field: {field!r}"
                 )
         version = data["schema_version"]
-        if version != SCHEMA_VERSION:
+        if version not in SUPPORTED_SCHEMA_VERSIONS:
             raise ObservationValidationError(
-                f"schema_version mismatch: expected {SCHEMA_VERSION}, got {version}"
+                f"unsupported schema_version {version}; supported: {SUPPORTED_SCHEMA_VERSIONS}"
             )
         return cls(
             schema_version=version,
@@ -49,6 +50,7 @@ class Observation:
             game_started=data["game_started"],
             paused=data.get("paused", False),
             choice_box_open=data.get("choice_box_open", False),
+            last_action_seq=data.get("last_action_seq"),
             player_ship=data.get("player_ship"),
             enemy_ship=data.get("enemy_ship"),
             map=data.get("map"),
