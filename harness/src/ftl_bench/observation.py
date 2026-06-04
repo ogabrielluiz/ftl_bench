@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-SUPPORTED_SCHEMA_VERSIONS = (1, 2)
+SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3)
 REQUIRED_FIELDS = ("schema_version", "tick", "seed", "game_started")
 
 
@@ -29,6 +29,7 @@ class Observation:
     player_ship: Optional[dict[str, Any]] = None
     enemy_ship: Optional[dict[str, Any]] = None
     map: Optional[dict[str, Any]] = None
+    event: Optional[dict[str, Any]] = None  # M3: current event text + choices (when choice box open)
     raw: Optional[dict[str, Any]] = None
 
     @classmethod
@@ -54,6 +55,7 @@ class Observation:
             player_ship=data.get("player_ship"),
             enemy_ship=data.get("enemy_ship"),
             map=data.get("map"),
+            event=data.get("event"),
             raw=data,
         )
 

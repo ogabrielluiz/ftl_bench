@@ -5,8 +5,12 @@ from ftl_bench.observation import (
 )
 from ftl_bench.session import (
     AgentSession,
+    choose_event,
+    fire_weapon,
+    jump,
     move_crew,
     set_system_power,
+    start_game,
 )
 
 __all__ = [
@@ -16,4 +20,8 @@ __all__ = [
     "AgentSession",
     "set_system_power",
     "move_crew",
+    "jump",
+    "choose_event",
+    "fire_weapon",
+    "start_game",
 ]

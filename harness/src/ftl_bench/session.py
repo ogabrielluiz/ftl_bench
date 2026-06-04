@@ -37,6 +37,30 @@ def move_crew(crew_id: int, room_id: int, slot_id: int = -1) -> dict[str, Any]:
     }
 
 
+# --- M3 actions ---
+
+def jump(beacon_index: int) -> dict[str, Any]:
+    return {"type": "jump", "beacon_index": int(beacon_index)}
+
+
+def choose_event(choice_index: int) -> dict[str, Any]:
+    return {"type": "choose_event", "choice_index": int(choice_index)}
+
+
+def start_game(mode: str = "continue") -> dict[str, Any]:
+    """mode: 'continue' (resume continue.sav) or 'new' (fresh run)."""
+    return {"type": "start_game", "mode": str(mode)}
+
+
+def fire_weapon(weapon_slot: int, target_room_id: int, target_ship_id: int = 1) -> dict[str, Any]:
+    return {
+        "type": "fire_weapon",
+        "weapon_slot": int(weapon_slot),
+        "target_room_id": int(target_room_id),
+        "target_ship_id": int(target_ship_id),  # 1 = enemy (default)
+    }
+
+
 class AgentSession:
     """Closed-loop session: reset / observe / step over the paused bridge."""
 
@@ -59,11 +83,17 @@ class AgentSession:
         return self.client.read_latest()
 
     def reset(self) -> Observation:
-        """Clear any stale action file; return the first paused observation."""
+        """Clear any stale action file; return the first paused observation.
+
+        Syncs `action_seq` to the bridge's persisted `last_action_seq` so a fresh
+        session never sends a seq the bridge's dedup would ignore (the game-side
+        seq survives reloads/restarts; the harness counter does not).
+        """
         if self.action_path.exists():
             self.action_path.unlink()
-        self.action_seq = 0
-        return self._wait_for(lambda obs: obs.paused)
+        obs = self._wait_for(lambda o: o.paused)
+        self.action_seq = obs.last_action_seq or 0
+        return obs
 
     def step(
         self, actions: Iterable[dict[str, Any]], advance_frames: int = 30
@@ -76,8 +106,42 @@ class AgentSession:
             "actions": list(actions),
         }
         self._write_action_atomic(payload)
+        # The step can't ack until the world has advanced `advance_frames` and
+        # re-paused, so the timeout must exceed the frame budget's wall-clock
+        # (~60 fps) plus warp/animation slack and poll margin.
+        timeout = max(self.step_timeout, advance_frames / 45.0 + 3.0)
         return self._wait_for(
-            lambda obs: obs.last_action_seq == self.action_seq and obs.paused
+            lambda obs: obs.last_action_seq == self.action_seq and obs.paused,
+            timeout=timeout,
+        )
+
+    # ---- autonomy: start a game from the menu without a human click ----
+    def start_game(self, mode: str = "continue", timeout: float = 12.0) -> Observation:
+        """Continue/new-game from the menu; waits until the run is loaded."""
+        try:
+            cur = self.client.read_latest()
+            self.action_seq = max(self.action_seq, cur.last_action_seq or 0)
+        except (FileNotFoundError, ObservationValidationError):
+            pass
+        self.action_seq += 1
+        self._write_action_atomic(
+            {"seq": self.action_seq, "advance_frames": 0, "actions": [start_game(mode)]}
+        )
+        return self._wait_for(lambda o: o.game_started, timeout=timeout)
+
+    # ---- M3 convenience helpers (sensible per-action frame budgets) ----
+    def jump(self, beacon_index: int, advance_frames: int = 240) -> Observation:
+        """Jump and let the warp/arrival sequence settle before re-pausing."""
+        return self.step([jump(beacon_index)], advance_frames=advance_frames)
+
+    def choose_event(self, choice_index: int, advance_frames: int = 60) -> Observation:
+        return self.step([choose_event(choice_index)], advance_frames=advance_frames)
+
+    def fire_weapon(self, weapon_slot: int, target_room_id: int,
+                    target_ship_id: int = 1, advance_frames: int = 60) -> Observation:
+        return self.step(
+            [fire_weapon(weapon_slot, target_room_id, target_ship_id)],
+            advance_frames=advance_frames,
         )
 
     # ---- internals ----------------------------------------------------
@@ -86,8 +150,10 @@ class AgentSession:
         tmp.write_text(json.dumps(payload), encoding="utf-8")
         tmp.replace(self.action_path)  # atomic rename on the same filesystem
 
-    def _wait_for(self, predicate: Callable[[Observation], bool]) -> Observation:
-        deadline = time.monotonic() + self.step_timeout
+    def _wait_for(
+        self, predicate: Callable[[Observation], bool], timeout: float | None = None
+    ) -> Observation:
+        deadline = time.monotonic() + (self.step_timeout if timeout is None else timeout)
         while time.monotonic() < deadline:
             try:
                 obs = self.client.read_latest()
@@ -96,6 +162,5 @@ class AgentSession:
             except (FileNotFoundError, ObservationValidationError):
                 pass
             time.sleep(self.poll_interval)
-        raise TimeoutError(
-            f"action seq {self.action_seq} not acked within {self.step_timeout}s"
-        )
+        eff = self.step_timeout if timeout is None else timeout
+        raise TimeoutError(f"action seq {self.action_seq} not acked within {eff:.1f}s")
