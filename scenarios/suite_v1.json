@@ -1,0 +1,59 @@
+{
+  "_about": "ftl_bench v1 scenario suite. Each entry is a reproducible benchmark INSTANCE: a seed + an explicit goal (weighted sub-objectives) scored to partial credit by scoring.score_instance. The agent decides everything in-game; only goal achievement is scored. Types T1-T5 run on today's action set (no new bindings). 'tier' splits public (tune against) from held-out semi_private (the leaderboard number) to resist memorization.",
+  "ruleset_version": "v1",
+  "scenarios": [
+    { "id": "T1-survive8-s1", "type": "survive_n_jumps", "seed": 1, "tier": "public",
+      "budget_jumps": 12, "min_distinct_beacons": 4,
+      "goal": [{"key": "jumps", "target": 8, "kind": "threshold", "weight": 1.0}],
+      "notes": "Warm-up: make 8 jumps alive without jumping in place." },
+    { "id": "T1-survive8-s2", "type": "survive_n_jumps", "seed": 2, "tier": "public",
+      "budget_jumps": 12, "min_distinct_beacons": 4,
+      "goal": [{"key": "jumps", "target": 8, "kind": "threshold", "weight": 1.0}] },
+
+    { "id": "T2-sector1-s1", "type": "reach_sector", "seed": 1, "tier": "public",
+      "budget_jumps": 12, "min_distinct_beacons": 4,
+      "goal": [{"key": "sector", "target": 1, "kind": "threshold", "weight": 1.0}],
+      "notes": "Cross into sector 1." },
+    { "id": "T2-sector1-s2", "type": "reach_sector", "seed": 2, "tier": "public",
+      "budget_jumps": 12, "min_distinct_beacons": 4,
+      "goal": [{"key": "sector", "target": 1, "kind": "threshold", "weight": 1.0}] },
+    { "id": "T2-sector2-s1", "type": "reach_sector", "seed": 1, "tier": "public",
+      "budget_jumps": 18, "min_distinct_beacons": 6,
+      "goal": [{"key": "sector", "target": 2, "kind": "threshold", "weight": 1.0}],
+      "notes": "Harder: reach sector 2." },
+
+    { "id": "T3-healthy1-s1", "type": "reach_sector_healthy", "seed": 1, "tier": "public",
+      "budget_jumps": 14, "min_distinct_beacons": 5,
+      "goal": [
+        {"key": "sector", "target": 1, "kind": "threshold", "weight": 2.0},
+        {"key": "final_hull", "target": 20, "kind": "threshold", "weight": 1.0},
+        {"key": "crew_alive", "target": 3, "kind": "threshold", "weight": 1.0}
+      ],
+      "notes": "Reach sector 1 with hull and crew intact (multi-attribute goal)." },
+
+    { "id": "T5-progress-s1", "type": "full_run", "seed": 1, "tier": "public",
+      "budget_jumps": 24, "min_distinct_beacons": 6,
+      "goal": [{"key": "progress", "target": 11, "kind": "milestone", "weight": 1.0}],
+      "notes": "Unsaturated ceiling: milestone progress toward beating the flagship (11 = 8 sectors + 3 flagship phases). Sector progress scores today." },
+
+    { "id": "T1-survive8-h7", "type": "survive_n_jumps", "seed": 7, "tier": "semi_private",
+      "budget_jumps": 12, "min_distinct_beacons": 4,
+      "goal": [{"key": "jumps", "target": 8, "kind": "threshold", "weight": 1.0}] },
+    { "id": "T2-sector1-h7", "type": "reach_sector", "seed": 7, "tier": "semi_private",
+      "budget_jumps": 12, "min_distinct_beacons": 4,
+      "goal": [{"key": "sector", "target": 1, "kind": "threshold", "weight": 1.0}] },
+    { "id": "T2-sector2-h11", "type": "reach_sector", "seed": 11, "tier": "semi_private",
+      "budget_jumps": 18, "min_distinct_beacons": 6,
+      "goal": [{"key": "sector", "target": 2, "kind": "threshold", "weight": 1.0}] },
+    { "id": "T3-healthy1-h7", "type": "reach_sector_healthy", "seed": 7, "tier": "semi_private",
+      "budget_jumps": 14, "min_distinct_beacons": 5,
+      "goal": [
+        {"key": "sector", "target": 1, "kind": "threshold", "weight": 2.0},
+        {"key": "final_hull", "target": 20, "kind": "threshold", "weight": 1.0},
+        {"key": "crew_alive", "target": 3, "kind": "threshold", "weight": 1.0}
+      ] },
+    { "id": "T5-progress-h11", "type": "full_run", "seed": 11, "tier": "semi_private",
+      "budget_jumps": 24, "min_distinct_beacons": 6,
+      "goal": [{"key": "progress", "target": 11, "kind": "milestone", "weight": 1.0}] }
+  ]
+}

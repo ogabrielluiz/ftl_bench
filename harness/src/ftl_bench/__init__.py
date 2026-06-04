@@ -3,7 +3,13 @@ from ftl_bench.observation import (
     ObservationClient,
     ObservationValidationError,
 )
-from ftl_bench.scoring import score_observation, score_trajectory
+from ftl_bench.scenario import Scenario, SubObjective, load_suite
+from ftl_bench.scoring import (
+    achieved_metrics,
+    score_instance,
+    score_observation,
+    score_trajectory,
+)
 from ftl_bench.session import (
     AgentSession,
     choose_event,
@@ -30,4 +36,9 @@ __all__ = [
     "load_trajectory",
     "score_observation",
     "score_trajectory",
+    "Scenario",
+    "SubObjective",
+    "load_suite",
+    "score_instance",
+    "achieved_metrics",
 ]
