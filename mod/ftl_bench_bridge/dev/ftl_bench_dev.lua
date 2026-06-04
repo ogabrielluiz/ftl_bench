@@ -21,6 +21,19 @@ local function log_err(msg)
   print("[ftl_bench] " .. msg)
 end
 
+-- M4 reproducible seeds: override the run seed at NewGame when one is requested.
+-- Registered ONCE (the dev script is re-run on hot-reload; the guard prevents
+-- accumulating duplicate callbacks). The handler reads the global each call.
+if not _G.ftl_bench_seed_hook then
+  _G.ftl_bench_seed_hook = true
+  script.on_internal_event(Defines.InternalEvents.GET_RUN_SEED, function(customSeed, seed)
+    if _G.ftl_bench_desired_seed ~= nil then
+      return true, _G.ftl_bench_desired_seed
+    end
+    return customSeed, seed
+  end)
+end
+
 ------------------------------------------------------------------
 -- Action dispatchers (verified bindings only)
 ------------------------------------------------------------------
@@ -223,7 +236,10 @@ _G.ftl_bench_tick = function()
       if dok and type(action) == "table" and action.seq ~= nil
          and (S.last_applied_seq == nil or action.seq > S.last_applied_seq) then
         for _, act in ipairs(action.actions or {}) do
-          if act.type == "start_game" then
+          if act.type == "set_seed" then
+            _G.ftl_bench_desired_seed = act.seed   -- nil clears it (random)
+          elseif act.type == "start_game" then
+            if act.seed ~= nil then _G.ftl_bench_desired_seed = act.seed end
             if act.mode == "new" then
               S.starting_new = true       -- multi-step flow, driven below
               S.menu_throttle = 0

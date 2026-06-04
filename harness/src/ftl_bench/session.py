@@ -47,9 +47,13 @@ def choose_event(choice_index: int) -> dict[str, Any]:
     return {"type": "choose_event", "choice_index": int(choice_index)}
 
 
-def start_game(mode: str = "continue") -> dict[str, Any]:
-    """mode: 'continue' (resume continue.sav) or 'new' (fresh run)."""
-    return {"type": "start_game", "mode": str(mode)}
+def start_game(mode: str = "continue", seed: int | None = None) -> dict[str, Any]:
+    """mode: 'continue' (resume) or 'new' (fresh run). seed: pin the run seed
+    (reproducible map/events) for mode='new'; None = random."""
+    act: dict[str, Any] = {"type": "start_game", "mode": str(mode)}
+    if seed is not None:
+        act["seed"] = int(seed)
+    return act
 
 
 def fire_weapon(weapon_slot: int, target_room_id: int, target_ship_id: int = 1) -> dict[str, Any]:
@@ -127,14 +131,18 @@ class AgentSession:
         )
 
     # ---- autonomy: start a game from the menu without a human click ----
-    def start_game(self, mode: str = "continue", timeout: float = 12.0) -> Observation:
-        """Continue/new-game from the menu; waits until the run is loaded."""
+    def start_game(
+        self, mode: str = "continue", seed: int | None = None, timeout: float = 12.0
+    ) -> Observation:
+        """Continue/new-game from the menu; waits until the run is loaded.
+        `seed` (mode='new') pins the run for reproducibility."""
         if mode == "new":
             timeout = max(timeout, 30.0)  # New Game -> CONFIRM -> hangar Start is multi-step
         self._sync_seq()
         self.action_seq += 1
         self._write_action_atomic(
-            {"seq": self.action_seq, "advance_frames": 0, "actions": [start_game(mode)]}
+            {"seq": self.action_seq, "advance_frames": 0,
+             "actions": [start_game(mode, seed)]}
         )
         return self._wait_for(lambda o: o.game_started, timeout=timeout)
 
