@@ -16,6 +16,7 @@ compact, agent-readable summary of the resulting state):
 | `send_crew(crew_id, room_id)` | Move a crew member to one of your rooms |
 | `shoot(weapon_slot, enemy_room_id)` | Aim+fire a weapon at an enemy room (auto-fires as it charges) |
 | `advance(frames)` | Let game time pass (charge weapons, finish a jump/combat) then re-pause |
+| `run_strategy(code)` | **Code mode**: run agent-authored Python against the env (loops, whole combats) in one call — fewer round-trips than per-action tool calls |
 
 ## Prerequisites
 
@@ -44,3 +45,23 @@ scoring baseline:
 ```bash
 cd harness && uv run python ../adapter/baseline_agent.py --jumps 5
 ```
+
+## Eval harness
+
+`eval.py` runs N seeded episodes (fresh `reset_episode` between each — no FTL restart),
+records a trajectory per episode, and aggregates scores (survival rate, mean kills/hull/…):
+
+```bash
+cd harness && uv run python ../adapter/eval.py --seeds 1,2,3 --jumps 6
+```
+
+## Two ways an agent plays
+
+- **Per-tool MCP** — the model calls `observe`/`do_jump`/`shoot`/… step-by-step (good for
+  introspection). No built-in Claude Code "code mode" toggle exists for MCP; tools are normal calls.
+- **Code mode** — the model writes Python against this env and runs it. Either via `run_strategy`
+  (an MCP tool that execs agent code with `session` + action builders in scope) or, in a
+  code-execution agent (Claude Code), by writing+running a script that imports `ftl_bench` directly.
+  Recommended for FTL: one script can drive a whole combat without flooding context with
+  intermediate observations.
+

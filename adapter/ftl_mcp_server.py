@@ -165,5 +165,45 @@ def advance(frames: int = 120) -> dict[str, Any]:
     return _summary(_session.step([], advance_frames=frames))
 
 
+@mcp.tool()
+def run_strategy(code: str) -> dict[str, Any]:
+    """CODE MODE: execute Python that drives the env directly — loops, conditionals,
+    whole combats — in ONE call, instead of one tool-call per action. In scope:
+      session  -> the AgentSession (session.observe()/.step()/.jump()/.choose_event()/
+                  .fire_weapon()/.reset_episode(seed=…)/.start_game(…) etc.)
+      set_system_power, move_crew, jump, choose_event, fire_weapon  -> action builders
+      summary(obs) -> the same compact dict the other tools return
+      log(*args)   -> print into the captured output
+    Returns {"output": <captured stdout, last 6k chars>, "error": <repr or None>}.
+    Example:
+      o = session.observe()
+      while o.get('enemy_ship'):
+          session.fire_weapon(0, o['enemy_ship']['rooms'][0]['room_id'])
+          o = session.observe().raw
+      log('combat done, hull', o['player_ship']['hull'])
+    Note: session.observe() returns an Observation object; use .raw for the dict,
+    or call summary(session.observe()) for the compact view."""
+    import contextlib
+    import io
+
+    buf = io.StringIO()
+    ns: dict[str, Any] = {
+        "session": _session,
+        "set_system_power": set_system_power,
+        "move_crew": move_crew,
+        "jump": jump,
+        "choose_event": choose_event,
+        "fire_weapon": fire_weapon,
+        "summary": _summary,
+        "log": lambda *a: print(*a),
+    }
+    try:
+        with contextlib.redirect_stdout(buf):
+            exec(code, ns)  # local benchmark tool: agent-authored strategy
+        return {"output": buf.getvalue()[-6000:], "error": None}
+    except Exception as exc:  # noqa: BLE001
+        return {"output": buf.getvalue()[-6000:], "error": repr(exc)}
+
+
 if __name__ == "__main__":
     mcp.run()
