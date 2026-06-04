@@ -97,6 +97,8 @@ local function dispatch_actions(actions)
       apply_choose_event(act)
     elseif act.type == "fire_weapon" then
       apply_fire_weapon(act)
+    elseif act.type == "leave_sector" then
+      pcall(Hyperspace.benchmark_leave_sector)   -- exit beacon -> next sector
     elseif act.type == "open_menu" then
       pcall(Hyperspace.benchmark_open_menu)
     elseif act.type == "menu_command" then
@@ -141,6 +143,8 @@ local function add_m3_obs(obs)
     -- sector-wide context for navigation: the exit beacon's position (the goal),
     -- our current position, and whether FTL is showing the choose-next-sector map.
     pcall(function() obs.map.current_pos = { x = sm.currentLoc.loc.x, y = sm.currentLoc.loc.y } end)
+    -- at_exit: standing on the sector exit beacon -> leave_sector can advance the sector
+    pcall(function() obs.map.at_exit = sm.currentLoc.beacon end)
     pcall(function()
       local locs = sm.locations
       for j = 0, locs:size() - 1 do

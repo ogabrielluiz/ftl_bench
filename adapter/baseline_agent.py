@@ -186,7 +186,7 @@ def play(sess, jumps, log):
     if not o.game_started:
         log("not in a run; resetting")
         o = sess.start_game("continue")
-    stats = {"jumps": 0, "events": 0, "combats": 0, "kills": 0, "fled": 0}
+    stats = {"jumps": 0, "events": 0, "combats": 0, "kills": 0, "fled": 0, "sectors": 0}
     o = power_core(sess, o)
 
     # Event resolution escalates through choices: if a choice doesn't close the box
@@ -195,7 +195,7 @@ def play(sess, jumps, log):
     # always a safe "leave/continue"), then the middle ones -- this avoids walking into a
     # "Fight the ship" option that sits before the leave choice.
     ev = {"text": None, "order": [], "step": 0}
-    iters, timeouts, combat_streak = 0, 0, 0
+    iters, timeouts, combat_streak, leave_tries = 0, 0, 0, 0
     while stats["jumps"] < jumps and iters < jumps * 8:
         iters += 1
         try:
@@ -234,6 +234,26 @@ def play(sess, jumps, log):
                 elif outcome == "flee":
                     stats["fled"] += 1
                     stats["jumps"] += 1  # fleeing is an FTL jump
+            elif (o.map or {}).get("at_exit"):
+                # On the exit beacon -> cross into the next sector. The binding refuses
+                # while a live enemy lingers (combat-time transition = SIGBUS), so retry
+                # across iterations until combat clears; give up after a cap.
+                sec_before = (o.map or {}).get("sector")
+                o = sess.leave_sector()
+                sec_after = (o.map or {}).get("sector")
+                if sec_after is not None and sec_after != sec_before:
+                    stats["sectors"] += 1
+                    stats["jumps"] += 1
+                    leave_tries = 0
+                    ev["text"] = None
+                    combat_streak = 0
+                    log(f">>> crossed to sector {sec_after} (hull {player_hull(o)})")
+                    power_core(sess, o)
+                else:
+                    leave_tries += 1
+                    log(f"at exit beacon, waiting to leave [{leave_tries}] (combat/fuel?)")
+                    if leave_tries >= 8:
+                        log("can't leave the exit beacon; stopping"); break
             else:
                 tgt = _pick_beacon(o)
                 if tgt is None:
@@ -243,7 +263,7 @@ def play(sess, jumps, log):
                 o = sess.jump(tgt, advance_frames=260)
                 stats["jumps"] += 1
                 ev["text"] = None           # new beacon -> fresh event, start at choice 0
-                combat_streak = 0
+                combat_streak = leave_tries = 0
                 power_core(sess, o)
             timeouts = 0
         except TimeoutError:

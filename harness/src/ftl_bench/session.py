@@ -65,6 +65,12 @@ def fire_weapon(weapon_slot: int, target_room_id: int, target_ship_id: int = 1) 
     }
 
 
+def leave_sector() -> dict[str, Any]:
+    """Leave the current sector from the exit beacon -> next sector. Only takes effect
+    when standing on the exit beacon with fuel and no active combat."""
+    return {"type": "leave_sector"}
+
+
 class AgentSession:
     """Closed-loop session: reset / observe / step over the paused bridge."""
 
@@ -190,6 +196,12 @@ class AgentSession:
             [fire_weapon(weapon_slot, target_room_id, target_ship_id)],
             advance_frames=advance_frames,
         )
+
+    def leave_sector(self, advance_frames: int = 360) -> Observation:
+        """Leave the sector from the exit beacon to the next sector. Needs a generous
+        frame budget: the commit, new-sector generation, warp, and arrival all run
+        within this advance before the bridge re-pauses."""
+        return self.step([leave_sector()], advance_frames=advance_frames)
 
     # ---- internals ----------------------------------------------------
     def _write_action_atomic(self, payload: dict[str, Any]) -> None:
