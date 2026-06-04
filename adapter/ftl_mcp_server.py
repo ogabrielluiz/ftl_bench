@@ -112,9 +112,12 @@ def observe() -> dict[str, Any]:
 
 
 @mcp.tool()
-def reset(mode: str = "continue") -> dict[str, Any]:
-    """Start a run. mode='new' for a fresh seeded run (recommended for episodes),
-    'continue' to resume the saved run. Returns the first paused observation."""
+def reset(mode: str = "new", seed: int | None = None) -> dict[str, Any]:
+    """Start a fresh episode. mode='new' starts a new run (optionally seeded for
+    reproducibility) and works even mid-run (abandons it back to the menu first);
+    'continue' resumes the saved run from the menu. Returns the first observation."""
+    if mode == "new":
+        return _summary(_session.reset_episode(seed=seed))
     return _summary(_session.start_game(mode))
 
 

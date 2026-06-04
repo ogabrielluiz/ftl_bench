@@ -11,12 +11,10 @@ Rebuild = edit `Benchmark_Extend.{h,cpp}` / `hyperspace.i`, then
 `ninja -C ~/Projects/FTL-Hyperspace/build-darwin-1.6.13-release`, copy the dylib
 into `FTL.app/Contents/MacOS/`, `codesign -f -s - --deep`, relaunch (Allow mic once).
 
-1. **Return-to-menu binding** (highest value). Lets the harness `reset()` to a fresh
-   seeded run *from in-game* without a full FTL restart — needed for clean episodes.
-   Add `hs_benchmark_return_to_menu()` that triggers the in-game menu's "Main Menu"
-   action (look at `CApp`/`CommandGui` menu / `App.gui` quit-to-menu path), then
-   `start_game('new', seed=…)`. Today `scripts/restart_ftl.sh` reaches the menu via a
-   process restart, which works but is heavier.
+1. ~~**Return-to-menu binding**~~ ✅ DONE — `AgentSession.reset_episode(seed)` abandons
+   the current run back to the main menu and launches a fresh seeded game, from
+   in-game, no process restart. (`return_to_menu()` finds the "Main Menu" button by
+   label; the bridge drives return→confirm→new-game in Lua.)
 2. **Store transactions** (M3 deferred, high effort): bind `Store`/`StoreBox`/`Purchase`
    so the agent can buy/sell at stores. See deepdive §10 P2 #16.
 3. **Beam weapon targeting** (two-point): a `fire_beam(slot, room_a, room_b)` variant.
