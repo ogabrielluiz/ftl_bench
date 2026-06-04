@@ -1,0 +1,11 @@
+<!-- ftl_bench bridge: APPEND our scripts onto Hyperspace's hyperspace.xml.
+     Bare content (no <FTL> wrapper) matches the repo's .append convention; it
+     adds a second <scripts> node, which Hyperspace's parser loads in addition
+     to its own (Resources.cpp iterates every "scripts" node). Using a plain
+     hyperspace.xml here would REPLACE Hyperspace's file and drop its <version>
+     tag (triggering the "Wrong version of Hyperspace" warning). -->
+<scripts>
+  <script>data/json.lua</script>
+  <script>data/observation.lua</script>
+  <script>data/bridge.lua</script>
+</scripts>

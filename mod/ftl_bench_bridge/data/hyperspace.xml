@@ -1,7 +1,0 @@
-<FTL>
-  <scripts>
-    <script>data/json.lua</script>
-    <script>data/observation.lua</script>
-    <script>data/bridge.lua</script>
-  </scripts>
-</FTL>

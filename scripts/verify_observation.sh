@@ -5,7 +5,9 @@
 # ObservationClient reads + validates the LIVE state.
 set -euo pipefail
 
-OBS="${1:-$HOME/Library/Application Support/FTL/ftl_agent_observation.json}"
+# macOS FTL user folder is "FasterThanLight" (confirmed live: getUserFolder()),
+# not "FTL". The Hyperspace.command launcher cd's here before exec.
+OBS="${1:-$HOME/Library/Application Support/FasterThanLight/ftl_agent_observation.json}"
 HARNESS="$(cd "$(dirname "$0")/../harness" && pwd)"
 
 echo "== ftl_bench observation verification =="

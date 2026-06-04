@@ -51,18 +51,18 @@ if [ "$CURRENT_EXE" != "Hyperspace.command" ]; then
   echo "   -> set to Hyperspace.command"
 fi
 
-echo "-- codesigning (required, or macOS refuses to launch)"
-codesign -f -s - --timestamp=none --all-architectures --deep "$FTL_APP"
-
 echo
-echo "== app-side install DONE =="
+echo "== app-side install DONE (dylib + launcher + Info.plist) =="
+echo "   NOTE: codesign comes LAST, AFTER patching mods (patching modifies"
+echo "   Resources/ftl.dat, which would invalidate a prior signature)."
 echo
-echo "NEXT (manual, GUI — the one step this script can't do):"
-echo "  1. Install FTLMan: https://github.com/afishhh/ftlman/releases/latest"
-echo "     (Apple Silicon: ftlman-aarch64-apple-darwin.tar.gz)"
-echo "  2. In FTLMan, point it at: $FTL_APP/Contents/Resources/"
-echo "  3. Put these two mods in FTLMan's mods/ folder and Apply IN THIS ORDER:"
-echo "       a) $DIST/hyperspace.ftl"
-echo "       b) $DIST/ftl_bench_bridge.ftl"
-echo "  4. Launch FTL.app DIRECTLY (not via Steam), start a New Game."
-echo "  5. Verify: scripts/verify_observation.sh"
+RES="$FTL_APP/Contents/Resources"
+echo "NEXT — patch the data mods, then codesign (FTLMan has a CLI, no GUI needed):"
+echo "  1. Get FTLMan: https://github.com/afishhh/ftlman/releases/latest"
+echo "     (Apple Silicon: ftlman-aarch64-apple-darwin.tar.gz; xattr -dr com.apple.quarantine ./ftlman)"
+echo "  2. Patch Hyperspace + the bridge from vanilla (idempotent; FTLMan keeps ftl.dat.vanilla):"
+echo "       ftlman patch '$DIST/hyperspace.ftl' '$DIST/ftl_bench_bridge.ftl' -d '$RES'"
+echo "  3. Codesign LAST (required, or macOS refuses to launch):"
+echo "       codesign -f -s - --timestamp=none --all-architectures --deep '$FTL_APP'"
+echo "  4. Launch FTL.app DIRECTLY (not via Steam):  open '$FTL_APP'"
+echo "  5. Verify the live stream:  scripts/verify_observation.sh"

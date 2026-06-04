@@ -24,8 +24,13 @@
 - `scripts/install_macos.sh` — copies dylib+command into `FTL.app`, patches `Info.plist` (`CFBundleExecutable`→`Hyperspace.command`), codesigns. (FTLMan mod-apply is the one manual GUI step it prints.)
 - `scripts/verify_observation.sh` — waits for `ftl_agent_observation.json`, confirms `tick` advances, runs `ObservationClient` on the live file.
 
-**Blocked only on (in progress):**
-- **Task 8 (in-game verification)** — **FTL is being installed on this Mac.** Once installed: run `scripts/install_macos.sh` → apply the two mods in FTLMan (hyperspace.ftl then ftl_bench_bridge.ftl) → start a game → `scripts/verify_observation.sh`. This resolves the two runtime open-items: the real `getUserFolder()` path and the `std::pair` access form (`.first/.second` vs `[0]/[1]`) in `observation.lua`.
+- **Task 8 (in-game verification) — DONE & PASSED** on FTL 1.6.13 + Hyperspace 1.22.2 (Steam, macOS). Installed via `install_macos.sh` (app-side) + **FTLMan CLI** `patch hyperspace.ftl ftl_bench_bridge.ftl` (no GUI needed; FTLMan keeps `ftl.dat.vanilla` so patch is idempotent) + codesign. Launched → `ftl_agent_observation.json` appeared at **`~/Library/Application Support/FasterThanLight/`** (this resolved the real `getUserFolder()` path — it's `FasterThanLight`, not `FTL`), `tick` advanced live (e.g. 890→1080), `ObservationClient` read + validated the live file, and `gui.bPaused` correctly reflected the window-unfocused auto-pause. The HS log shows `[Lua]: Hyperspace SWIG Lua loaded` and `Hyperspace.write_json_observation` working end-to-end.
+
+  **Bug found & fixed during Task 8:** the bridge originally shipped `data/hyperspace.xml` (plain), which **replaced** Hyperspace's own `hyperspace.xml` and dropped its `<version>` tag → "Wrong version of Hyperspace detected" warning. Fixed by switching to **`data/hyperspace.xml.append`** (bare `<scripts>` node), which merges instead of clobbering. Re-patched from vanilla and re-verified: version check now logs `Mod requests '^1.22.2' vs Hyperspace '1.22.2'`, no warning, stream intact.
+
+  **Still open (needs a started game, GUI click):** the `std::pair` access form (`.first/.second` vs `[0]/[1]`) in `observation.lua` — only exercised once `game_started=true` (i.e. a New Game is started and player-ship fields are read). The menu-level stream (`game_started=false`) is fully verified.
+
+**🎉 Milestone 1 is functionally complete** — the read-only observation pipeline works live end-to-end (game → C++ binding → Lua bridge → file → Python harness). The only remaining check is the in-combat pair-access form (Task 8.4), which needs a started game.
 
 ---
 
