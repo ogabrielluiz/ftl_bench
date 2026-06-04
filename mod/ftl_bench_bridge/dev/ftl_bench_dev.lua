@@ -97,6 +97,14 @@ local function dispatch_actions(actions)
       apply_choose_event(act)
     elseif act.type == "fire_weapon" then
       apply_fire_weapon(act)
+    elseif act.type == "open_menu" then
+      pcall(Hyperspace.benchmark_open_menu)
+    elseif act.type == "menu_command" then
+      pcall(Hyperspace.benchmark_set_menu_command, act.cmd or 0)
+    elseif act.type == "confirm_menu" then
+      pcall(Hyperspace.benchmark_confirm_menu)
+    elseif act.type == "return_to_menu" then
+      pcall(Hyperspace.benchmark_return_to_menu)
     end
   end
 end
@@ -165,6 +173,18 @@ local function add_m3_obs(obs)
     obs.enemy_ship.rooms = rooms
   end
 
+  -- in-game menu inspection (for return-to-menu work)
+  local ok_mc, mc = pcall(Hyperspace.benchmark_menu_button_count)
+  if ok_mc and type(mc) == "number" then
+    obs.menu_button_count = mc
+    local texts = {}
+    for i = 0, mc - 1 do
+      local okt, t = pcall(Hyperspace.benchmark_menu_button_text, i)
+      texts[#texts + 1] = (okt and type(t) == "string") and t or "?"
+    end
+    obs.menu_buttons = texts
+  end
+
   -- player weapon charge (cooldown is a Pair {current, max}); patch into weapons[]
   local player = Hyperspace.ships.player
   if player and obs.player_ship and obs.player_ship.weapons then
@@ -230,6 +250,13 @@ _G.ftl_bench_tick = function()
   local in_game = (world ~= nil) and world.bStartedGame or false
   if not in_game then
     S.frame_budget = 0
+    -- A reset_episode that has reached the menu: kick off a fresh seeded game.
+    if S.resetting then
+      _G.ftl_bench_desired_seed = S.reset_seed
+      S.starting_new = true
+      S.menu_throttle = 0
+      S.resetting = false
+    end
     -- Autonomy: let the harness start/continue a game from the menu (no click).
     local ok, action_str = pcall(Hyperspace.read_json_action)
     if ok and action_str and action_str ~= "" then
@@ -266,6 +293,20 @@ _G.ftl_bench_tick = function()
   end
   S.starting_new = false   -- in a run now; stop driving the menu
 
+  -- reset_episode: abandon this run back to the main menu (the menu-guard above
+  -- then launches a fresh seeded game). Runs UNFROZEN so the transition plays out.
+  if S.resetting then
+    set_frozen(false)
+    S.reset_throttle = (S.reset_throttle or 0) + 1
+    if S.reset_throttle == 2 then
+      pcall(Hyperspace.benchmark_return_to_menu)     -- open menu + select Main Menu
+    elseif S.reset_throttle > 2 and S.reset_throttle % 12 == 0 then
+      pcall(Hyperspace.benchmark_confirm_menu)        -- confirm the "lose progress" warning
+    end
+    write_observation()
+    return
+  end
+
   if S.frame_budget > 0 then
     S.frame_budget = S.frame_budget - 1
     if S.frame_budget == 0 then
@@ -282,13 +323,24 @@ _G.ftl_bench_tick = function()
     local dok, action = pcall(json.decode, action_str)
     if dok and type(action) == "table" and action.seq ~= nil
        and (S.last_applied_seq == nil or action.seq > S.last_applied_seq) then
-      local aok, aerr = pcall(dispatch_actions, action.actions)
-      if not aok then log_err("dispatch error: " .. tostring(aerr)) end
+      local is_reset = false
+      for _, act in ipairs(action.actions or {}) do
+        if act.type == "reset_episode" then
+          is_reset = true
+          S.resetting = true
+          S.reset_throttle = 0
+          S.reset_seed = act.seed
+        end
+      end
       S.last_applied_seq = action.seq
-      S.frame_budget = action.advance_frames or 30
-      if S.frame_budget > 0 then
-        set_frozen(false)
-        return
+      if not is_reset then
+        local aok, aerr = pcall(dispatch_actions, action.actions)
+        if not aok then log_err("dispatch error: " .. tostring(aerr)) end
+        S.frame_budget = action.advance_frames or 30
+        if S.frame_budget > 0 then
+          set_frozen(false)
+          return
+        end
       end
     end
   end

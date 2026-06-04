@@ -154,6 +154,28 @@ class AgentSession:
             self.recorder.record("start_game", acts, obs)
         return obs
 
+    def reset_episode(self, seed: int | None = None, timeout: float = 60.0) -> Observation:
+        """Start a fresh seeded episode, even from in-game: abandon the current run
+        back to the main menu, then launch a new game. (start_game only works from
+        the menu; this works anywhere.)"""
+        if not self.observe().game_started:
+            return self.start_game("new", seed=seed)
+        self._sync_seq()
+        self.action_seq += 1
+        act: dict[str, Any] = {"type": "reset_episode"}
+        if seed is not None:
+            act["seed"] = int(seed)
+        self._write_action_atomic(
+            {"seq": self.action_seq, "advance_frames": 0, "actions": [act]})
+        deadline = time.monotonic() + timeout
+        self._wait_for(lambda o: not o.game_started,           # reached the menu
+                       timeout=max(2.0, deadline - time.monotonic()))
+        obs = self._wait_for(lambda o: o.game_started,         # new run loaded
+                             timeout=max(2.0, deadline - time.monotonic()))
+        if self.recorder is not None:
+            self.recorder.record("reset_episode", [act], obs)
+        return obs
+
     # ---- M3 convenience helpers (sensible per-action frame budgets) ----
     def jump(self, beacon_index: int, advance_frames: int = 240) -> Observation:
         """Jump and let the warp/arrival sequence settle before re-pausing."""
