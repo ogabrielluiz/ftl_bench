@@ -95,10 +95,21 @@ class AgentSession:
         self.action_seq = obs.last_action_seq or 0
         return obs
 
+    def _sync_seq(self) -> None:
+        """Bump action_seq past the game's persisted last_action_seq so the bridge's
+        dedup never ignores us (the game-side seq survives reloads/restarts; a fresh
+        session — e.g. a new MCP server — starts at 0)."""
+        try:
+            cur = self.client.read_latest()
+            self.action_seq = max(self.action_seq, cur.last_action_seq or 0)
+        except (FileNotFoundError, ObservationValidationError):
+            pass
+
     def step(
         self, actions: Iterable[dict[str, Any]], advance_frames: int = 30
     ) -> Observation:
         """Write an action, advance the world, return the resulting observation."""
+        self._sync_seq()
         self.action_seq += 1
         payload = {
             "seq": self.action_seq,
@@ -120,11 +131,7 @@ class AgentSession:
         """Continue/new-game from the menu; waits until the run is loaded."""
         if mode == "new":
             timeout = max(timeout, 30.0)  # New Game -> CONFIRM -> hangar Start is multi-step
-        try:
-            cur = self.client.read_latest()
-            self.action_seq = max(self.action_seq, cur.last_action_seq or 0)
-        except (FileNotFoundError, ObservationValidationError):
-            pass
+        self._sync_seq()
         self.action_seq += 1
         self._write_action_atomic(
             {"seq": self.action_seq, "advance_frames": 0, "actions": [start_game(mode)]}
