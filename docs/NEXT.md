@@ -1,6 +1,28 @@
 # ftl_bench — next steps
 
-Status as of this session: **M1–M6 working end-to-end and live-verified** (see README),
+**Benchmark v1 shipped (2026-06-04):** the env is now a goal-conditioned scenario
+benchmark (ARC-AGI/WebShop/BALROG-inspired). `harness/src/ftl_bench/{scenario,scoring.
+score_instance,aggregate}.py`, `scenarios/suite_v1.json` (T1–T5, public + held-out),
+`adapter/run_benchmark.py` (runner → headline **GCS@1** + Solve Rate). The agent decides
+in-game; only goal achievement is scored. Reliability: the jump/arrival freeze is fixed
+(rebuild obs only on state change + guard volatile collection reads against the warp).
+
+### Benchmark — remaining to make it canonical
+1. **Micro-encounter scenarios (T6–T9)** — `win_this_combat`, `escape_a_crisis`,
+   `event_risk_choice`, `resource_goal`. Highest signal-per-token. Needs a new Lua
+   `scenario_setup` binding to pin a frozen mid-run state (player loadout + enemy +
+   systems), plus hand-authored, human-validated snapshots. Pure Lua hot-reload.
+2. **Flagship + store tiers (T10–T12)** — gated on the action-gap bindings below
+   (flagship reachability, store buy/sell). The apex skill probes + the full-run ceiling.
+3. **Baseline ladder + references** — run `random` and `scripted` for the floor (done by
+   run_benchmark.py); add a **human reference** (≥2 clears/instance via MCP/code-mode) to
+   anchor the efficiency axis and validate each instance is human-achievable & not
+   random-achievable; add a **frontier-LLM** track (zero-shot + code-mode).
+4. **Reproducibility hardening** — capture ftl/hyperspace build hashes in the manifest;
+   an acceptance test that re-running an instance reproduces the same milestone outcome.
+5. **Efficiency reference** — per-seed human/best jump counts for the T4 efficiency term.
+
+Status of the env it runs on: **M1–M6 working end-to-end and live-verified** (see README),
 **plus sector progression, richer observation, and a smarter baseline.**
 An agent can reset (continue/new, seeded), observe, and act (power, crew, jump,
 event-choice, fire, leave-sector) through the harness, the MCP adapter, or the scripted
