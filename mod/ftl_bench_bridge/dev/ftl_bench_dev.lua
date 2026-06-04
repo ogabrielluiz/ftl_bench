@@ -122,6 +122,8 @@ local function add_m3_obs(obs)
     for i = 0, connected:size() - 1 do
       local loc = connected[i]
       if loc then
+        local px, py
+        pcall(function() px, py = loc.loc.x, loc.loc.y end)
         beacons[#beacons + 1] = {
           index = i, known = loc.known, visited = loc.visited,
           danger_zone = loc.dangerZone, boss = loc.boss,
@@ -130,10 +132,27 @@ local function add_m3_obs(obs)
           -- fleet: the rebel pursuit fleet has reached this beacon (deadly — avoid).
           exit_beacon = loc.beacon, new_sector = loc.newSector,
           quest = loc.questLoc, fleet = loc.fleetChanging,
+          pos_x = px, pos_y = py,  -- map position (to navigate toward the exit)
         }
       end
     end
     obs.map.connected_beacons = beacons
+
+    -- sector-wide context for navigation: the exit beacon's position (the goal),
+    -- our current position, and whether FTL is showing the choose-next-sector map.
+    pcall(function() obs.map.current_pos = { x = sm.currentLoc.loc.x, y = sm.currentLoc.loc.y } end)
+    pcall(function()
+      local locs = sm.locations
+      for j = 0, locs:size() - 1 do
+        local L = locs[j]
+        if L and L.beacon then
+          obs.map.exit_pos = { x = L.loc.x, y = L.loc.y }
+          break
+        end
+      end
+    end)
+    pcall(function() obs.map.choosing_new_sector = sm.bChoosingNewSector end)
+    pcall(function() obs.map.out_of_fuel = sm.outOfFuel end)
   end
 
   -- current event choices (for choose_event) — read from the LIVE choiceBox,
@@ -352,7 +371,15 @@ _G.ftl_bench_tick = function()
     S.reset_throttle = (S.reset_throttle or 0) + 1
     if S.reset_throttle % 10 == 0 then
       if gui.choiceBoxOpen then
-        pcall(Hyperspace.benchmark_choose_event, 0)  -- clear any (chained) event first
+        -- Clear any (chained) event so the menu can open. Disabled choices (e.g.
+        -- unaffordable "Hire for N scrap") are no-ops, so try the LAST choice first
+        -- (almost always an available "leave/continue"), then cycle downward.
+        local n = 4
+        pcall(function() n = gui.choiceBox:GetChoices():size() end)
+        if n < 1 then n = 1 end
+        local c = (n - 1) - ((S.reset_choice or 0) % n)
+        pcall(Hyperspace.benchmark_choose_event, c)
+        S.reset_choice = (S.reset_choice or 0) + 1
       else
         pcall(Hyperspace.benchmark_return_to_menu)   -- open menu + select Main Menu
         pcall(Hyperspace.benchmark_confirm_menu)      -- confirm the "lose progress" warning
