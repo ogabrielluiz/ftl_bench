@@ -276,21 +276,25 @@ local function add_m3_obs(obs)
     end
   end
 
-  -- incoming projectiles aimed at the player (combat danger awareness)
-  -- ISOLATION 2026-06-04: DISABLED — iterating space.projectiles every tick reads
-  -- volatile pointers that go bad during a jump/teardown (freeze suspect).
-  -- pcall(function()
-  --   local space = world.space
-  --   if not space then return end
-  --   local projs = space.projectiles
-  --   if not projs then return end
-  --   local incoming = 0
-  --   for i = 0, projs:size() - 1 do
-  --     local p = projs[i]
-  --     if p and p.targetId == 0 then incoming = incoming + 1 end
-  --   end
-  --   obs.incoming_projectiles = incoming
-  -- end)
+  -- incoming projectiles aimed at the player (danger info the agent uses to decide
+  -- whether to brace/flee). COMBAT-ONLY and not mid-warp: iterating space.projectiles
+  -- during a jump/teardown reads freed pointers and freezes the loop (2026-06-04). The
+  -- guards keep it to a stable state where the projectile list isn't being torn down.
+  pcall(function()
+    local pl = Hyperspace.ships and Hyperspace.ships.player
+    local en = Hyperspace.ships and Hyperspace.ships.enemy
+    if not (pl and en) or pl.bJumping then return end   -- only in active combat, not warping
+    local space = world.space
+    if not space then return end
+    local projs = space.projectiles
+    if not projs then return end
+    local incoming = 0
+    for i = 0, projs:size() - 1 do
+      local p = projs[i]
+      if p and p.targetId == 0 then incoming = incoming + 1 end
+    end
+    obs.incoming_projectiles = incoming
+  end)
 
   -- in-game menu inspection (for return-to-menu work)
   local ok_mc, mc = pcall(Hyperspace.benchmark_menu_button_count)
