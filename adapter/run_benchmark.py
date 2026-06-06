@@ -75,10 +75,14 @@ def restart_ftl() -> None:
         subprocess.run([_TASKKILL, "/F", "/IM", "FTLGame.exe"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(3)
-        try:
-            obs.unlink()
-        except FileNotFoundError:
-            pass
+        # taskkill /F is not a clean exit, so Hyperspace's hs_crash.flag survives; the next
+        # launch would see it, pop the "CRASH DETECTED" recovery (which blocks New Game) and
+        # spew a bug-report zip. Delete it (+ the stale obs) so the relaunch boots clean.
+        for stale in ("ftl_agent_observation.json", "hs_crash.flag"):
+            try:
+                (save / stale).unlink()
+            except FileNotFoundError:
+                pass
         subprocess.run([_PS, "-NoProfile", "-Command",
                         f"Start-Process '{_STEAM_WIN}' -ArgumentList '-applaunch','{_FTL_APPID}'"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -177,8 +181,9 @@ def run_instance(sess: AgentSession, scenario, agent_fn, agent_name, out_dir, lo
             sess.reset_episode(seed=scenario.seed, timeout=35.0)
             started = True
             break
-        except TimeoutError:
-            log(f"  [{scenario.id}] reset timed out (attempt {attempt + 1}) — restarting FTL")
+        except (TimeoutError, FileNotFoundError, OSError) as e:
+            log(f"  [{scenario.id}] reset failed ({type(e).__name__}, attempt {attempt + 1}) "
+                f"— restarting FTL")
             restart_ftl()
             sess._sync_seq()
             time.sleep(1)
