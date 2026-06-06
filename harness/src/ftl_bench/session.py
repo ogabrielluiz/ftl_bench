@@ -20,11 +20,19 @@ from ftl_bench.observation import (
 )
 
 # FTL user folder (where the bridge reads/writes its files). Honors the
-# FTL_SAVE_DIR env var so the harness is cross-platform: on Windows point it at
-# `…/Documents/My Games/FasterThanLight`; defaults to the macOS user folder.
-DEFAULT_USER_FOLDER = Path(
-    os.environ.get("FTL_SAVE_DIR", "~/Library/Application Support/FasterThanLight")
-).expanduser()
+# FTL_SAVE_DIR env var; otherwise defaults per-OS so a native Windows or macOS
+# run needs no env setup at all. On Windows the folder is
+# `…/Documents/My Games/FasterThanLight`; on macOS the Application Support folder.
+def ftl_user_folder() -> Path:
+    env = os.environ.get("FTL_SAVE_DIR")
+    if env:
+        return Path(env).expanduser()
+    if os.name == "nt":
+        return Path("~/Documents/My Games/FasterThanLight").expanduser()
+    return Path("~/Library/Application Support/FasterThanLight").expanduser()
+
+
+DEFAULT_USER_FOLDER = ftl_user_folder()
 
 
 def set_system_power(system_id: int, level: int) -> dict[str, Any]:

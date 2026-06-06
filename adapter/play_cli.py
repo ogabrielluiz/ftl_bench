@@ -366,16 +366,19 @@ def apply_command(s: AgentSession, cmd: str, args: list[str]):
 
 
 def _ftl_alive() -> bool:
-    """Is the FTL game process running? Platform-aware: Windows-via-WSL (FTL_SAVE_DIR points at a
-    /mnt drive) checks the native FTLGame.exe via tasklist; macOS uses pgrep on the app binary.
-    The old macOS-only pgrep falsely reported FROZEN_KILLED on Windows (it can't see a Windows
-    process), mislabeling a perfectly live game."""
+    """Is the FTL game process running? Platform-aware: on Windows — native Python (os.name ==
+    'nt') or WSL pointing at a /mnt drive — check the native FTLGame.exe via tasklist; macOS uses
+    pgrep on the app binary. The old macOS-only pgrep falsely reported FROZEN_KILLED on Windows
+    (it can't see a Windows process), mislabeling a perfectly live game."""
     import os
     import subprocess
-    if os.environ.get("FTL_SAVE_DIR", "").startswith("/mnt/"):
+    native_win = os.name == "nt"
+    wsl_win = os.environ.get("FTL_SAVE_DIR", "").startswith("/mnt/")
+    if native_win or wsl_win:
+        tasklist = "tasklist" if native_win else "/mnt/c/Windows/System32/tasklist.exe"
         try:
-            r = subprocess.run(["/mnt/c/Windows/System32/tasklist.exe", "/fi",
-                                "imagename eq FTLGame.exe"], capture_output=True, text=True)
+            r = subprocess.run([tasklist, "/fi", "imagename eq FTLGame.exe"],
+                               capture_output=True, text=True)
             return "FTLGame.exe" in r.stdout
         except Exception:  # noqa: BLE001
             return True  # can't tell -> don't cry freeze

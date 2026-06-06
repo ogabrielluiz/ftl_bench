@@ -35,6 +35,7 @@ from ftl_bench import (  # noqa: E402
     set_system_power,
 )
 from ftl_bench.aggregate import aggregate  # noqa: E402
+from ftl_bench.session import ftl_user_folder  # noqa: E402
 from baseline_agent import play as scripted_play  # noqa: E402
 from llm_agent import make_llm_agent  # noqa: E402
 
@@ -44,16 +45,23 @@ RESTART_SH = REPO / "scripts" / "restart_ftl.sh"
 
 FTL_PROC = "FTL Faster Than Light/FTL.app/Contents/MacOS/FTL"
 
-# Windows-via-WSL when FTL_SAVE_DIR points at a /mnt drive: the game runs as a
-# native Windows process (FTLGame.exe) and MUST be launched via Steam — only the
-# Steam launch loads the local xinput proxy that injects Hyperspace; a direct exe
-# launch (cmd/Start-Process) loads the system xinput and HS never injects.
-_WINDOWS = os.environ.get("FTL_SAVE_DIR", "").startswith("/mnt/")
-_PS = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
-_TASKLIST = "/mnt/c/Windows/System32/tasklist.exe"
-_TASKKILL = "/mnt/c/Windows/System32/taskkill.exe"
-_STEAM_WIN = r"C:\Program Files (x86)\Steam\steam.exe"
+# The FTL game runs as a native Windows process (FTLGame.exe) in two setups: native
+# Windows Python (os.name == 'nt'), or WSL Python pointing at a /mnt drive. In BOTH it
+# MUST be launched via Steam — only the Steam launch loads the local xinput proxy that
+# injects Hyperspace; a direct exe launch (cmd/Start-Process) loads the system xinput and
+# HS never injects. The only difference is how we reach the Windows tools: native names on
+# PATH and a direct steam.exe launch vs. /mnt/c absolute paths + a powershell shim in WSL.
+_NATIVE_WIN = os.name == "nt"
+_WSL_WIN = os.environ.get("FTL_SAVE_DIR", "").startswith("/mnt/")
+_WINDOWS = _NATIVE_WIN or _WSL_WIN
+_STEAM_WIN = os.environ.get("FTL_STEAM_EXE", r"C:\Program Files (x86)\Steam\steam.exe")
 _FTL_APPID = "212680"
+if _NATIVE_WIN:
+    _TASKLIST, _TASKKILL = "tasklist", "taskkill"
+else:  # WSL reaches the Windows tools by absolute /mnt/c path
+    _TASKLIST = "/mnt/c/Windows/System32/tasklist.exe"
+    _TASKKILL = "/mnt/c/Windows/System32/taskkill.exe"
+    _PS = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
 
 
 def game_alive() -> bool:
@@ -70,7 +78,7 @@ def game_alive() -> bool:
 def restart_ftl() -> None:
     """Relaunch FTL to the MENU (recovers from a frozen/crashed/killed game)."""
     if _WINDOWS:
-        save = Path(os.environ["FTL_SAVE_DIR"]).expanduser()
+        save = ftl_user_folder()
         obs = save / "ftl_agent_observation.json"
         subprocess.run([_TASKKILL, "/F", "/IM", "FTLGame.exe"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -92,9 +100,13 @@ def restart_ftl() -> None:
         except OSError:
             pass
         (save / "ftl_bench_reload").write_text("")  # touch: bootstrap consumes it within ~15 ticks
-        subprocess.run([_PS, "-NoProfile", "-Command",
-                        f"Start-Process '{_STEAM_WIN}' -ArgumentList '-applaunch','{_FTL_APPID}'"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if _NATIVE_WIN:
+            subprocess.run([_STEAM_WIN, "-applaunch", _FTL_APPID],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:  # WSL: shell out through powershell to start the Windows Steam client
+            subprocess.run([_PS, "-NoProfile", "-Command",
+                            f"Start-Process '{_STEAM_WIN}' -ArgumentList '-applaunch','{_FTL_APPID}'"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         # wait for the bridge to write its first observation (HS injected, at menu)
         for _ in range(90):
             if obs.exists():
