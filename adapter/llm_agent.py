@@ -67,17 +67,34 @@ def _goal_text(scenario) -> str:
     return "; ".join(parts) or "(survive and progress)"
 
 
-def build_system_prompt(scenario, manual: str) -> str:
+def build_system_prompt(scenario, manual: str, play_to_gameover: bool = False,
+                        stall_limit: int = 10) -> str:
     """The manual + the ONE real objective: win the game. No artificial per-scenario sub-goals
     — the agent plays the actual game of FTL with its own intelligence, and we measure how far
-    it gets toward beating the rebel flagship. The scenario only pins the seed (the map/RNG)."""
-    return (
-        f"{manual}\n\n"
-        f"## OBJECTIVE\n"
-        f"Play to WIN — get as far as you can toward destroying the rebel flagship at the end of "
-        f"sector 8. You have up to about {scenario.budget_jumps} jumps this run. You know FTL; "
-        f"every decision is yours."
-    )
+    it gets toward beating the rebel flagship. The scenario only pins the seed (the map/RNG).
+
+    In play-to-game-over mode there is no jump budget: play until the game actually ends. We
+    expose the stall rule (no progress for `stall_limit` turns = the run ends in a loss) so the
+    agent can avoid it — that's stating an eval rule, not scripting its moves."""
+    if play_to_gameover:
+        objective = (
+            f"## OBJECTIVE\n"
+            f"Play a FULL game to its conclusion. You WIN by destroying the rebel flagship after "
+            f"sector 8; you LOSE if your ship is destroyed. There is NO jump limit — keep playing "
+            f"until the game is over.\n"
+            f"STALL RULE: if you make NO progress for {stall_limit} turns in a row — the game "
+            f"state stops changing (re-issuing actions that already took effect, or idling while "
+            f"nothing happens) — the run is declared a LOSS and ends. Every turn, do something "
+            f"that moves the game forward. You know FTL; every decision is yours."
+        )
+    else:
+        objective = (
+            f"## OBJECTIVE\n"
+            f"Play to WIN — get as far as you can toward destroying the rebel flagship at the end "
+            f"of sector 8. You have up to about {scenario.budget_jumps} jumps this run. You know "
+            f"FTL; every decision is yours."
+        )
+    return f"{manual}\n\n{objective}"
 
 
 def build_turn_prompt(c: dict, history: list[str], step: int, jumps: int, budget: int) -> str:
@@ -188,9 +205,17 @@ def claude_cli_complete(system: str, user: str, model: str | None) -> str:
 
 
 def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mult: int = 8,
-                   prompt_version: str = "v1"):
+                   prompt_version: str = "v1", play_to_gameover: bool = False,
+                   stall_limit: int = 10):
     """Return an agent_fn(sess, scenario, log) that plays via the chosen model/backend, using the
     version-controlled prompt manual `prompt_version`.
+
+    Default mode: play up to `budget_jumps * step_mult` turns (the scenario's jump budget).
+    `play_to_gameover` mode: ignore the jump budget and play until the game actually ends
+    (DESTROYED / GAME_OVER / win) — but the run also ends in a LOSS if the agent STALLS, i.e.
+    makes no progress (`_state_sig` unchanged) for `stall_limit` consecutive turns. This turns
+    the dawdle failure mode (no-op loops, endless idling) into an automatic loss instead of
+    burning the whole budget. A high hard cap still bounds pathological runs.
 
     The session is already reset to the scenario seed by run_instance; we just play."""
     if model is None:
@@ -203,15 +228,18 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
         return anthropic_complete(system, user, model)
 
     def agent_fn(sess, scenario, log) -> None:
-        system = build_system_prompt(scenario, manual)
+        system = build_system_prompt(scenario, manual, play_to_gameover, stall_limit)
         budget = scenario.budget_jumps
         history: list[str] = []
         jumps = 0
         prev_action = None   # repeated-action nudge: break no-op loops (wait/fire/power spam)
         prev_sig = None
         repeat_count = 0
-        for step in range(budget * step_mult):
-            if jumps >= budget:
+        stall_count = 0      # consecutive turns with NO change in salient state (play-to-gameover)
+        HARD_CAP = 1500      # safety bound for play-to-gameover (a full FTL game is < this)
+        max_steps = HARD_CAP if play_to_gameover else budget * step_mult
+        for step in range(max_steps):
+            if not play_to_gameover and jumps >= budget:
                 log(f"    [llm] jump budget {budget} reached"); break
             try:
                 o = sess.observe()
@@ -233,6 +261,13 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
                              f"{repeat_count + 1} times in a row with no meaningful change in the "
                              f"observation — it has already taken effect or isn't possible now. "
                              f"Pick a DIFFERENT action to make progress toward the goal.")
+                # Stall warning: as the no-progress streak approaches the limit, tell the agent
+                # the run is about to end (exposing the eval rule — the agent still chooses).
+                if play_to_gameover and stall_limit and stall_count >= max(2, stall_limit - 4):
+                    turn += (f"\n\nWARNING: the game state has not changed for {stall_count} turns. "
+                             f"The run ENDS in a LOSS at {stall_limit} stalled turns. Make a move "
+                             f"that actually changes the game (jump to a new beacon, deal/take "
+                             f"damage, resolve an event) — not another action that does nothing.")
                 reply = complete(system, turn)
             except Exception as e:  # noqa: BLE001 — a model/transport error ends the episode
                 log(f"    [llm] model error: {e}"); break
@@ -264,6 +299,9 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
             same = (action_str == prev_action)
             productive_wait = (cmd == "wait" and sig != prev_sig)
             repeat_count = repeat_count + 1 if (same and not productive_wait) else 0
+            # Stall = no change in salient state vs the previous turn. Tracks "the agent is
+            # paused / making no progress" regardless of whether the actions are identical.
+            stall_count = stall_count + 1 if (prev_sig is not None and sig == prev_sig) else 0
             prev_action, prev_sig = action_str, sig
             # Direct feedback when the agent powers a BROKEN module: power can't restore a damaged
             # or on-fire system — it needs a crew member in its room to repair/extinguish. The
@@ -284,6 +322,16 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
             _int = c2.get("interrupted_by")
             log(f"    [llm] step {step}: {cmd} {' '.join(cargs)} -> "
                 f"sector {c2.get('sector')} hull {c2.get('hull')} jumps {jumps}"
-                + (f"  [INTERRUPT:{_int}]" if _int else ""))
+                + (f"  [INTERRUPT:{_int}]" if _int else "")
+                + (f"  [stall {stall_count}/{stall_limit}]"
+                   if (play_to_gameover and stall_count) else ""))
+            # Stall-out: no progress for stall_limit turns -> the run is over (a loss).
+            if play_to_gameover and stall_limit and stall_count >= stall_limit:
+                log(f"    [llm] STALLED {stall_count} turns with no progress -> GAME OVER")
+                break
+            # Natural end already handled at the top via game_status; play-to-gameover also stops
+            # when the obs reports the game is over (DESTROYED/GAME_OVER).
+            if play_to_gameover and (c2.get("game_status") in TERMINAL or c2.get("game_over")):
+                log(f"    [llm] game over: {c2.get('game_status') or 'GAME_OVER'}"); break
 
     return agent_fn

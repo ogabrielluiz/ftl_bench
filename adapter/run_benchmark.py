@@ -215,6 +215,12 @@ def main() -> None:
                     help="llm track: max actions per instance = budget_jumps * this")
     ap.add_argument("--prompt-version", default="v1",
                     help="llm track: which prompts/ftl_agent_<v>.md manual to use (versioned)")
+    ap.add_argument("--play-to-gameover", action="store_true",
+                    help="llm track: ignore the jump budget; play until the game ends (win/death) "
+                         "or the agent stalls (see --stall-limit)")
+    ap.add_argument("--stall-limit", type=int, default=10,
+                    help="play-to-gameover: end the run as a LOSS after this many consecutive "
+                         "turns with no progress (the game state unchanged)")
     ap.add_argument("--suite", default=str(REPO / "scenarios" / "suite_v1.json"))
     ap.add_argument("--tier", default=None, help="filter: public | semi_private | ...")
     ap.add_argument("--type", default=None, help="filter by scenario type")
@@ -241,10 +247,15 @@ def main() -> None:
     sess = AgentSession()
     # The LLM track is a factory (model/backend); scripted/random are plain functions.
     if args.agent == "llm":
-        agent_fn = make_llm_agent(args.model, args.backend, args.step_mult, args.prompt_version)
-        agent_label = f"llm-{args.backend}-{args.model or 'default'}-{args.prompt_version}"
+        agent_fn = make_llm_agent(args.model, args.backend, args.step_mult, args.prompt_version,
+                                  play_to_gameover=args.play_to_gameover,
+                                  stall_limit=args.stall_limit)
+        _mode = f"-gameover{args.stall_limit}" if args.play_to_gameover else ""
+        agent_label = f"llm-{args.backend}-{args.model or 'default'}-{args.prompt_version}{_mode}"
         extra_manifest = {"model": args.model or "default", "backend": args.backend,
-                          "prompt_version": args.prompt_version}
+                          "prompt_version": args.prompt_version,
+                          "play_to_gameover": args.play_to_gameover,
+                          "stall_limit": args.stall_limit}
     else:
         agent_fn = AGENTS[args.agent]
         agent_label = args.agent
