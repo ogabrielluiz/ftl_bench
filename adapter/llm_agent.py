@@ -157,6 +157,24 @@ def _state_sig(c: dict):
     )
 
 
+def _progress_sig(c: dict):
+    """What counts as PROGRESS toward winning, for the play-to-gameover stall guard. Unlike
+    `_state_sig` (which flags identical-action no-ops), this asks "did the run move forward?":
+    advancing the map (jump = new position / sector / reaching the exit), winning the current
+    fight (enemy hull dropping or the enemy gone), or gaining resources (scrap). It deliberately
+    EXCLUDES your own hull and incidental micro-state (oxygen, system damage, shots-fired) so a
+    combat STALEMATE — trading the odd blow while neither killing the enemy nor jumping away —
+    still counts as no progress and trips the stall cutoff."""
+    en = c.get("enemy") or {}
+    m = c.get("map") or {}
+    return (
+        c.get("sector"), c.get("scrap"),
+        m.get("current_pos"), m.get("at_exit"),
+        bool(en), (en.get("hull") if en else None),
+        c.get("game_status"),
+    )
+
+
 # --- backends -----------------------------------------------------------------------
 
 def anthropic_complete(system: str, user: str, model: str, max_tokens: int = 700) -> str:
@@ -234,8 +252,9 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
         jumps = 0
         prev_action = None   # repeated-action nudge: break no-op loops (wait/fire/power spam)
         prev_sig = None
+        prev_prog = None     # progress signature for the stall guard (play-to-gameover)
         repeat_count = 0
-        stall_count = 0      # consecutive turns with NO change in salient state (play-to-gameover)
+        stall_count = 0      # consecutive turns with NO forward progress (play-to-gameover)
         HARD_CAP = 1500      # safety bound for play-to-gameover (a full FTL game is < this)
         max_steps = HARD_CAP if play_to_gameover else budget * step_mult
         for step in range(max_steps):
@@ -299,10 +318,12 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
             same = (action_str == prev_action)
             productive_wait = (cmd == "wait" and sig != prev_sig)
             repeat_count = repeat_count + 1 if (same and not productive_wait) else 0
-            # Stall = no change in salient state vs the previous turn. Tracks "the agent is
-            # paused / making no progress" regardless of whether the actions are identical.
-            stall_count = stall_count + 1 if (prev_sig is not None and sig == prev_sig) else 0
-            prev_action, prev_sig = action_str, sig
+            # Stall = no FORWARD PROGRESS vs the previous turn (map didn't move, the enemy isn't
+            # dying, no scrap gained). Catches both idling AND combat stalemates — "the agent is
+            # paused" — without being reset by incidental damage/charge micro-changes.
+            prog = _progress_sig(c2)
+            stall_count = stall_count + 1 if (prev_prog is not None and prog == prev_prog) else 0
+            prev_action, prev_sig, prev_prog = action_str, sig, prog
             # Direct feedback when the agent powers a BROKEN module: power can't restore a damaged
             # or on-fire system — it needs a crew member in its room to repair/extinguish. The
             # agent keeps re-powering broken modules because nothing tells it power is the wrong fix.
