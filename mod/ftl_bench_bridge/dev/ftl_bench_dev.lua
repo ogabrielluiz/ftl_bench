@@ -181,6 +181,15 @@ local function jump_ready(p)
   -- deadlocks (the jump is what charges it).
   local enemy = Hyperspace.ships and Hyperspace.ships.enemy
   if not enemy then return true end
+  -- A DESTROYED enemy's ship object lingers (the wreck stays until you jump), but combat is
+  -- over and its jump_timer froze mid-charge. Treating that as still-in-combat gates the jump
+  -- on a timer that will never fill -> deadlock (observed at a sun beacon after a kill: the
+  -- ship can't escape and slowly burns to death). A dead enemy means out of combat: jump
+  -- freely, same as `not enemy`. (Only bDestroyed -- NOT bJumping -- to stay clear of the
+  -- mid-warp/charging force-jump that spins CommandGui::OnLoop.)
+  local dead = false
+  pcall(function() dead = enemy.bDestroyed end)
+  if dead then return true end
   local ready = true
   pcall(function() ready = p.jump_timer.first >= p.jump_timer.second end)
   return ready
