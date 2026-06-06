@@ -301,8 +301,14 @@ class AgentSession:
             pass
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            self.step([{"type": "return_to_menu"}], advance_frames=30)
-            self.step([{"type": "confirm_menu"}], advance_frames=30)
+            # The menu transition leaves the in-game paused state, so step()'s seq-ack (which
+            # waits for paused + matching seq) often times out even though the action took
+            # effect — swallow it and decide from game_started instead.
+            for act in ("return_to_menu", "confirm_menu"):
+                try:
+                    self.step([{"type": act}], advance_frames=30)
+                except TimeoutError:
+                    pass
             try:
                 if not self.observe().game_started:
                     break
