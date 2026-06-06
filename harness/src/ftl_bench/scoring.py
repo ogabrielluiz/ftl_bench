@@ -83,12 +83,18 @@ def achieved_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
     positions: set = set()
     prev_alive = False
     final_obs: dict[str, Any] = {}
+    ftl_score = 0
     for r in records:
         if r.get("kind") == "meta":
             continue
         obs = r.get("obs") or {}
         if obs:
             final_obs = obs
+        # FTL's own running score (the game's native scoring); track the max seen, it climbs
+        # monotonically as scrap / kills / sectors accrue.
+        _fs = obs.get("ftl_score")
+        if isinstance(_fs, (int, float)):
+            ftl_score = max(ftl_score, _fs)
         m = obs.get("map") or {}
         sec = m.get("sector")
         if isinstance(sec, int):
@@ -130,6 +136,7 @@ def achieved_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
         "alive": 1 if final_hull > 0 else 0,
         "distinct_beacons": len(positions) if positions else (jumps + sectors),
         "oxygen_pct": ps.get("oxygen_pct"),
+        "ftl_score": ftl_score,            # FTL's native run score (headline for full games)
     }
 
 
@@ -174,6 +181,7 @@ def score_instance(records: list[dict[str, Any]], scenario: "Scenario") -> dict[
         "seed": scenario.seed,
         "r": round(r, 4),
         "score": round(100 * r, 1),
+        "ftl_score": achieved.get("ftl_score", 0),   # the game's native run score
         "solved": bool(r >= 1.0 - 1e-9 and legit == 1),
         "legitimacy_gate": legit,
         "breakdown": breakdown,
