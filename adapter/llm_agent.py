@@ -355,4 +355,13 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
             if play_to_gameover and (c2.get("game_status") in TERMINAL or c2.get("game_over")):
                 log(f"    [llm] game over: {c2.get('game_status') or 'GAME_OVER'}"); break
 
+        # Episode over (stall / death / win / cap): leave FTL cleanly at the menu instead of
+        # paused mid-run, so the game is genuinely "over" and the next instance starts fresh.
+        if play_to_gameover:
+            try:
+                sess.abandon_to_menu()
+                log("    [llm] run over -> returned FTL to the menu")
+            except Exception as e:  # noqa: BLE001
+                log(f"    [llm] abandon_to_menu failed: {e}")
+
     return agent_fn

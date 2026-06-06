@@ -289,6 +289,27 @@ class AgentSession:
             self.recorder.record("reset_episode", [act], obs)
         return obs
 
+    def abandon_to_menu(self, timeout: float = 30.0) -> Observation:
+        """Drive the current run back to the main menu WITHOUT starting a new game, so a
+        finished episode leaves FTL cleanly at the menu instead of paused mid-run. Safe/idempotent
+        at the menu. Uses the same return_to_menu + confirm (lose-progress dialog) actions the
+        reset machinery uses, looped until the menu is reached."""
+        try:
+            if not self.observe().game_started:
+                return self.observe()
+        except (FileNotFoundError, OSError):
+            pass
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self.step([{"type": "return_to_menu"}], advance_frames=30)
+            self.step([{"type": "confirm_menu"}], advance_frames=30)
+            try:
+                if not self.observe().game_started:
+                    break
+            except (FileNotFoundError, OSError):
+                pass
+        return self.observe()
+
     # ---- M3 convenience helpers (sensible per-action frame budgets) ----
     def jump(self, beacon_index: int, advance_frames: int = 240) -> Observation:
         """Jump and let the warp/arrival sequence settle before re-pausing."""
