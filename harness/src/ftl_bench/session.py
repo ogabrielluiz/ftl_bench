@@ -8,6 +8,7 @@ observation until the bridge acks that seq while paused.
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -18,9 +19,11 @@ from ftl_bench.observation import (
     ObservationValidationError,
 )
 
-# Default macOS FTL user folder (where the bridge reads/writes its files).
+# FTL user folder (where the bridge reads/writes its files). Honors the
+# FTL_SAVE_DIR env var so the harness is cross-platform: on Windows point it at
+# `…/Documents/My Games/FasterThanLight`; defaults to the macOS user folder.
 DEFAULT_USER_FOLDER = Path(
-    "~/Library/Application Support/FasterThanLight"
+    os.environ.get("FTL_SAVE_DIR", "~/Library/Application Support/FasterThanLight")
 ).expanduser()
 
 
