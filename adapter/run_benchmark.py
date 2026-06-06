@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import subprocess
 import sys
@@ -43,18 +44,53 @@ RESTART_SH = REPO / "scripts" / "restart_ftl.sh"
 
 FTL_PROC = "FTL Faster Than Light/FTL.app/Contents/MacOS/FTL"
 
+# Windows-via-WSL when FTL_SAVE_DIR points at a /mnt drive: the game runs as a
+# native Windows process (FTLGame.exe) and MUST be launched via Steam — only the
+# Steam launch loads the local xinput proxy that injects Hyperspace; a direct exe
+# launch (cmd/Start-Process) loads the system xinput and HS never injects.
+_WINDOWS = os.environ.get("FTL_SAVE_DIR", "").startswith("/mnt/")
+_PS = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+_TASKLIST = "/mnt/c/Windows/System32/tasklist.exe"
+_TASKKILL = "/mnt/c/Windows/System32/taskkill.exe"
+_STEAM_WIN = r"C:\Program Files (x86)\Steam\steam.exe"
+_FTL_APPID = "212680"
+
 
 def game_alive() -> bool:
     """Is the FTL game process running? (The freeze watchdog SIGKILLs a spinning game,
     so 'process gone' is our fast, reliable signal that an episode froze and died.)"""
+    if _WINDOWS:
+        r = subprocess.run([_TASKLIST, "/fi", "imagename eq FTLGame.exe"],
+                           capture_output=True, text=True)
+        return "FTLGame.exe" in r.stdout
     r = subprocess.run(["pgrep", "-f", FTL_PROC], capture_output=True, text=True)
     return bool(r.stdout.strip())
 
 
 def restart_ftl() -> None:
-    """Relaunch FTL to the MENU (recovers from a frozen/crashed/killed game). Mode 'none'
-    leaves it at the menu so reset_episode() does a single seeded start_game('new', seed),
-    instead of mode 'new' starting an unseeded game we'd immediately abandon."""
+    """Relaunch FTL to the MENU (recovers from a frozen/crashed/killed game)."""
+    if _WINDOWS:
+        save = Path(os.environ["FTL_SAVE_DIR"]).expanduser()
+        obs = save / "ftl_agent_observation.json"
+        subprocess.run([_TASKKILL, "/F", "/IM", "FTLGame.exe"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(3)
+        try:
+            obs.unlink()
+        except FileNotFoundError:
+            pass
+        subprocess.run([_PS, "-NoProfile", "-Command",
+                        f"Start-Process '{_STEAM_WIN}' -ArgumentList '-applaunch','{_FTL_APPID}'"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # wait for the bridge to write its first observation (HS injected, at menu)
+        for _ in range(90):
+            if obs.exists():
+                time.sleep(2)  # let the menu settle
+                return
+            time.sleep(2)
+        return
+    # macOS: relaunch to menu via the launcher script ('none' = leave at menu so
+    # reset_episode does a single seeded start_game).
     try:
         subprocess.run(["bash", str(RESTART_SH), "none"], timeout=200,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
