@@ -359,7 +359,7 @@ class AgentSession:
                 obs = self.client.read_latest()
                 if predicate(obs):
                     return obs
-            except (FileNotFoundError, ObservationValidationError):
+            except (FileNotFoundError, ObservationValidationError, PermissionError, OSError):
                 pass
             time.sleep(self.poll_interval)
         eff = self.step_timeout if timeout is None else timeout

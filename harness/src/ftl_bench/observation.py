@@ -5,6 +5,7 @@ Decoupled from the running game — operates purely on a JSON file path.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -69,7 +70,18 @@ class ObservationClient:
     def read_latest(self) -> Observation:
         if not self.path.exists():
             raise FileNotFoundError(f"observation file not found: {self.path}")
-        text = self.path.read_text(encoding="utf-8")
+        # On Windows the bridge replaces this file atomically (ReplaceFileA), so a
+        # concurrent read can briefly hit a sharing violation (PermissionError) or
+        # other transient drvfs OSError. Retry a few times before giving up.
+        text = ""
+        for attempt in range(9):
+            try:
+                text = self.path.read_text(encoding="utf-8")
+                break
+            except (PermissionError, OSError):
+                if attempt == 8:
+                    raise
+                time.sleep(0.05)
         try:
             data = json.loads(text)
         except json.JSONDecodeError as exc:
