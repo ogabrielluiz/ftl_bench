@@ -83,6 +83,15 @@ def restart_ftl() -> None:
                 (save / stale).unlink()
             except FileNotFoundError:
                 pass
+        # A process restart resets Lua _G, and the in-.dat bootstrap only (re)loads the external
+        # dev script when the reload marker is present (a prior launch consumed it). Re-deploy the
+        # dev script + touch the marker so the fresh bootstrap loads it and starts writing obs.
+        dev_src = REPO / "mod" / "ftl_bench_bridge" / "dev" / "ftl_bench_dev.lua"
+        try:
+            (save / "ftl_bench_dev.lua").write_bytes(dev_src.read_bytes())
+        except OSError:
+            pass
+        (save / "ftl_bench_reload").write_text("")  # touch: bootstrap consumes it within ~15 ticks
         subprocess.run([_PS, "-NoProfile", "-Command",
                         f"Start-Process '{_STEAM_WIN}' -ArgumentList '-applaunch','{_FTL_APPID}'"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
