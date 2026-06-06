@@ -1,27 +1,44 @@
 ---
 title: How scoring works
-description: Instances, goal-conditioned partial credit, GCS@1, tiers, and the baseline ladder.
+description: The benchmark metric is FTL's own native run score, plus a solve/win rate, over reproducible seeded instances.
 ---
 
-`ftl_bench` evaluates agents on reproducible **instances**, not on raw play, so results are
-comparable across models and runs.
+`ftl_bench` uses **FTL's own native run score** as the metric. It evaluates agents on reproducible
+**instances**, so results are comparable across models and runs.
+
+## The metric: FTL's native score
+
+At the end of every FTL run the game computes a score from how well you played: scrap collected,
+ships destroyed, beacons and sectors explored, and the flagship kill, all times a difficulty
+multiplier. That is the designers' own holistic measure of run quality, and it is what we report.
+
+Using the game's score instead of a coined metric has real advantages:
+
+- **Holistic.** It already weighs the things that matter (loot, kills, depth, the win), so we do
+  not have to invent and justify a formula.
+- **Non-saturating.** A high score essentially requires beating the flagship and playing
+  thoroughly, so the ceiling stays high as models improve.
+- **Gaming-resistant.** You cannot farm score by jumping in place; the game only rewards real
+  progress.
+- **Interpretable.** Anyone who has played FTL knows what a score means.
+
+The run's score is read live from the game (`ftl_score` in the observation) and taken at the
+natural game-over, which is exactly when [play-to-game-over](/reference/play-to-gameover/) ends a
+run.
+
+## Reported metrics
+
+- **FTL score** (headline): the mean of FTL's native run score over the suite, with a seed-based
+  standard error.
+- **Solve / win rate**: the fraction of instances that achieve the scenario goal. For full games
+  that is the win (flagship defeated).
+- **Efficiency**: jumps or turns per instance.
 
 ## Instances
 
 An **instance** is a fully specified, seeded scenario: `(seed, ship, difficulty, goal)`. The seed
-pins the map and events. The goal is a set of weighted sub-objectives, or, for full runs,
-milestone progress toward beating the flagship. The agent decides everything in-game; the harness
-scores only goal achievement.
-
-## Scoring
-
-- **Goal-conditioned partial credit.** Each instance earns `r ∈ [0,1]`, the weighted intersection
-  of achieved versus requested sub-objectives, times a **legitimacy gate** that collapses
-  metric-gaming (for example, jumping in place). `Score = 100 · r`.
-- **GCS@1** (Goal Completion Score), the headline metric, is the mean Score over the suite, with a
-  seed-based standard error.
-- **Solve rate** is the strict fraction of instances that fully achieve the goal.
-- **Efficiency** reports jumps or turns per instance.
+pins the map and events; difficulty is pinned so the score multiplier is constant and runs are
+comparable. The agent decides everything in-game.
 
 ## Tiers
 
@@ -37,17 +54,8 @@ Two reference agents make any score interpretable:
   stalemate-flee).
 
 A high agent score is meaningful because it sits between these floors and the unsaturated ceiling
-of full-run, beat-the-flagship progress.
+of actually beating the flagship.
 
-## Scenario types
-
-| Type | Goal |
-|---|---|
-| `survive_n_jumps` | make N jumps while staying alive |
-| `reach_sector` | advance to sector K |
-| `reach_sector_healthy` | reach sector K with hull and crew intact |
-| `full_run` | milestone progress toward beating the flagship (the unsaturated ceiling) |
-
-The benchmark code lives in `harness/src/ftl_bench/{scenario,scoring,aggregate}.py`, the suites in
+The scoring code lives in `harness/src/ftl_bench/{scoring,aggregate}.py`, the suites in
 `scenarios/`, and the runner in `adapter/run_benchmark.py`. See
 [Running and results](/evaluate/running/) to produce these numbers.

@@ -12,7 +12,7 @@ trajectory is scored and aggregated automatically. Capabilities verified live:
 - The full action set: power, crew, jump, event, fire, beam, leave (sector transition), plus
   cloak, battery, hack, drones, teleporter/boarding, mind control, doors, and store transactions.
 - Combat that resolves, autonomous start/restart and in-game reset, reproducible seeds.
-- Trajectory recording, scoring, and aggregation (GCS@1, solve rate).
+- Trajectory recording, scoring, and aggregation (mean FTL native score, solve/win rate).
 - The LLM track with pluggable backends, and play-to-game-over mode with a stall guard.
 
 ## Native x86 vs Rosetta

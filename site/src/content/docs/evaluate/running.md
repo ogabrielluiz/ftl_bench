@@ -33,16 +33,17 @@ Per instance you get a `Score` plus the sub-objective breakdown, then the aggreg
 
 ```
 == RESULTS ==
-  GCS@1 = 35.7 ± 12.4  |  Solve 2/7
+  FTL score 184 ± 31  |  Solve 1/7
   solve_pct: 35.7
   median_jumps_per_instance: 6
   by_type: {"survive_n_jumps": {...}, "reach_sector": {...}, ...}
   by_tier: {"public": {...}}
 ```
 
-`GCS@1` is the headline ([How scoring works](/introduction/scoring/)). `Solve N/M` is the strict
-count of fully achieved goals. The per-type and per-tier breakdowns show where an agent is strong
-or weak.
+`FTL score` (the mean of FTL's native run score) is the headline
+([How scoring works](/introduction/scoring/)). `Solve N/M` is the strict count of instances that
+achieved the goal (the win, for full games). The per-type and per-tier breakdowns show where an
+agent is strong or weak.
 
 ## What gets written
 

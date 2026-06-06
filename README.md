@@ -11,7 +11,7 @@ FTL is a real-time-with-pause roguelike: resource management, risk under uncerta
 - **Instance** = a fully-specified, seeded scenario `(seed, ship, difficulty, goal)`. The seed pins the map + events; the goal is a set of weighted sub-objectives.
 - **The agent decides everything in-game** (fight, flee, target, power, repair, navigate). The harness scores **only goal achievement** — no decision policy is baked into the env or scoring.
 - **Goal-conditioned partial credit**: each instance earns `r ∈ [0,1]` = the weighted intersection of achieved vs. requested sub-objectives, × a legitimacy gate that collapses metric-gaming (e.g. jumping in place). `Score = 100·r`.
-- **Headline metric — GCS@1** (Goal Completion Score) = the mean Score over the suite (± seed SE), alongside a strict **Solve Rate** (% of instances fully achieving the goal) and an **efficiency** axis (jumps/turns per instance).
+- **Headline metric: FTL score** = the mean of FTL's own native run score (scrap, kills, sectors, flagship, times difficulty) over the suite (± seed SE), alongside a strict **Solve / Win Rate** and an **efficiency** axis (jumps/turns per instance).
 - **Anti-memorization split**: a `public` tier to tune against and a held-out `semi_private` tier that is the leaderboard number.
 - **Baseline ladder**: a `random`-legal floor and a `scripted` heuristic floor, so a high agent score is interpretable.
 
@@ -29,11 +29,11 @@ cd harness && uv run python ../adapter/run_benchmark.py --agent llm --backend an
 cd harness && uv run python ../adapter/run_benchmark.py --agent llm --backend claude-cli --model sonnet           # no key: local `claude -p`
 ```
 The **LLM track** (`adapter/llm_agent.py`) drives the model over the same intent-level surface the baselines use: each turn it gets the decision-complete observation + the scenario goal + a short action history and replies with one command, dispatched through the shared `apply_command()` in `play_cli.py`. It decides everything — no scripted policy. `--backend anthropic` is the canonical, portable track (Anthropic Messages API); `--backend claude-cli` shells out to a local `claude -p` so you can run it with no API key. The agent's rules/instructions are a **version-controlled operating manual** at `prompts/ftl_agent_<v>.md` (select with `--prompt-version`); the version is recorded in each run's manifest and agent label, so a manual change is a distinct, comparable agent — not a silent drift.
-Output: per-instance `Score` + sub-objective breakdown, then the aggregate `GCS@1 ± SE | Solve N/M` with per-type/tier breakdown. Each instance's trajectory + a reproducibility manifest (seed, ship, schema, runner/agent version) is saved under `runs/benchmark/`. The benchmark code: `harness/src/ftl_bench/{scenario,scoring,aggregate}.py`, `scenarios/suite_v1.json`, `adapter/run_benchmark.py`.
+Output: per-instance `ftl_score` + breakdown, then the aggregate `FTL score ± SE | Solve N/M` with per-type/tier breakdown. Each instance's trajectory + a reproducibility manifest (seed, ship, schema, runner/agent version) is saved under `runs/benchmark/`. The benchmark code: `harness/src/ftl_bench/{scenario,scoring,aggregate}.py`, `scenarios/suite_v1.json`, `adapter/run_benchmark.py`.
 
-**Baseline ladder (v1 suite, 12 instances, FTL 1.6.13 + Hyperspace 1.22.2, macOS/Rosetta):**
+**Baseline ladder (LEGACY typed-suite numbers, FTL 1.6.13 + Hyperspace 1.22.2, macOS/Rosetta).** The metric is now FTL's native run score; these are the old goal-conditioned scores, kept for reference pending a re-baseline:
 
-| Agent | GCS@1 | Solve | survive_n_jumps | reach_sector | reach_sector_healthy | full_run |
+| Agent | score (legacy) | Solve | survive_n_jumps | reach_sector | reach_sector_healthy | full_run |
 |---|---|---|---|---|---|---|
 | **scripted** (heuristic floor) | **70.2 ± 12.4** | 7/12 | 100.0 | 70.0 | 91.7 | 4.6 |
 | **random** (legal-move floor) | **5.2 ± 5.2** | 0/12 | 20.8 | 0.0 | 0.0 | 0.0 |

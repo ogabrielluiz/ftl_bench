@@ -31,7 +31,7 @@ You should see per-instance scoring and then an aggregate line:
 
 ```
 == RESULTS ==
-  GCS@1 = 100.0 ± 0.0  |  Solve 1/1
+  FTL score 40.0 ± 0.0  |  Solve 1/1
 ```
 
 `--agent random` gives the legal-move floor for comparison.
@@ -53,7 +53,7 @@ To run your **own** model (any provider, a local model, or a full custom agent),
 
 ## 4. Read the results
 
-Each run prints per-instance `Score` plus the aggregate `GCS@1 ± SE | Solve N/M`, and writes the
+Each run prints per-instance `ftl_score` plus the aggregate `FTL score ± SE | Solve N/M`, and writes the
 trajectory and a reproducibility manifest under `runs/`. See
 [Running and results](/evaluate/running/) for the full flag set and how to interpret the output.
 
