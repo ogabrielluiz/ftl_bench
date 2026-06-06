@@ -1,10 +1,11 @@
 """Scoring / metrics for ftl_bench runs.
 
 `score_observation` summarizes a single state; `score_trajectory` aggregates a
-recorded run (raw stats). `score_instance` is the BENCHMARK scorer: goal-conditioned,
-partial-credit, reading only recorded observation fields (no env access, no policy) —
-the WebShop-style weighted intersection of achieved vs. requested sub-objectives, with
-a legitimacy gate against metric-gaming. r in [0,1], Score = 100*r.
+recorded run (raw stats). `score_instance` is the BENCHMARK scorer. The headline metric is
+FTL's own native run score (`ftl_score`, the game's holistic scrap/kills/sectors/flagship
+measure). It also computes a goal-conditioned `solved` flag (did the run achieve the scenario
+goal, e.g. the win) and a legitimacy gate against metric-gaming, all from recorded observation
+fields only (no env access, no policy).
 """
 from __future__ import annotations
 

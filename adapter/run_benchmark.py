@@ -1,7 +1,7 @@
 """ftl_bench scenario runner — the benchmark entry point.
 
 Runs an AGENT against the scenario suite and reports the headline metrics
-(GCS@1 + Solve Rate + per-type/tier breakdown). Each instance:
+(mean FTL score + Solve Rate + per-type/tier breakdown). Each instance:
   reset to the scenario's seed -> agent plays within the jump budget -> record the
   trajectory (with a reproducibility manifest) -> score_instance (goal-conditioned).
 
@@ -212,8 +212,8 @@ def run_instance(sess: AgentSession, scenario, agent_fn, agent_name, out_dir, lo
         sess._sync_seq()
     sess.recorder = None
     result = score_instance(load_trajectory(path), scenario)
-    log(f"  [{scenario.id}] score={result['score']} solved={result['solved']} "
-        f"breakdown={result['breakdown']}")
+    log(f"  [{scenario.id}] ftl_score={result.get('ftl_score', 0)} "
+        f"solved={result['solved']} breakdown={result['breakdown']}")
     return result
 
 
