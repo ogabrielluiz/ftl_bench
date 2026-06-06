@@ -24,8 +24,21 @@ scripts/restart_ftl.sh none                                   # launch FTL to th
 cd harness && uv run python ../adapter/run_benchmark.py --agent scripted   # scripted floor
 cd harness && uv run python ../adapter/run_benchmark.py --agent random      # random floor
 cd harness && uv run python ../adapter/run_benchmark.py --agent scripted --tier semi_private  # held-out leaderboard number
+# A real frontier model plays the suite (the LLM track), two backends:
+cd harness && uv run python ../adapter/run_benchmark.py --agent llm --backend anthropic --model claude-sonnet-4-6  # needs ANTHROPIC_API_KEY
+cd harness && uv run python ../adapter/run_benchmark.py --agent llm --backend claude-cli --model sonnet           # no key: local `claude -p`
 ```
+The **LLM track** (`adapter/llm_agent.py`) drives the model over the same intent-level surface the baselines use: each turn it gets the decision-complete observation + the scenario goal + a short action history and replies with one command, dispatched through the shared `apply_command()` in `play_cli.py`. It decides everything — no scripted policy. `--backend anthropic` is the canonical, portable track (Anthropic Messages API); `--backend claude-cli` shells out to a local `claude -p` so you can run it with no API key. The agent's rules/instructions are a **version-controlled operating manual** at `prompts/ftl_agent_<v>.md` (select with `--prompt-version`); the version is recorded in each run's manifest and agent label, so a manual change is a distinct, comparable agent — not a silent drift.
 Output: per-instance `Score` + sub-objective breakdown, then the aggregate `GCS@1 ± SE | Solve N/M` with per-type/tier breakdown. Each instance's trajectory + a reproducibility manifest (seed, ship, schema, runner/agent version) is saved under `runs/benchmark/`. The benchmark code: `harness/src/ftl_bench/{scenario,scoring,aggregate}.py`, `scenarios/suite_v1.json`, `adapter/run_benchmark.py`.
+
+**Baseline ladder (v1 suite, 12 instances, FTL 1.6.13 + Hyperspace 1.22.2, macOS/Rosetta):**
+
+| Agent | GCS@1 | Solve | survive_n_jumps | reach_sector | reach_sector_healthy | full_run |
+|---|---|---|---|---|---|---|
+| **scripted** (heuristic floor) | **70.2 ± 12.4** | 7/12 | 100.0 | 70.0 | 91.7 | 4.6 |
+| **random** (legal-move floor) | **5.2 ± 5.2** | 0/12 | 20.8 | 0.0 | 0.0 | 0.0 |
+
+The wide floor-to-heuristic gap (5 → 70) makes an agent score interpretable; the held-out `semi_private` tier (scripted 60.0) stays unsaturated, and `full_run` (beat-the-flagship progress) is near-zero — the unsaturated ceiling. A **frontier-LLM track is now wired** (`--agent llm`, above): a real model plays the suite over the same observe/act surface and is scored identically, so it slots into this ladder as a third row once a full pass is run.
 
 ## Why Hyperspace
 
@@ -77,6 +90,7 @@ An agent can play FTL through a turn-based loop, all **verified live** on FTL 1.
 | **Observation stream** (hull, reactor, systems, crew, weapons, enemy, map, events) | ✅ M1 |
 | **Pause-gating + closed loop** (`reset`/`observe`/`step`) | ✅ M2 |
 | **Actions**: `set_system_power`, `move_crew`, `jump`, `choose_event`, `fire_weapon` | ✅ M3 |
+| **Combat that resolves** (multi-shot weapons fire; autofire lands kills through flee dialogs) | ✅ |
 | **Autonomous start/restart + in-game reset** (`reset_episode(seed)`, no click) | ✅ |
 | **Reproducible seeds** (`start_game('new', seed=…)` → identical map) | ✅ M4 |
 | **MCP adapter** (LLM agent plays via tools) + scripted baseline agent | ✅ M5 |
@@ -102,7 +116,7 @@ The MCP server (`adapter/ftl_mcp_server.py`) exposes the env as tools for an LLM
 - [`docs/plans/2026-06-03-m1-observation-stream.md`](docs/plans/2026-06-03-m1-observation-stream.md) — M1 implementation plan
 
 ### Known gaps / next
-- **Store** transactions (M3 deferred) and beam weapons (M3 deferred).
+- **Store** transactions ✅ — `benchmark_store_{read,buy,sell}` bindings + `store_buy`/`store_sell`/`upgrade_system` actions let an agent read a store's inventory (names/prices/stock) and spend scrap (buy weapons/drones/systems/augments/repair/fuel, sell items, upgrade system max power). Beam weapons (two-point targeting) still deferred.
 
 ## Related
 

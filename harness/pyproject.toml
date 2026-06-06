@@ -7,6 +7,9 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# Occlusion-proof FTL window capture for the `screenshot` action (macOS). Without it the
+# capture falls back to an AppleScript-bounds region grab (may catch an overlapping window).
+screenshot = ["pyobjc-framework-Quartz>=10.0; sys_platform=='darwin'"]
 
 [build-system]
 requires = ["hatchling"]

@@ -35,15 +35,28 @@ from ftl_bench import (  # noqa: E402
 )
 from ftl_bench.aggregate import aggregate  # noqa: E402
 from baseline_agent import play as scripted_play  # noqa: E402
+from llm_agent import make_llm_agent  # noqa: E402
 
 RUNNER_VERSION = "v1"
 RESTART_SH = REPO / "scripts" / "restart_ftl.sh"
 
 
+FTL_PROC = "FTL Faster Than Light/FTL.app/Contents/MacOS/FTL"
+
+
+def game_alive() -> bool:
+    """Is the FTL game process running? (The freeze watchdog SIGKILLs a spinning game,
+    so 'process gone' is our fast, reliable signal that an episode froze and died.)"""
+    r = subprocess.run(["pgrep", "-f", FTL_PROC], capture_output=True, text=True)
+    return bool(r.stdout.strip())
+
+
 def restart_ftl() -> None:
-    """Force a clean FTL relaunch (recovers from a frozen/crashed game)."""
+    """Relaunch FTL to the MENU (recovers from a frozen/crashed/killed game). Mode 'none'
+    leaves it at the menu so reset_episode() does a single seeded start_game('new', seed),
+    instead of mode 'new' starting an unseeded game we'd immediately abandon."""
     try:
-        subprocess.run(["bash", str(RESTART_SH), "new"], timeout=200,
+        subprocess.run(["bash", str(RESTART_SH), "none"], timeout=200,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         pass
@@ -97,23 +110,35 @@ AGENTS = {"scripted": scripted, "random": random_play}
 
 # --- runner -------------------------------------------------------------------------
 
-def manifest(scenario, agent: str) -> dict:
+def manifest(scenario, agent: str, extra: dict | None = None) -> dict:
     """Reproducibility manifest: pins what's needed to compare numbers across runs."""
-    return {
+    m = {
         "scenario_id": scenario.id, "type": scenario.type, "seed": scenario.seed,
         "ship": scenario.ship, "difficulty": scenario.difficulty, "tier": scenario.tier,
         "agent": agent, "runner_version": RUNNER_VERSION, "ruleset": "v1",
         "schema_version": 3,
     }
+    if extra:
+        m.update(extra)  # e.g. the LLM track records {model, backend}
+    return m
 
 
-def run_instance(sess: AgentSession, scenario, agent_fn, agent_name, out_dir, log) -> dict:
+def run_instance(sess: AgentSession, scenario, agent_fn, agent_name, out_dir, log,
+                 extra_manifest=None) -> dict:
     path = out_dir / f"{scenario.id}.jsonl"
-    sess.recorder = TrajectoryRecorder(path, meta=manifest(scenario, agent_name))
+    sess.recorder = TrajectoryRecorder(path, meta=manifest(scenario, agent_name, extra_manifest))
     started = False
     for attempt in range(3):
+        # FAST freeze recovery: if a prior instance froze, the watchdog already SIGKILLed
+        # FTL — relaunch NOW instead of eating a 60s reset_episode timeout to discover it.
+        if not game_alive():
+            log(f"  [{scenario.id}] FTL not running (prior freeze?) — relaunching")
+            restart_ftl()
+            sess._sync_seq()
         try:
-            sess.reset_episode(seed=scenario.seed)
+            # Short timeout: a live game resets in well under 35s; a longer wait just means
+            # the game is freezing — fail fast, relaunch, retry rather than hang.
+            sess.reset_episode(seed=scenario.seed, timeout=35.0)
             started = True
             break
         except TimeoutError:
@@ -129,6 +154,12 @@ def run_instance(sess: AgentSession, scenario, agent_fn, agent_name, out_dir, lo
             restart_ftl()
         except Exception as e:  # noqa: BLE001
             log(f"  [{scenario.id}] agent error: {e}")
+    # If the episode froze the game (watchdog killed it during play), relaunch eagerly so
+    # the NEXT instance starts clean immediately rather than rediscovering death slowly.
+    if not game_alive():
+        log(f"  [{scenario.id}] FTL down after play (freeze) — relaunching for next instance")
+        restart_ftl()
+        sess._sync_seq()
     sess.recorder = None
     result = score_instance(load_trajectory(path), scenario)
     log(f"  [{scenario.id}] score={result['score']} solved={result['solved']} "
@@ -138,10 +169,22 @@ def run_instance(sess: AgentSession, scenario, agent_fn, agent_name, out_dir, lo
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--agent", choices=list(AGENTS), default="scripted")
+    ap.add_argument("--agent", choices=list(AGENTS) + ["llm"], default="scripted",
+                    help="scripted | random | llm (a real frontier model)")
+    ap.add_argument("--model", default=None,
+                    help="llm track: model id (default claude-sonnet-4-6 for anthropic)")
+    ap.add_argument("--backend", choices=["anthropic", "claude-cli"], default="anthropic",
+                    help="llm track: anthropic API (needs ANTHROPIC_API_KEY) | local claude -p")
+    ap.add_argument("--step-mult", type=int, default=8,
+                    help="llm track: max actions per instance = budget_jumps * this")
+    ap.add_argument("--prompt-version", default="v1",
+                    help="llm track: which prompts/ftl_agent_<v>.md manual to use (versioned)")
     ap.add_argument("--suite", default=str(REPO / "scenarios" / "suite_v1.json"))
     ap.add_argument("--tier", default=None, help="filter: public | semi_private | ...")
     ap.add_argument("--type", default=None, help="filter by scenario type")
+    ap.add_argument("--max-instances", type=int, default=None, help="cap # instances")
+    ap.add_argument("--budget-cap", type=int, default=None,
+                    help="cap each instance's jump budget (faster smoke runs)")
     ap.add_argument("--out", default="runs/benchmark")
     args = ap.parse_args()
 
@@ -150,32 +193,49 @@ def main() -> None:
         scenarios = [s for s in scenarios if s.tier == args.tier]
     if args.type:
         scenarios = [s for s in scenarios if s.type == args.type]
+    if args.budget_cap:
+        from dataclasses import replace
+        scenarios = [replace(s, budget_jumps=min(s.budget_jumps, args.budget_cap))
+                     for s in scenarios]
+    if args.max_instances:
+        scenarios = scenarios[: args.max_instances]
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     sess = AgentSession()
-    agent_fn = AGENTS[args.agent]
+    # The LLM track is a factory (model/backend); scripted/random are plain functions.
+    if args.agent == "llm":
+        agent_fn = make_llm_agent(args.model, args.backend, args.step_mult, args.prompt_version)
+        agent_label = f"llm-{args.backend}-{args.model or 'default'}-{args.prompt_version}"
+        extra_manifest = {"model": args.model or "default", "backend": args.backend,
+                          "prompt_version": args.prompt_version}
+    else:
+        agent_fn = AGENTS[args.agent]
+        agent_label = args.agent
+        extra_manifest = None
 
     def log(m):
         print(m, flush=True)
 
-    log(f"== ftl_bench: agent={args.agent}  instances={len(scenarios)} ==")
+    log(f"== ftl_bench: agent={agent_label}  instances={len(scenarios)} ==")
     results = []
     for sc in scenarios:
         log(f"-- {sc.id} ({sc.type}, seed {sc.seed}, budget {sc.budget_jumps}) --")
-        results.append(run_instance(sess, sc, agent_fn, args.agent, out_dir, log))
+        results.append(run_instance(sess, sc, agent_fn, agent_label, out_dir, log,
+                                    extra_manifest))
 
     agg = aggregate(results, scenarios)
-    agg["agent"] = args.agent
+    agg["agent"] = agent_label
     log("\n== RESULTS ==")
     log(f"  {agg['headline']}")
     for k in ("solve_pct", "median_jumps_per_instance"):
         log(f"  {k}: {agg[k]}")
     log(f"  by_type: {json.dumps(agg['by_type'])}")
     log(f"  by_tier: {json.dumps(agg['by_tier'])}")
-    (out_dir / f"summary_{args.agent}.json").write_text(
+    safe = agent_label.replace("/", "-").replace(":", "-")
+    (out_dir / f"summary_{safe}.json").write_text(
         json.dumps({"aggregate": agg, "instances": results}, indent=2))
-    log(f"\nsummary -> {out_dir / f'summary_{args.agent}.json'}")
+    log(f"\nsummary -> {out_dir / f'summary_{safe}.json'}")
 
 
 if __name__ == "__main__":

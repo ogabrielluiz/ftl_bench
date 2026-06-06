@@ -1,0 +1,289 @@
+"""ftl_bench LLM agent track — a real frontier model plays the suite.
+
+This is the agent that turns ftl_bench from "an env you poke by hand" into "a benchmark you
+run": `make_llm_agent(model, backend)` returns an `agent_fn(sess, scenario, log)` that
+`run_benchmark.py` drives exactly like the scripted/random baselines, so the same
+trajectory -> score_instance -> aggregate pipeline emits GCS@1 / solve-rate automatically.
+
+The model plays through the SAME surface a human-facing agent uses: each turn it receives the
+decision-complete `compact()` observation + the scenario goal + a short history of its recent
+actions, and replies with ONE play_cli command (`ACTION: <command>`), which is dispatched
+through the SHARED `apply_command()` so the LLM and the CLI have identical action semantics.
+The agent decides everything — no scripted policy (that's the benchmark's whole point).
+
+Two backends (pick whichever you can run):
+  - "anthropic": the canonical, portable track. Needs ANTHROPIC_API_KEY. `--model claude-...`.
+  - "claude-cli": shells out to the local `claude -p` (no API key; uses your Claude Code
+    auth). Slower per turn, but lets you validate the track end-to-end without a key.
+"""
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))           # play_cli
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "harness" / "src"))
+
+from play_cli import apply_command, compact  # noqa: E402
+
+PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+
+
+def load_prompt(version: str = "v1") -> str:
+    """Load the version-controlled FTL agent operating manual (the static rules + how-to-play).
+    The per-scenario GOAL is appended separately at runtime, so this file is goal-agnostic and
+    reusable across the suite. The version is part of the agent's identity (recorded in the run
+    manifest) — a different manual is a different agent, not a comparable one."""
+    path = PROMPTS_DIR / f"ftl_agent_{version}.md"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"prompt manual not found: {path} (available: "
+            f"{[p.name for p in PROMPTS_DIR.glob('ftl_agent_*.md')]})")
+    return path.read_text(encoding="utf-8")
+
+
+# verbs apply_command accepts from an agent (used to salvage a non-prefixed reply)
+KNOWN_VERBS = {"power", "fire", "beam", "jump", "event", "leave", "wait", "crew", "buy",
+               "sell", "upgrade", "cloak", "doors", "mindcontrol", "battery", "hack",
+               "drone", "dronerecall", "board", "recall"}
+TERMINAL = {"GAME_OVER", "DESTROYED", "FROZEN_KILLED", "ALIVE_BUT_UNRESPONSIVE"}
+
+
+def _attr(g, name, default=None):
+    """Read a goal field whether it's a SubObjective dataclass or a plain dict."""
+    return g.get(name, default) if isinstance(g, dict) else getattr(g, name, default)
+
+
+def _goal_text(scenario) -> str:
+    parts = []
+    for g in (getattr(scenario, "goal", None) or []):
+        op = "=" if _attr(g, "kind") == "boolean" else ">="
+        parts.append(f"{_attr(g, 'key')} {op} {_attr(g, 'target')} "
+                     f"(weight {_attr(g, 'weight', 1)})")
+    return "; ".join(parts) or "(survive and progress)"
+
+
+def build_system_prompt(scenario, manual: str) -> str:
+    """The manual + the ONE real objective: win the game. No artificial per-scenario sub-goals
+    — the agent plays the actual game of FTL with its own intelligence, and we measure how far
+    it gets toward beating the rebel flagship. The scenario only pins the seed (the map/RNG)."""
+    return (
+        f"{manual}\n\n"
+        f"## OBJECTIVE\n"
+        f"Play to WIN — get as far as you can toward destroying the rebel flagship at the end of "
+        f"sector 8. You have up to about {scenario.budget_jumps} jumps this run. You know FTL; "
+        f"every decision is yours."
+    )
+
+
+def build_turn_prompt(c: dict, history: list[str], step: int, jumps: int, budget: int) -> str:
+    hist = "\n".join(history[-8:]) if history else "(none yet)"
+    return (
+        f"Step {step} (jumps used {jumps}/{budget}).\n"
+        f"Recent actions:\n{hist}\n\n"
+        f"OBSERVATION:\n{json.dumps(c, separators=(',', ':'))}\n\n"
+        f"Decide ONE action. End with `ACTION: <command>`."
+    )
+
+
+def parse_action(text: str) -> tuple[str | None, list[str]]:
+    """Extract a (command, args) from the model's reply. Prefer an `ACTION:` line; else the
+    first line whose first token is a known verb. Returns (None, []) if nothing usable."""
+    if not text:
+        return None, []
+    lines = [ln.strip() for ln in text.strip().splitlines() if ln.strip()]
+    # 1) an explicit ACTION: line (last one wins — the model may restate)
+    for ln in reversed(lines):
+        low = ln.lower()
+        if low.startswith("action:"):
+            toks = ln.split(":", 1)[1].strip().strip("`").split()
+            if toks and toks[0].lower() in KNOWN_VERBS:
+                return toks[0].lower(), toks[1:]
+    # 2) salvage: any line that starts with a known verb
+    for ln in lines:
+        toks = ln.strip("`").split()
+        if toks and toks[0].lower() in KNOWN_VERBS:
+            return toks[0].lower(), toks[1:]
+    return None, []
+
+
+def _summarize(step: int, cmd: str, args: list[str], c: dict) -> str:
+    bits = [f"sector{c.get('sector')}", f"hull {c.get('hull')}"]
+    if c.get("enemy"):
+        bits.append("enemy:present")
+    if c.get("scrap") is not None:
+        bits.append(f"scrap{c.get('scrap')}")
+    if c.get("game_status"):
+        bits.append(c["game_status"])
+    return f"step{step}: '{cmd} {' '.join(args)}' -> " + " ".join(bits)
+
+
+def _state_sig(c: dict):
+    """Signature of the salient game state. If it's unchanged after an action, that action made
+    no progress — so the repeated-action nudge can fire on TRUE no-op loops (re-power a maxed
+    system, re-fire an autofiring weapon) while NOT discouraging productive waiting (a repair or
+    heal in progress changes `damage`/`hp`, so the signature changes and the nudge stays quiet)."""
+    en = c.get("enemy") or {}
+    sh = c.get("shots") or {}
+    return (
+        c.get("hull"), c.get("sector"), c.get("scrap"), c.get("fuel"), c.get("missiles"),
+        c.get("oxygen_pct"),
+        sum((s.get("damage") or 0) for s in c.get("systems", [])),
+        tuple(sorted(str(cr.get("hp")) for cr in c.get("crew", []))),
+        (en.get("hull") if en else None),
+        (c.get("map") or {}).get("at_exit"),
+        sh.get("fired"), sh.get("hit"),
+    )
+
+
+# --- backends -----------------------------------------------------------------------
+
+def anthropic_complete(system: str, user: str, model: str, max_tokens: int = 700) -> str:
+    """Canonical track: Anthropic Messages API over urllib (no SDK dependency). Retries a
+    couple times on transient overload (429/529)."""
+    import urllib.error
+    import urllib.request
+
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    if not key:
+        raise RuntimeError("ANTHROPIC_API_KEY not set (export it, or use --backend claude-cli)")
+    body = json.dumps({
+        "model": model, "max_tokens": max_tokens, "system": system,
+        "messages": [{"role": "user", "content": user}],
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages", data=body,
+        headers={"content-type": "application/json", "x-api-key": key,
+                 "anthropic-version": "2023-06-01"})
+    last = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=90) as r:
+                data = json.loads(r.read())
+            return "".join(b.get("text", "") for b in data.get("content", [])
+                           if b.get("type") == "text")
+        except urllib.error.HTTPError as e:  # noqa: PERF203
+            last = e
+            if e.code in (429, 500, 503, 529):
+                time.sleep(2 * (attempt + 1)); continue
+            raise
+    raise RuntimeError(f"anthropic API failed after retries: {last}")
+
+
+def claude_cli_complete(system: str, user: str, model: str | None) -> str:
+    """No-key track: drive the local `claude -p` headless CLI (uses Claude Code auth). One
+    self-contained prompt per turn; we parse one ACTION line out of stdout."""
+    prompt = (f"{system}\n\n{user}\n\n"
+              f"(Respond with one short reasoning sentence then a final `ACTION: <command>` "
+              f"line. Do not use any tools or read any files — answer only from the prompt.)")
+    cmd = ["claude", "-p", prompt]
+    if model:
+        cmd += ["--model", model]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    return r.stdout or r.stderr
+
+
+def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mult: int = 8,
+                   prompt_version: str = "v1"):
+    """Return an agent_fn(sess, scenario, log) that plays via the chosen model/backend, using the
+    version-controlled prompt manual `prompt_version`.
+
+    The session is already reset to the scenario seed by run_instance; we just play."""
+    if model is None:
+        model = "claude-sonnet-4-6" if backend == "anthropic" else "sonnet"
+    manual = load_prompt(prompt_version)  # load once; fail fast if the version is missing
+
+    def complete(system: str, user: str) -> str:
+        if backend == "claude-cli":
+            return claude_cli_complete(system, user, model)
+        return anthropic_complete(system, user, model)
+
+    def agent_fn(sess, scenario, log) -> None:
+        system = build_system_prompt(scenario, manual)
+        budget = scenario.budget_jumps
+        history: list[str] = []
+        jumps = 0
+        prev_action = None   # repeated-action nudge: break no-op loops (wait/fire/power spam)
+        prev_sig = None
+        repeat_count = 0
+        for step in range(budget * step_mult):
+            if jumps >= budget:
+                log(f"    [llm] jump budget {budget} reached"); break
+            try:
+                o = sess.observe()
+            except Exception:  # noqa: BLE001
+                time.sleep(0.2); continue
+            c = compact(o)
+            status = c.get("game_status")
+            if status in TERMINAL:
+                log(f"    [llm] episode over: {status}"); break
+            # resolve a blocking event automatically? No — the model decides (event is in obs).
+            try:
+                turn = build_turn_prompt(c, history, step, jumps, budget)
+                # Factual nudge to break no-op loops (the recurring failure mode: re-issuing an
+                # action that's already taken effect — power a system already at level, fire a
+                # weapon already autofiring, wait with nothing changing). State the fact; the
+                # agent still decides (no policy baked in).
+                if repeat_count >= 2:
+                    turn += (f"\n\nNOTE: you have issued the IDENTICAL action '{prev_action}' "
+                             f"{repeat_count + 1} times in a row with no meaningful change in the "
+                             f"observation — it has already taken effect or isn't possible now. "
+                             f"Pick a DIFFERENT action to make progress toward the goal.")
+                reply = complete(system, turn)
+            except Exception as e:  # noqa: BLE001 — a model/transport error ends the episode
+                log(f"    [llm] model error: {e}"); break
+            cmd, cargs = parse_action(reply)
+            if cmd is None:
+                history.append(f"step{step}: (no parseable action; waited)")
+                cmd, cargs = "wait", []
+            action_str = (cmd + " " + " ".join(map(str, cargs))).strip()
+            try:
+                o2 = apply_command(sess, cmd, cargs)
+            except TimeoutError:
+                raise  # let run_instance handle the freeze (relaunch + next instance)
+            except Exception as e:  # noqa: BLE001 — bad args / illegal action: tell the model, continue
+                history.append(f"step{step}: '{cmd} {' '.join(cargs)}' -> ERROR: {e}")
+                # a repeated illegal action is a no-op loop too (state can't change)
+                repeat_count = repeat_count + 1 if action_str == prev_action else 0
+                prev_action = action_str
+                continue
+            if cmd in ("jump", "leave"):
+                jumps += 1
+            c2 = compact(o2)
+            # No-op-loop detection. Non-`wait` commands are idempotent SETS (power a system to a
+            # level, target a weapon, move crew to a room) — re-issuing the SAME one does nothing,
+            # regardless of incidental state drift (e.g. oxygen creeping back up), so flag any
+            # identical repeat. `wait` is the exception: repeating it is productive WHILE the state
+            # is actually changing (a repair/heal in progress), so only flag a `wait` repeat when
+            # the salient state is unchanged.
+            sig = _state_sig(c2)
+            same = (action_str == prev_action)
+            productive_wait = (cmd == "wait" and sig != prev_sig)
+            repeat_count = repeat_count + 1 if (same and not productive_wait) else 0
+            prev_action, prev_sig = action_str, sig
+            # Direct feedback when the agent powers a BROKEN module: power can't restore a damaged
+            # or on-fire system — it needs a crew member in its room to repair/extinguish. The
+            # agent keeps re-powering broken modules because nothing tells it power is the wrong fix.
+            broken_note = ""
+            if cmd == "power" and cargs:
+                try:
+                    _tsys = next((sy for sy in c2.get("systems", [])
+                                  if sy.get("id") == int(cargs[0])), None)
+                    if _tsys and (_tsys.get("damage") or _tsys.get("on_fire")):
+                        _cond = "ON FIRE" if _tsys.get("on_fire") else "DAMAGED"
+                        broken_note = (f"  [NOTE: {_tsys.get('name')} is {_cond} — powering does NOT "
+                                       f"fix a broken module; send a crew member to room "
+                                       f"{_tsys.get('room')} to repair/extinguish it.]")
+                except Exception:  # noqa: BLE001
+                    pass
+            history.append(_summarize(step, cmd, cargs, c2) + broken_note)
+            _int = c2.get("interrupted_by")
+            log(f"    [llm] step {step}: {cmd} {' '.join(cargs)} -> "
+                f"sector {c2.get('sector')} hull {c2.get('hull')} jumps {jumps}"
+                + (f"  [INTERRUPT:{_int}]" if _int else ""))
+
+    return agent_fn

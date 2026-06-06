@@ -130,6 +130,13 @@ def fight(sess, o, log, flee_below=8):
         if not o.enemy_ship or (eh or 0) <= 0:
             log(f"  enemy destroyed (player hull {player_hull(o)})")
             return o, "kill"
+        # A damaged enemy pops a "trying to escape! / Continue..." dialog that PAUSES the
+        # whole combat sim (event_pause). Dismiss it so our autofire keeps hitting and can
+        # finish the kill before it jumps -- otherwise combat freezes and we'd false-stall.
+        if o.choice_box_open and (o.event or {}).get("choices"):
+            n = len(o.event["choices"])
+            o = sess.choose_event(n - 1, advance_frames=120)   # last = "Continue/leave"
+            continue
         why = flee_reason(o, flee_below)
         if why:
             log(f"  unsafe ({why}) — fleeing")
@@ -196,14 +203,21 @@ def play(sess, jumps, log):
     # "Fight the ship" option that sits before the leave choice.
     ev = {"text": None, "order": [], "step": 0}
     iters, timeouts, combat_streak, leave_tries, jump_wait = 0, 0, 0, 0, 0
+    loop_tick = None
     while stats["jumps"] < jumps and iters < jumps * 8:
         iters += 1
         try:
             o = sess.observe()
+            loop_tick = o.tick   # advances every frame while the engine is alive (even paused)
         except Exception:  # noqa: BLE001
             time.sleep(0.2); continue
         if (player_hull(o) or 0) <= 0:
             log("ship destroyed"); break
+        if o.raw and o.raw.get("game_over"):
+            # GAME OVER (crew death leaves hull>0, so the hull check above misses it). The
+            # engine sits at the game-over screen acking no-op actions — without this the loop
+            # would spin to its iter cap. Terminal: end the episode (the runner resets).
+            log("GAME OVER (run ended); stopping episode"); break
         try:
             if o.choice_box_open and (o.event or {}).get("choices"):
                 n = len(o.event["choices"])
@@ -275,14 +289,20 @@ def play(sess, jumps, log):
                 power_core(sess, o)
             timeouts = 0
         except TimeoutError:
-            # An ack can lag transiently (long warp/arrival), but persistent timeouts
-            # mean the game-side loop is actually wedged (Hyperspace's freeze watchdog
-            # fires) -- the harness can't unstick that, so bail promptly rather than
-            # hammer a frozen game.
+            # An ack can lag transiently (long warp/arrival), but persistent timeouts mean
+            # the game-side loop is wedged (FTL's enemy-AI freeze) or the watchdog already
+            # SIGKILLed it. Tell them apart by the obs `tick`: it advances every frame while
+            # the engine lives (even paused), so a tick that DIDN'T move during the timeout
+            # window means frozen/dead -> bail at once instead of hammering it for 4 rounds.
             timeouts += 1
-            log(f"action ack timed out [{timeouts}]")
-            if timeouts >= 4:
-                log("too many consecutive timeouts (game may be frozen); stopping"); break
+            frozen = False
+            try:
+                frozen = (sess.observe().tick == loop_tick)
+            except Exception:  # noqa: BLE001
+                frozen = True   # can't even read obs -> treat as dead
+            log(f"action ack timed out [{timeouts}]{' — game frozen/dead' if frozen else ''}")
+            if frozen or timeouts >= 4:
+                log("game frozen/unresponsive; stopping episode"); break
 
     o = sess.observe()
     log(f"\n== run summary == hull {player_hull(o)}/30  "

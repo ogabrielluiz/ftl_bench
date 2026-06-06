@@ -71,6 +71,110 @@ def leave_sector() -> dict[str, Any]:
     return {"type": "leave_sector"}
 
 
+def store_buy(index: int) -> dict[str, Any]:
+    """Buy the store's `buy`-list item #index (weapon/drone/system/augment/repair/resource).
+    Scrap is deducted by the game's StoreBox::Purchase. Only takes effect at a store."""
+    return {"type": "store_buy", "index": int(index)}
+
+
+def store_sell(index: int) -> dict[str, Any]:
+    """Sell the store's `sell`-list (your inventory) item #index for scrap."""
+    return {"type": "store_sell", "index": int(index)}
+
+
+def upgrade_system(system_id: int) -> dict[str, Any]:
+    """Spend scrap to raise a system's MAX power by one (e.g. a 2nd shield layer = shields
+    0). Available anytime, not just at a store."""
+    return {"type": "upgrade_system", "system_id": int(system_id)}
+
+
+def cloak() -> dict[str, Any]:
+    """Engage the cloaking system (needs it installed + powered): evasion boost +
+    untargetable for a level-scaled timer. No-op if already cloaked / on cooldown."""
+    return {"type": "cloak"}
+
+
+def set_doors(open: bool, ship_id: int = 0, room_id: int | None = None,
+              include_airlocks: bool = False) -> dict[str, Any]:
+    """Open (vent) or close doors. ship_id 0=player, 1=enemy. `room_id` limits to doors of
+    one room (else all interior doors); `include_airlocks` vents to space. Used to fight
+    fires / suffocate boarders by venting their room's oxygen."""
+    a: dict[str, Any] = {"type": "set_doors", "open": bool(open), "ship_id": int(ship_id),
+                         "include_airlocks": bool(include_airlocks)}
+    if room_id is not None:
+        a["room_id"] = int(room_id)
+    return a
+
+
+def mind_control(target_room_id: int, target_crew_id: int | None = None) -> dict[str, Any]:
+    """Mind-control an enemy crew member in `target_room_id` (see enemy.rooms_with_crew).
+    Needs the Mind Control system installed + powered + off cooldown."""
+    a: dict[str, Any] = {"type": "mind_control", "target_room_id": int(target_room_id)}
+    if target_crew_id is not None:
+        a["target_crew_id"] = int(target_crew_id)
+    return a
+
+
+def battery() -> dict[str, Any]:
+    """Engage the Backup Battery (system id 12, needs it installed + powered): grants
+    temporary extra reactor power for a level-scaled timer, then locks on cooldown.
+    No-op if already discharging / on cooldown / depowered. Player ship, no target."""
+    return {"type": "battery"}
+
+
+def fire_beam(weapon_slot: int, room_a: int, room_b: int | None = None,
+              target_ship_id: int = 1) -> dict[str, Any]:
+    """Fire a BEAM weapon: sweep from room_a's center to room_b's center on the target ship
+    (1 = enemy, default). Two DISTINCT rooms chain damage across the hull; if room_b is omitted
+    it equals room_a (degenerate single point, no chaining). Only takes effect when the slot is
+    a powered beam (obs weapon_type=="BEAM" / is_beam / targets_required==2)."""
+    if room_b is None:
+        room_b = room_a
+    return {"type": "fire_beam", "weapon_slot": int(weapon_slot),
+            "room_a": int(room_a), "room_b": int(room_b), "target_ship_id": int(target_ship_id)}
+
+
+def hack_system(target_system_id: int = 0) -> dict[str, Any]:
+    """Deploy the Hacking drone at an enemy SYSTEM and arm the disruptive pulse. target_system_id:
+    enemy system to hack (shields=0, engines=1, weapons=3, drones=4, piloting=6, cloaking=10,
+    mind=14; see enemy.rooms for what the enemy has). Needs the Hacking system installed (buy at
+    a store) + powered (set_system_power 15, >=1). No-op if not installed/powered, the enemy lacks
+    that system, or our hacking is ion-locked."""
+    return {"type": "hack_system", "target_system_id": int(target_system_id)}
+
+
+def deploy_drone(slot: int | None = None, power_level: int | None = None,
+                 allow_crew_drone: bool = False) -> dict[str, Any]:
+    """Power the drone system to deploy a drone. `slot` = loadout slot index (from
+    obs.player_ship.drones.slots); omit to deploy the first unpowered SAFE (space-drone) slot.
+    Needs Drone Control installed + powered + (for combat/boarder) drone parts. Defense(0)/
+    Combat(1)/Shield(7) are SpaceDrones (safe). allow_crew_drone=True is required for crew-drone
+    types (repair 2, battle 3, boarder 4, ship-repair 5) — off by default (Rosetta teardown class)."""
+    a: dict[str, Any] = {"type": "deploy_drone"}
+    if slot is not None:
+        a["slot"] = int(slot)
+    if power_level is not None:
+        a["power_level"] = int(power_level)
+    if allow_crew_drone:
+        a["allow_crew_drone"] = True
+    return a
+
+
+def recall_drones() -> dict[str, Any]:
+    """Power the drone system down to 0 (recall all space drones). No-op without the system."""
+    return {"type": "recall_drones"}
+
+
+def teleport_crew(command: int = 1, target_room_id: int = -1) -> dict[str, Any]:
+    """Send (command=1) / recall (command=2) ORGANIC boarders to/from an enemy room. SEND:
+    target_room_id = enemy room to board (-1 = random); needs >=1 organic crew in
+    player_ship.teleporter.tele_room_id (move them there first). RECALL: target_room_id = the
+    enemy room your boarders are in (see player_ship.teleporter.organic_aboard_by_room); -1 lets
+    the engine resolve it. Needs Teleporter (id 9) installed + powered + charged. Crew-drones are
+    skipped (Rosetta teardown safety)."""
+    return {"type": "teleport_crew", "command": int(command), "target_room_id": int(target_room_id)}
+
+
 class AgentSession:
     """Closed-loop session: reset / observe / step over the paused bridge."""
 
@@ -197,11 +301,45 @@ class AgentSession:
             advance_frames=advance_frames,
         )
 
-    def leave_sector(self, advance_frames: int = 360) -> Observation:
-        """Leave the sector from the exit beacon to the next sector. Needs a generous
-        frame budget: the commit, new-sector generation, warp, and arrival all run
-        within this advance before the bridge re-pauses."""
-        return self.step([leave_sector()], advance_frames=advance_frames)
+    def fire_beam(self, weapon_slot: int, room_a: int, room_b: int | None = None,
+                  target_ship_id: int = 1, advance_frames: int = 150) -> Observation:
+        return self.step(
+            [fire_beam(weapon_slot, room_a, room_b, target_ship_id)],
+            advance_frames=advance_frames,
+        )
+
+    def hack_system(self, target_system_id: int = 0, advance_frames: int = 120) -> Observation:
+        """Deploy + arm the hacking drone at an enemy system. The generous budget lets the drone
+        fly across and the first pulse land before the bridge re-pauses."""
+        return self.step([hack_system(target_system_id)], advance_frames=advance_frames)
+
+    def leave_sector(self, advance_frames: int = 360, max_attempts: int = 6) -> Observation:
+        """Leave the sector from the exit beacon to the next sector, reliably.
+
+        `benchmark_leave_sector` only SETS the transition flags (bOpen /
+        bChoosingNewSector / finalSectorChoice); FTL's StarMap::OnLoop commits them
+        (SelectNewSector -> AdvanceWorldLevel -> travel) on a *later* tick. A single
+        fixed advance can re-pause mid-transition before the commit lands, so one
+        `leave` call read as a silent no-op to a real agent (it took ~5 manual retries
+        to cross). Pump the action until the sector actually increments — the action
+        should do what it says. Re-issuing mid-warp is a safe no-op (the Lua jump_ready
+        guard skips it) that just advances frames, so each retry lets the transition
+        progress. Stop early if a hard precondition fails (enemy present / left the
+        exit) so a genuinely-refused leave doesn't spin the full budget."""
+        start_sector = (self.observe().map or {}).get("sector")
+        obs = self.step([leave_sector()], advance_frames=advance_frames)
+        for _ in range(max_attempts - 1):
+            m = obs.map or {}
+            cur = m.get("sector")
+            if start_sector is not None and cur is not None and cur > start_sector:
+                break  # committed — the sector advanced
+            if not m.get("at_exit"):
+                break  # no longer on the exit beacon; nothing left to pump
+            if obs.enemy_ship is not None:
+                break  # refused: can't leave with a live enemy (re-issuing won't help)
+            # preconditions still hold (incl. a drive mid-charge) -> pump more frames
+            obs = self.step([leave_sector()], advance_frames=advance_frames)
+        return obs
 
     # ---- internals ----------------------------------------------------
     def _write_action_atomic(self, payload: dict[str, Any]) -> None:

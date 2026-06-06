@@ -1,0 +1,15 @@
+{
+  "_about": "Play-the-game benchmark: the agent plays a full FTL game from a seed toward the REAL objective — beat the rebel flagship. The agent is given NO artificial sub-goals (it just plays to win); the score measures how far its own intelligence carries it. progress milestone: 8 sectors crossed + 3 flagship phases = 11 (a full win). The seed only pins the map/RNG.",
+  "ruleset_version": "v2",
+  "scenarios": [
+    { "id": "GAME-s1", "type": "full_run", "seed": 1, "tier": "public",
+      "budget_jumps": 40, "min_distinct_beacons": 6,
+      "goal": [{"key": "progress", "target": 11, "kind": "milestone", "weight": 1.0}] },
+    { "id": "GAME-s2", "type": "full_run", "seed": 2, "tier": "public",
+      "budget_jumps": 40, "min_distinct_beacons": 6,
+      "goal": [{"key": "progress", "target": 11, "kind": "milestone", "weight": 1.0}] },
+    { "id": "GAME-s7", "type": "full_run", "seed": 7, "tier": "semi_private",
+      "budget_jumps": 40, "min_distinct_beacons": 6,
+      "goal": [{"key": "progress", "target": 11, "kind": "milestone", "weight": 1.0}] }
+  ]
+}

@@ -30,6 +30,26 @@ rm -f "$SAVE/hs_crash.flag"
 defaults write com.example.FTL NSAppSleepDisabled -bool YES 2>/dev/null || true
 defaults write com.example.FTL LSAppNapIsDisabled -bool YES 2>/dev/null || true
 
+# Silence the macOS crash dialog. FTL can SIGBUS in its own drone teardown under Rosetta
+# (RepairDrone::~RepairDrone via WorldManager::ClearLocation on a sector crossing); the
+# process is already dead and the harness relaunches it, so the "FTL quit unexpectedly"
+# dialog only piles up on screen and blocks nothing — suppress it for hands-off runs.
+defaults write com.apple.CrashReporter DialogType none 2>/dev/null || true
+
+# Make Hyperspace's freeze watchdog AUTONOMOUS. FTL's own enemy AI can hard-freeze
+# (infinite loop in `ShipAI::CheckPowerLevels` → `DroneSystem::PowerDrone` →
+# `CrewMember::Restart` when a drone-equipped enemy deploys a boarding drone — seen on
+# the seed-3 "Attack the Rebels" ship). The watchdog otherwise pops a macOS "Force
+# Quit?" dialog that BLOCKS on a human; this env var makes it SIGKILL the spinning game
+# after ~5s instead, so the runner detects the dead game and relaunches unattended.
+export HYPERSPACE_FORCE_EXIT_ON_FREEZE=1
+
+# Stabilize the drone lifecycle: our rebuilt Hyperspace dylib refuses ENEMY drone
+# deployment under this flag, which removes the two Rosetta drone bugs at the root —
+# the RepairDrone teardown SIGBUS on sector crossings and the boarding-drone AI freeze.
+# (Belt-and-suspenders with the freeze watchdog above, which only RECOVERS from a hang.)
+export FTL_BENCH_STABILIZE_DRONES=1
+
 # Launch the Hyperspace.command launcher DIRECTLY — it sets DYLD_INSERT_LIBRARIES
 # and execs FTL so the bridge dylib is injected. Do NOT use `open "$FTL"`: on this
 # Steam install LaunchServices starts the vanilla MacOS/FTL binary directly, the
