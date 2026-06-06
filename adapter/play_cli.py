@@ -183,9 +183,19 @@ def compact(o) -> dict:
     if o.enemy_ship:
         en = o.enemy_ship
         sh = en.get("shields") or {}
+        # enemy "active" = still fighting with weapons. An enemy that has FORFEIT the fight
+        # (given up / fleeing) depowers its guns — its weapon system drops to 0 power and no
+        # weapon is powered. Surfacing this lets the agent tell a live threat from one that has
+        # quit, instead of dumping ammo into a ship that's already leaving.
+        _ew = en.get("weapons") or []
+        _wsys = next((s for s in (en.get("systems") or []) if s.get("id") == 3), None)
+        _enemy_active = bool((_wsys and (_wsys.get("power") or 0) > 0)
+                             or any(w.get("powered") for w in _ew))
         st["enemy"] = {
             "hull": _pair(en.get("hull")),
             "shields": f"{sh.get('layers')}L charger={sh.get('charger')}" if sh else None,
+            # still fighting (weapons powered) vs forfeit/giving up (guns depowered)
+            "active": _enemy_active,
             # enemy evasion (dodge %): how often OUR shots miss them. High = beams/lasers/missiles
             # whiff — disable their engines (hack/ion/board) or expect misses before spending
             # limited missiles. This is why a run can waste missiles on an evasive auto-ship.
@@ -344,6 +354,25 @@ def apply_command(s: AgentSession, cmd: str, args: list[str]):
     raise ValueError(f"unknown command {cmd!r}")
 
 
+def _ftl_alive() -> bool:
+    """Is the FTL game process running? Platform-aware: Windows-via-WSL (FTL_SAVE_DIR points at a
+    /mnt drive) checks the native FTLGame.exe via tasklist; macOS uses pgrep on the app binary.
+    The old macOS-only pgrep falsely reported FROZEN_KILLED on Windows (it can't see a Windows
+    process), mislabeling a perfectly live game."""
+    import os
+    import subprocess
+    if os.environ.get("FTL_SAVE_DIR", "").startswith("/mnt/"):
+        try:
+            r = subprocess.run(["/mnt/c/Windows/System32/tasklist.exe", "/fi",
+                                "imagename eq FTLGame.exe"], capture_output=True, text=True)
+            return "FTLGame.exe" in r.stdout
+        except Exception:  # noqa: BLE001
+            return True  # can't tell -> don't cry freeze
+    r = subprocess.run(["pgrep", "-f", "FTL Faster Than Light/FTL.app/Contents/MacOS/FTL"],
+                       capture_output=True, text=True)
+    return bool(r.stdout.strip())
+
+
 def main() -> None:
     if len(sys.argv) < 2:
         print(json.dumps({"error": "no command", "usage": __doc__.splitlines()[0]}))
@@ -423,11 +452,7 @@ def main() -> None:
         # engine freezes and the watchdog SIGKILLs FTL — so a stale-but-valid-looking obs
         # could mislead the agent into thinking the game is live. Flag a dead process.
         if cmd == "obs":
-            import subprocess
-            alive = subprocess.run(
-                ["pgrep", "-f", "FTL Faster Than Light/FTL.app/Contents/MacOS/FTL"],
-                capture_output=True, text=True).stdout.strip()
-            if not alive:
+            if not _ftl_alive():
                 out["game_status"] = "FROZEN_KILLED"
                 out["hint"] = "FTL is not running (froze and was killed); this snapshot is stale — the episode is over"
         print(json.dumps(out, indent=2))
@@ -436,10 +461,7 @@ def main() -> None:
         # Distinguish a hard engine FREEZE from a transient hiccup: if the FTL process is
         # gone (the freeze watchdog SIGKILLs a spinning game) or unresponsive, say so
         # plainly so the caller restarts the episode instead of retrying a dead game.
-        import subprocess
-        alive = subprocess.run(
-            ["pgrep", "-f", "FTL Faster Than Light/FTL.app/Contents/MacOS/FTL"],
-            capture_output=True, text=True).stdout.strip()
+        alive = _ftl_alive()
         if isinstance(e, TimeoutError):
             out["game_status"] = "ALIVE_BUT_UNRESPONSIVE" if alive else "FROZEN_KILLED"
             out["hint"] = ("the FTL engine hard-froze and the watchdog killed it; this "
