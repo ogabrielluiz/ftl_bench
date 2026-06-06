@@ -17,16 +17,20 @@ FTL is a real-time-with-pause roguelike: resource management, risk under uncerta
 
 **Scenario types (v1 — run on today's action set):** `survive_n_jumps` (make N jumps alive), `reach_sector` (advance to sector K), `reach_sector_healthy` (reach K with hull + crew intact — a multi-attribute goal), `full_run` (milestone progress toward beating the flagship — the unsaturated ceiling). Higher-signal micro-encounters (`win_this_combat`, `escape_a_crisis`, `event_risk_choice`) and the flagship/store tiers are next (see `docs/NEXT.md`).
 
-**Run it:**
+**Run it** (the harness runs on native Windows, WSL, or macOS, and drives FTL for you):
 ```bash
-defaults write com.example.FTL NSAppSleepDisabled -bool YES   # one-time: tick unfocused
-scripts/restart_ftl.sh none                                   # launch FTL to the menu
+# One-time setup, per platform:
+#   Windows: install FTL via Steam + the bench Hyperspace mod (scripts/setup_pc.sh). The runner
+#            launches and restarts FTL through Steam itself, so no env vars are needed.
+#   macOS:   defaults write com.example.FTL NSAppSleepDisabled -bool YES   # keep it ticking unfocused
+#            scripts/restart_ftl.sh none                                    # launch FTL to the menu
+
 cd harness && uv run python ../adapter/run_benchmark.py --agent scripted   # scripted floor
 cd harness && uv run python ../adapter/run_benchmark.py --agent random      # random floor
 cd harness && uv run python ../adapter/run_benchmark.py --agent scripted --tier semi_private  # held-out leaderboard number
 # A real frontier model plays the suite (the LLM track), two backends:
 cd harness && uv run python ../adapter/run_benchmark.py --agent llm --backend anthropic --model claude-sonnet-4-6  # needs ANTHROPIC_API_KEY
-cd harness && uv run python ../adapter/run_benchmark.py --agent llm --backend claude-cli --model sonnet           # no key: local `claude -p`
+cd harness && uv run python ../adapter/run_benchmark.py --agent llm --backend claude-cli --model claude-opus-4-8   # no key: local `claude -p`
 ```
 The **LLM track** (`adapter/llm_agent.py`) drives the model over the same intent-level surface the baselines use: each turn it gets the decision-complete observation + the scenario goal + a short action history and replies with one command, dispatched through the shared `apply_command()` in `play_cli.py`. It decides everything — no scripted policy. `--backend anthropic` is the canonical, portable track (Anthropic Messages API); `--backend claude-cli` shells out to a local `claude -p` so you can run it with no API key. The agent's rules/instructions are a **version-controlled operating manual** at `prompts/ftl_agent_<v>.md` (select with `--prompt-version`); the version is recorded in each run's manifest and agent label, so a manual change is a distinct, comparable agent — not a silent drift.
 Output: per-instance `ftl_score` + breakdown, then the aggregate `FTL score ± SE | Solve N/M` with per-type/tier breakdown. Each instance's trajectory + a reproducibility manifest (seed, ship, schema, runner/agent version) is saved under `runs/benchmark/`. The benchmark code: `harness/src/ftl_bench/{scenario,scoring,aggregate}.py`, `scenarios/suite_v1.json`, `adapter/run_benchmark.py`.
@@ -83,7 +87,7 @@ The harness keeps the game **paused by default** and unpauses in controlled incr
 
 ## Status — working end-to-end ✅
 
-An agent can play FTL through a turn-based loop, all **verified live** on FTL 1.6.13 + Hyperspace 1.22.2 (macOS):
+An agent can play FTL through a turn-based loop, all **verified live** on native Windows (FTL via Steam, no WSL) and on macOS (FTL 1.6.13 + Hyperspace 1.22.2):
 
 | Capability | State |
 |---|---|
@@ -101,13 +105,15 @@ An agent can play FTL through a turn-based loop, all **verified live** on FTL 1.
 
 ### Quick start (game already built; see `scripts/`)
 ```bash
-defaults write com.example.FTL NSAppSleepDisabled -bool YES   # one-time: tick unfocused
-scripts/restart_ftl.sh none                                   # launch FTL to the menu
+# Windows: launch FTL once via Steam (the runner relaunches it as needed).
+# macOS only:
+#   defaults write com.example.FTL NSAppSleepDisabled -bool YES   # keep it ticking unfocused
+#   scripts/restart_ftl.sh none                                   # launch FTL to the menu
 cd harness && uv run python ../adapter/baseline_agent.py --new --seed 42 --jumps 6 --record runs/run.jsonl
 ```
 The MCP server (`adapter/ftl_mcp_server.py`) exposes the env as tools for an LLM agent.
 
-**Two operating caveats:** (1) FTL must not be App-Napped — the `defaults` line above keeps it ticking in the background so the harness drives it unattended. (2) The mic-permission dialog reappears only after a Hyperspace **C++ rebuild** (code-signature change); it persists across plain relaunches.
+**Platform notes.** On **native Windows** FTL must be launched through Steam (`steam.exe -applaunch 212680`), which the runner does for you; a direct exe launch skips the Hyperspace injection and the bridge never loads. Windows Defender can briefly lock the action/observation files, so the harness retries those file operations. On **macOS**, keep FTL from being App-Napped with the `defaults` line above, and note the mic-permission dialog reappears after a Hyperspace C++ rebuild (it persists across plain relaunches).
 
 ### Docs
 - [`docs/specs/2026-06-03-ftl-agent-interface-design.md`](docs/specs/2026-06-03-ftl-agent-interface-design.md) — M1 design spec
