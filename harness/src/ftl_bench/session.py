@@ -383,7 +383,17 @@ class AgentSession:
     def _write_action_atomic(self, payload: dict[str, Any]) -> None:
         tmp = self.action_path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(payload), encoding="utf-8")
-        tmp.replace(self.action_path)  # atomic rename on the same filesystem
+        # The bridge holds ftl_agent_action.json open to read it, so on Windows the
+        # replace can briefly hit a sharing violation (PermissionError / WinError 5)
+        # or other transient OSError. Retry a few times — mirrors the obs-read retry.
+        for attempt in range(9):
+            try:
+                tmp.replace(self.action_path)  # atomic rename on the same filesystem
+                return
+            except (PermissionError, OSError):
+                if attempt == 8:
+                    raise
+                time.sleep(0.05)
 
     def _wait_for(
         self, predicate: Callable[[Observation], bool], timeout: float | None = None
