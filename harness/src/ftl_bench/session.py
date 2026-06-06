@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import time
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -33,6 +34,28 @@ def ftl_user_folder() -> Path:
 
 
 DEFAULT_USER_FOLDER = ftl_user_folder()
+
+
+# Reliable "is the game actually dead?" check for freeze detection. The observation `tick`
+# can't tell an alive-but-idle game from a dead one (the bridge rewrites obs only on a state
+# change, so tick stalls whenever the game sits paused/idle), so freeze detection must look at
+# the process, not the obs. Platform-aware: native Windows / WSL via tasklist, macOS via pgrep.
+_MAC_FTL_PROC = "FTL Faster Than Light/FTL.app/Contents/MacOS/FTL"
+
+
+def ftl_process_alive() -> bool:
+    native_win = os.name == "nt"
+    wsl_win = os.environ.get("FTL_SAVE_DIR", "").startswith("/mnt/")
+    try:
+        if native_win or wsl_win:
+            tasklist = "tasklist" if native_win else "/mnt/c/Windows/System32/tasklist.exe"
+            r = subprocess.run([tasklist, "/fi", "imagename eq FTLGame.exe"],
+                               capture_output=True, text=True)
+            return "FTLGame.exe" in r.stdout
+        r = subprocess.run(["pgrep", "-f", _MAC_FTL_PROC], capture_output=True, text=True)
+        return bool(r.stdout.strip())
+    except Exception:  # noqa: BLE001
+        return True  # can't tell -> don't declare a live game dead
 
 
 def set_system_power(system_id: int, level: int) -> dict[str, Any]:

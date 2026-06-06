@@ -22,6 +22,7 @@ from ftl_bench import (  # noqa: E402
     score_trajectory,
     set_system_power,
 )
+from ftl_bench.session import ftl_process_alive  # noqa: E402
 
 # system ids
 SHIELDS, ENGINES, OXYGEN, WEAPONS = 0, 1, 2, 3
@@ -203,12 +204,10 @@ def play(sess, jumps, log):
     # "Fight the ship" option that sits before the leave choice.
     ev = {"text": None, "order": [], "step": 0}
     iters, timeouts, combat_streak, leave_tries, jump_wait = 0, 0, 0, 0, 0
-    loop_tick = None
     while stats["jumps"] < jumps and iters < jumps * 8:
         iters += 1
         try:
             o = sess.observe()
-            loop_tick = o.tick   # advances every frame while the engine is alive (even paused)
         except Exception:  # noqa: BLE001
             time.sleep(0.2); continue
         if (player_hull(o) or 0) <= 0:
@@ -289,19 +288,17 @@ def play(sess, jumps, log):
                 power_core(sess, o)
             timeouts = 0
         except TimeoutError:
-            # An ack can lag transiently (long warp/arrival), but persistent timeouts mean
-            # the game-side loop is wedged (FTL's enemy-AI freeze) or the watchdog already
-            # SIGKILLed it. Tell them apart by the obs `tick`: it advances every frame while
-            # the engine lives (even paused), so a tick that DIDN'T move during the timeout
-            # window means frozen/dead -> bail at once instead of hammering it for 4 rounds.
+            # An ack can lag transiently (long warp/arrival, or slow file I/O on native Windows
+            # where Defender/NTFS briefly locks the action/obs files). Persistent timeouts mean
+            # the game-side loop is wedged or the watchdog already SIGKILLed it. The obs `tick`
+            # can't tell these apart — the bridge rewrites obs only on a state change, so tick
+            # legitimately stalls while the game sits paused/idle (it false-flagged live games as
+            # frozen and bailed on the first lag). Use the FTL process: only a gone/killed process
+            # is truly dead; otherwise tolerate a few transient lags and let the action re-issue.
             timeouts += 1
-            frozen = False
-            try:
-                frozen = (sess.observe().tick == loop_tick)
-            except Exception:  # noqa: BLE001
-                frozen = True   # can't even read obs -> treat as dead
-            log(f"action ack timed out [{timeouts}]{' — game frozen/dead' if frozen else ''}")
-            if frozen or timeouts >= 4:
+            dead = not ftl_process_alive()
+            log(f"action ack timed out [{timeouts}]{' — game frozen/dead' if dead else ''}")
+            if dead or timeouts >= 4:
                 log("game frozen/unresponsive; stopping episode"); break
 
     o = sess.observe()
