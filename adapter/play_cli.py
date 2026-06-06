@@ -103,6 +103,10 @@ def compact(o) -> dict:
         # engines + piloting + cloak. High = shots whiff; raise engines/cloak to dodge more.
         "evasion": ps.get("evasion"),
         "crew_count": len(ps.get("crew", []) or []),
+        # FTL's own run score (the game's native scoring: scrap, kills, sectors, flagship x
+        # difficulty). The benchmark's headline metric for full games; absent until in a run.
+        **({"ftl_score": (o.raw or {}).get("ftl_score")}
+           if (o.raw or {}).get("ftl_score") is not None else {}),
     }
     # A destroyed ship leaves hull<=0 for the frames before FTL's formal GAME OVER screen
     # flips `game_over`; that window read as a live-but-stuck state to a real agent. Treat

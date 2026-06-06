@@ -712,6 +712,20 @@ local function add_m3_obs(obs)
     obs.enemy_ship.fleeing = (jumping or (mx and mx > 0 and cur and cur > 0)) and true or false
   end)
 
+  -- FTL's NATIVE run score: the game's own scoring (scrap collected, ships destroyed, beacons /
+  -- sectors explored, the flagship kill, times the difficulty multiplier). Read from the bound
+  -- ScoreKeeper (Hyperspace.Score.currentScore). This is the benchmark's headline metric for full
+  -- games: the designers' holistic, non-saturating, gaming-resistant measure, instead of a coined
+  -- one. (currentScore.score may only be final at game-over; play-to-gameover scores there.)
+  pcall(function()
+    local sk = Hyperspace.Score
+    if not sk then pcall(function() sk = Hyperspace.Global.GetInstance():GetScoreKeeper() end) end
+    if sk and sk.currentScore then
+      pcall(function() obs.ftl_score = sk.currentScore.score end)
+      pcall(function() obs.ftl_score_sector = sk.currentScore.sector end)
+    end
+  end)
+
   -- shot-outcome feed: surface OUR shots' effectiveness THIS combat so the agent can tell its
   -- weapons are MISSING (vs landing / shield-blocked) and adapt (target engines / flee). The
   -- tallies are filled by the projectile event hooks above; reset when combat ends.
