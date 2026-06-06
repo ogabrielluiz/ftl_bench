@@ -158,20 +158,26 @@ def _state_sig(c: dict):
 
 
 def _progress_sig(c: dict):
-    """What counts as PROGRESS toward winning, for the play-to-gameover stall guard. Unlike
-    `_state_sig` (which flags identical-action no-ops), this asks "did the run move forward?":
-    advancing the map (jump = new position / sector / reaching the exit), winning the current
-    fight (enemy hull dropping or the enemy gone), or gaining resources (scrap). It deliberately
-    EXCLUDES your own hull and incidental micro-state (oxygen, system damage, shots-fired) so a
-    combat STALEMATE — trading the odd blow while neither killing the enemy nor jumping away —
-    still counts as no progress and trips the stall cutoff."""
+    """Did the agent meaningfully AFFECT the game this turn? The play-to-gameover stall guard
+    resets whenever this changes; it only trips when NOTHING changes for `stall_limit` turns —
+    a true idle / no-op loop. It counts BOTH goal progress (map move via sector/current_pos/
+    at_exit, enemy damaged/gone, scrap gained) AND active ship-management (fires being fought,
+    systems repaired, intruders cleared, hull/oxygen/crew-hp changing). The latter is crucial:
+    an agent putting out fires, repairing, healing or repelling boarders is NOT stalling even
+    though it isn't advancing the map — penalizing that was wrong. Only genuine inactivity
+    (repeating an idempotent command, or idling at full health without jumping) is a stall."""
     en = c.get("enemy") or {}
     m = c.get("map") or {}
     return (
-        c.get("sector"), c.get("scrap"),
-        m.get("current_pos"), m.get("at_exit"),
-        bool(en), (en.get("hull") if en else None),
-        c.get("game_status"),
+        # goal progress
+        c.get("sector"), c.get("scrap"), m.get("current_pos"), m.get("at_exit"),
+        bool(en), (en.get("hull") if en else None), c.get("game_status"),
+        # active ship-management (handling a crisis is NOT a stall)
+        c.get("hull"), c.get("oxygen_pct"),
+        sum((s.get("damage") or 0) for s in (c.get("systems") or [])),
+        sum(int(f.get("fires") or 0) for f in (c.get("fires") or [])),
+        len(c.get("intruders") or []),
+        tuple(sorted(str(cr.get("hp")) for cr in (c.get("crew") or []))),
     )
 
 
