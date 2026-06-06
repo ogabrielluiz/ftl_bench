@@ -6,7 +6,7 @@ FTL is a real-time-with-pause roguelike: resource management, risk under uncerta
 
 ## The benchmark: a scenario suite scored by goal achievement
 
-Inspired by the design of canonical agent benchmarks — **ARC-AGI** (a held-out task suite measuring generalization, not memorization), **WebShop** (instruction-conditioned goals with a dense partial-credit reward), and **VideoGameBench / BALROG** (LLM agents driving real games to milestone progress) — `ftl_bench` evaluates agents on a suite of reproducible **scenario instances**, not on raw play.
+`ftl_bench` evaluates agents on a suite of reproducible **scenario instances**, not on raw play.
 
 - **Instance** = a fully-specified, seeded scenario `(seed, ship, difficulty, goal)`. The seed pins the map + events; the goal is a set of weighted sub-objectives.
 - **The agent decides everything in-game** (fight, flee, target, power, repair, navigate). The harness scores **only goal achievement** — no decision policy is baked into the env or scoring.

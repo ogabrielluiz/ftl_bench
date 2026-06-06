@@ -1,0 +1,48 @@
+---
+title: ftl_bench
+description: A game benchmark for LLM agents. Evaluate your model or agent by having it play FTL Faster Than Light.
+template: splash
+hero:
+  tagline: A game benchmark for LLM agents. Bring your model or agent, have it play FTL Faster Than Light through a clean turn-based interface, and measure how far it gets.
+  actions:
+    - text: The benchmark
+      link: /introduction/the-benchmark/
+      icon: right-arrow
+    - text: Quickstart
+      link: /evaluate/quickstart/
+      icon: rocket
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+`ftl_bench` evaluates agents through a game: a solo, long-horizon one. Your model plays
+*FTL: Faster Than Light* turn by turn, managing power, crew and weapons; fighting, fleeing and
+surviving events; jumping across a branching map toward the rebel flagship. The harness scores
+how far it gets. There is no scripted policy in the way.
+
+<CardGrid stagger>
+	<Card title="Bring your own model or agent" icon="rocket">
+		Plug a model in as a one-function backend, or wire your whole agent around the env. The
+		same harness drives everything, so results stay comparable. See
+		[Bring your model or agent](/evaluate/bring-your-model/).
+	</Card>
+	<Card title="Resists saturation" icon="seti:lock">
+		FTL is a long sequence of interdependent decisions under uncertainty: resource management,
+		combat micro, risk, and planning across sectors. There is no single right move and the
+		ceiling is high.
+	</Card>
+	<Card title="Scored by goal achievement" icon="approve-check">
+		Goal-conditioned partial credit with a legitimacy gate. Headline metric **GCS@1**, a strict
+		solve rate, and random plus scripted baselines for context.
+	</Card>
+	<Card title="Reproducible and transparent" icon="document">
+		Seed-pinned runs, held-out tiers, and a full trajectory plus manifest logged for every run.
+	</Card>
+</CardGrid>
+
+## Get going
+
+- **[Quickstart](/evaluate/quickstart/)**: run a baseline, then your model.
+- **[Bring your model or agent](/evaluate/bring-your-model/)**: the integration contract.
+- **[Install the game](/install/pc/)**: set up FTL and Hyperspace (PC recommended).
