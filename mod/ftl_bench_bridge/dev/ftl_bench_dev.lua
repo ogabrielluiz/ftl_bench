@@ -690,6 +690,28 @@ local function add_m3_obs(obs)
     pcall(function() obs.enemy_ship.evasion = en:GetDodgeFactor() end)
   end)
 
+  -- COMBAT AVAILABILITY: a human knows "I can't shoot anymore" because the targeting cursor
+  -- disappears (nothing to aim at). The programmatic `fire` API has no such cue, so surface it
+  -- explicitly:
+  --   targetable = you can actually aim a weapon at the enemy right now. FALSE once the enemy is
+  --     warping out (bJumping) or destroyed -- firing then hits nothing.
+  --   fleeing    = the enemy has FORFEIT and is charging its FTL drive to escape (or already
+  --     warping out). The fight is effectively over; finishing the kill is a race vs its jump.
+  --   jump_charge_pct = how close the enemy is to escaping (0..1).
+  pcall(function()
+    local en = Hyperspace.ships and Hyperspace.ships.enemy
+    if not (en and obs.enemy_ship) then return end
+    local destroyed, jumping = false, false
+    pcall(function() destroyed = en.bDestroyed end)
+    pcall(function() jumping = en.bJumping end)
+    obs.enemy_ship.targetable = (not destroyed and not jumping) and true or false
+    local cur, mx = 0, 0
+    pcall(function() cur = en.jump_timer.first end)
+    pcall(function() mx  = en.jump_timer.second end)
+    if mx and mx > 0 then obs.enemy_ship.jump_charge_pct = math.min(1.0, (cur or 0) / mx) end
+    obs.enemy_ship.fleeing = (jumping or (mx and mx > 0 and cur and cur > 0)) and true or false
+  end)
+
   -- shot-outcome feed: surface OUR shots' effectiveness THIS combat so the agent can tell its
   -- weapons are MISSING (vs landing / shield-blocked) and adapt (target engines / flee). The
   -- tallies are filled by the projectile event hooks above; reset when combat ends.

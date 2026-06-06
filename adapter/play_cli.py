@@ -196,6 +196,13 @@ def compact(o) -> dict:
             "shields": f"{sh.get('layers')}L charger={sh.get('charger')}" if sh else None,
             # still fighting (weapons powered) vs forfeit/giving up (guns depowered)
             "active": _enemy_active,
+            # targetable = you can actually aim a weapon at it now (false once it's warping out
+            # or gone — firing then hits NOTHING, the agent's equivalent of "no targeting cursor").
+            "targetable": en.get("targetable"),
+            # fleeing = it has forfeit and is charging its FTL drive to escape (jump_charge_pct).
+            **({"fleeing": True} if en.get("fleeing") else {}),
+            **({"jump_charge_pct": round(en.get("jump_charge_pct"), 2)}
+               if en.get("jump_charge_pct") else {}),
             # enemy evasion (dodge %): how often OUR shots miss them. High = beams/lasers/missiles
             # whiff — disable their engines (hack/ion/board) or expect misses before spending
             # limited missiles. This is why a run can waste missiles on an evasive auto-ship.
