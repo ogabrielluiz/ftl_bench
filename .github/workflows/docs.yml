@@ -1,0 +1,45 @@
+# Build the Astro Starlight docs in site/ and deploy to GitHub Pages.
+#
+# One-time setup (after the repo is public, or on a plan with Pages for private repos):
+#   Repo Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
+# The site is served at https://ogabrielluiz.github.io/ftl_bench/ (see site/astro.config.mjs
+# `site` + `base`). The push trigger is scoped to site/** so committing this workflow alone
+# does not fire it; use "Run workflow" to deploy on demand.
+name: docs
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**']
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; don't cancel an in-progress one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build with Astro
+        uses: withastro/action@v3
+        with:
+          path: ./site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

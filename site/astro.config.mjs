@@ -4,6 +4,9 @@ import starlight from '@astrojs/starlight';
 
 // https://astro.build/config
 export default defineConfig({
+	// GitHub Pages (project site): served under https://ogabrielluiz.github.io/ftl_bench/
+	site: 'https://ogabrielluiz.github.io',
+	base: '/ftl_bench',
 	integrations: [
 		starlight({
 			title: 'ftl_bench',
