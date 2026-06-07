@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -30,7 +31,13 @@ def ftl_user_folder() -> Path:
         return Path(env).expanduser()
     if os.name == "nt":
         return Path("~/Documents/My Games/FasterThanLight").expanduser()
-    return Path("~/Library/Application Support/FasterThanLight").expanduser()
+    if sys.platform == "darwin":
+        return Path("~/Library/Application Support/FasterThanLight").expanduser()
+    # Linux / other POSIX: FTL writes to the XDG data dir (do NOT fall through to the macOS
+    # path — all of POSIX shares os.name == 'posix', so an explicit darwin check is required).
+    xdg = os.environ.get("XDG_DATA_HOME")
+    base = Path(xdg).expanduser() if xdg else Path("~/.local/share").expanduser()
+    return base / "FasterThanLight"
 
 
 DEFAULT_USER_FOLDER = ftl_user_folder()
