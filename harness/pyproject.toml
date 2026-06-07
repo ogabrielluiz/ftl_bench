@@ -1,9 +1,32 @@
 [project]
-name = "ftl_bench"
-version = "0.1.0"
-description = "FTL agent benchmark harness — observation stream client (M1)"
+name = "ftl-bench"
+version = "0.2.1"
+description = "A turn-based, intent-level environment + scenario suite for evaluating LLM agents on FTL: Faster Than Light"
+readme = "README.md"
 requires-python = ">=3.11"
+authors = [{ name = "ogabrielluiz" }]
+keywords = ["benchmark", "agents", "llm", "evaluation", "ftl", "game-playing"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+# NOTE: no license is declared yet — pick one (add `license` here + a top-level LICENSE file).
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/ogabrielluiz/ftl_bench"
+Repository = "https://github.com/ogabrielluiz/ftl_bench"
+
+[project.scripts]
+ftlbench = "ftl_bench.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
@@ -15,8 +38,22 @@ screenshot = ["pyobjc-framework-Quartz>=10.0; sys_platform=='darwin'"]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# A build hook vendors the repo's sibling data dirs (adapter/, scenarios/, prompts/, mod/,
+# scripts/, README) into src/ftl_bench/_bundled/ so BOTH the wheel and the sdist are
+# self-contained. See harness/hatch_build.py for why force-include alone cannot do this.
+[tool.hatch.build.hooks.custom]
+path = "hatch_build.py"
+
+# Include the build-vendored data even though it is .gitignored.
+[tool.hatch.build]
+artifacts = ["src/ftl_bench/_bundled/**"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/ftl_bench"]
+exclude = ["**/__pycache__", "**/*.pyc", "**/runs/**"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/hatch_build.py", "/README.md", "/pyproject.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

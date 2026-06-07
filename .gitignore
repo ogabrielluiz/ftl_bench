@@ -24,3 +24,6 @@ action.json
 # Build
 build/
 dist/
+# vendored into the package at build time by harness/hatch_build.py (not a source of truth)
+src/ftl_bench/_bundled/
+harness/src/ftl_bench/_bundled/
