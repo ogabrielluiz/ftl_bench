@@ -40,7 +40,8 @@ crisis. The agent has unlimited thinking time; the clock only moves when it acts
 
 The in-game Lua sandbox has no sockets or file IO of its own, so the bridge talks to the harness
 through JSON files in FTL's user folder: an observation file the harness reads and an action file
-the bridge applies. The harness is pointed at that folder with `FTL_SAVE_DIR`.
+the bridge applies. The harness finds that folder automatically on native Windows, or via
+`FTL_SAVE_DIR` on WSL and macOS.
 
 ## Why Hyperspace
 

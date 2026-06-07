@@ -8,11 +8,12 @@ This gets you from a fresh checkout to a scored run. It assumes FTL and Hyperspa
 
 ## 1. Point the harness at FTL
 
-The harness talks to the running game through files in FTL's user folder. Set `FTL_SAVE_DIR` to
-that folder so the harness reads and writes the right place.
+The harness talks to the running game through files in FTL's user folder. On **native Windows**
+there is nothing to do: it finds the folder (`Documents\My Games\FasterThanLight`) automatically.
+On **WSL or macOS**, set `FTL_SAVE_DIR` to that folder:
 
 ```bash
-# PC (Windows / WSL): the Windows user folder, via /mnt/c
+# WSL: the Windows user folder, via /mnt/c
 export FTL_SAVE_DIR="/mnt/c/Users/<you>/Documents/My Games/FasterThanLight"
 # macOS
 export FTL_SAVE_DIR="$HOME/Library/Application Support/FasterThanLight"

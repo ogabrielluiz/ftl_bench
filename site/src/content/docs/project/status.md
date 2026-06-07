@@ -17,10 +17,11 @@ trajectory is scored and aggregated automatically. Capabilities verified live:
 
 ## Native x86 vs Rosetta
 
-The benchmark runs on both macOS (under Rosetta) and natively on a Windows/WSL PC. The PC path is
-recommended: native x86 removes the address-translation crash class that freezes jumps and sector
-transitions under Rosetta. On native x86 the scripted baseline runs jumps, combat, and a sector
-crossing crash-free; under Rosetta those same operations can freeze, which caps full-length runs.
+The benchmark runs on native Windows (the recommended path), on WSL, and on macOS (under Rosetta).
+The runner drives FTL on all three; native Windows needs no WSL and no env vars. Native x86
+removes the address-translation crash class that freezes jumps and sector transitions under
+Rosetta. On native x86 the scripted baseline runs jumps, combat, and a sector crossing crash-free;
+under Rosetta those same operations can freeze, which caps full-length runs.
 
 ## Baseline ladder
 
