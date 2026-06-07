@@ -87,10 +87,15 @@ def test_summarize_attempt_outcomes():
     assert "destroyed" in destroyed.outcome.lower()
 
     survived = summarize_attempt(base, _result(ftl_score=40, solved=False, sector=2, hull=20, jumps=5), 0)
-    assert "did not meet the goal" in survived.outcome
+    assert "did not win" in survived.outcome
 
     won = summarize_attempt(base, _result(ftl_score=99, solved=True, sector=3, hull=30, jumps=8), 0)
-    assert "solved" in won.outcome.lower()
+    assert "met the scenario goal" in won.outcome
+
+    # Regression: the outcome headline must be framed in GAME terms, never "jumps" — surfacing
+    # the jump counter is what made reflections conclude "the goal is jumps".
+    assert "jump" not in survived.outcome.lower()
+    assert "jump" not in destroyed.outcome.lower()
 
 
 def test_summarize_attempt_empty_action_is_wait():
@@ -110,6 +115,10 @@ def test_digest_includes_header_and_steps():
     assert "Attempt 1" in d and "ship destroyed" in d
     assert "ftl_score=67" in d and "solved=False" in d
     assert "step 0: jump->b3" in d
+    # the score is kept but demoted to a labeled measurement; the {'jumps': ...} breakdown that
+    # leaked "the goal is jumps" is no longer surfaced in the headline
+    assert "measure" in d.lower()
+    assert "Sub-objective credit" not in d and "0.5" not in d
 
 
 def test_digest_truncates_long_transcripts():

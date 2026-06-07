@@ -55,11 +55,19 @@ def test_from_dict_minimal_applies_defaults():
     # Optional fields default to their declared values.
     assert obs.paused is False
     assert obs.choice_box_open is False
+    assert obs.game_over is False
     assert obs.last_action_seq is None
     assert obs.player_ship is None
     assert obs.enemy_ship is None
     assert obs.map is None
     assert obs.event is None
+
+
+def test_from_dict_reads_game_over_flag():
+    # The bridge sets game_over when the run has ended (crew dead / ship lost / win); the harness
+    # uses it to hard-restart instead of spinning the menu-return actions at the GAME OVER screen.
+    assert Observation.from_dict(_minimal_payload(game_over=True)).game_over is True
+    assert Observation.from_dict(_minimal_payload(game_over=False)).game_over is False
 
 
 def test_from_dict_preserves_raw_payload():
@@ -179,11 +187,28 @@ def test_client_accepts_str_path_and_stores_as_path(tmp_path):
     assert isinstance(client.read_latest(), Observation)
 
 
-def test_read_latest_missing_file_raises_filenotfound(tmp_path):
+def test_read_latest_missing_file_raises_filenotfound(tmp_path, monkeypatch):
+    # A briefly-absent obs file (just after a restart) is retried and re-raised after the budget.
+    import ftl_bench.observation as obs_mod
+    monkeypatch.setattr(obs_mod.time, "sleep", lambda *_a, **_k: None)
     client = ObservationClient(tmp_path / "does_not_exist.json")
-    with pytest.raises(FileNotFoundError) as exc:
+    with pytest.raises(FileNotFoundError):
         client.read_latest()
-    assert "observation file not found" in str(exc.value)
+
+
+def test_read_latest_retries_after_missing_file_then_succeeds(tmp_path, monkeypatch):
+    # The restart window: the file is briefly absent, then the bridge re-creates it. The same
+    # retry loop that absorbs PermissionError now absorbs FileNotFoundError (an OSError subclass).
+    p = tmp_path / "ftl_agent_observation.json"
+    p.write_text("{}", encoding="utf-8")
+    calls, _ = _patch_read_text_failing_then_ok(
+        monkeypatch,
+        [FileNotFoundError("absent"), FileNotFoundError("absent")],
+        _minimal_payload(tick=7),
+    )
+    obs = ObservationClient(p).read_latest()
+    assert obs.tick == 7
+    assert calls["n"] == 3
 
 
 def test_read_latest_invalid_json_raises_validation_error(tmp_path):

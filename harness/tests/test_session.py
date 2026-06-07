@@ -111,3 +111,23 @@ def test_step_times_out_without_bridge(tmp_path):
     sess.reset()
     with pytest.raises(TimeoutError):
         sess.step([set_system_power(0, 1)])  # no bridge ever acks seq 1
+
+
+def test_abandon_to_menu_bails_immediately_at_game_over(tmp_path):
+    # The crew-death / win GAME OVER screen can't be cleared by return_to_menu/confirm_menu, so
+    # abandon_to_menu must NOT spin the menu loop to its timeout — it returns at once and issues
+    # no action (the caller's reset hard-restarts FTL instead). With no bridge present, spinning
+    # would otherwise burn the full timeout; this returns fast and writes no action file.
+    obs = {
+        "schema_version": 3, "tick": 1, "seed": 0,
+        "game_started": True, "paused": True, "game_over": True,
+        "last_action_seq": 7,
+        "player_ship": {"hull": {"current": 0, "max": 30}}, "enemy_ship": None,
+    }
+    (tmp_path / "ftl_agent_observation.json").write_text(json.dumps(obs))
+    sess = AgentSession(tmp_path, step_timeout=0.3)
+    start = time.monotonic()
+    out = sess.abandon_to_menu(timeout=30.0)
+    assert out.game_over is True
+    assert time.monotonic() - start < 5.0          # did not spin to the 30s timeout
+    assert not (tmp_path / "ftl_agent_action.json").exists()   # issued no menu-return action

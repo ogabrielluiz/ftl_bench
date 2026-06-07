@@ -3,13 +3,17 @@ title: Play-to-game-over mode
 description: Run an agent until the game actually ends, with a stall guard that ends idle runs as a loss.
 ---
 
-By default the LLM track plays up to a fixed jump budget. **Play-to-game-over mode** instead has
-the agent play a full game until it actually ends, with a guard that turns dawdling into an
-automatic loss.
+**Play-to-game-over is the default LLM mode** (`--mode gameover`): the agent plays a full game
+until it actually ends, with a guard that turns dawdling into an automatic loss. This is the
+canonical track — the goal is to *win the game* (beat the rebel flagship), and the headline FTL run
+score measures how far it got. The bounded jump-budget run is the opt-in `--mode budget` instead.
 
 ```bash
-python3 adapter/run_benchmark.py --agent llm --backend <yours> --model <id> \
-  --play-to-gameover --stall-limit 10
+# gameover is the default — this is the canonical run:
+python3 adapter/run_benchmark.py --agent llm --backend <yours> --model <id> --stall-limit 10
+
+# opt out to the bounded jump-budget probe:
+python3 adapter/run_benchmark.py --agent llm --backend <yours> --model <id> --mode budget
 ```
 
 ## Termination

@@ -309,7 +309,14 @@ class AgentSession:
         """Start a fresh seeded episode, even from in-game: abandon the current run
         back to the main menu, then launch a new game. (start_game only works from
         the menu; this works anywhere.)"""
-        if not self.observe().game_started:
+        try:
+            started = self.observe().game_started
+        except (OSError, ObservationValidationError):
+            # A Windows file-race during a just-completed restart (obs briefly absent/locked)
+            # must not abort the reset: assume we're in-game and fall through to issuing the
+            # reset_episode action — the _wait_for calls below already tolerate these.
+            started = True
+        if not started:
             return self.start_game("new", seed=seed)
         self._sync_seq()
         self.action_seq += 1
@@ -333,8 +340,15 @@ class AgentSession:
         at the menu. Uses the same return_to_menu + confirm (lose-progress dialog) actions the
         reset machinery uses, looped until the menu is reached."""
         try:
-            if not self.observe().game_started:
-                return self.observe()
+            o = self.observe()
+            if not o.game_started:
+                return o
+            if o.game_over:
+                # A real GAME OVER screen (crew dead / ship lost / win) is NOT dismissable by the
+                # in-game return_to_menu/confirm_menu actions — those handle the "lose progress"
+                # pause-menu flow, not the GAME OVER buttons. Spinning them just burns the whole
+                # timeout (~35 no-op actions). Leave it: the caller's reset hard-restarts FTL.
+                return o
         except (FileNotFoundError, OSError):
             pass
         deadline = time.monotonic() + timeout

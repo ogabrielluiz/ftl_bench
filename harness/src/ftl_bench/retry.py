@@ -34,11 +34,21 @@ class Attempt:
     transcript: list[str]           # per-step "action -> resulting state" summary of this attempt
 
     def digest(self, max_steps: int = 40) -> str:
-        """A compact text digest of this attempt, suitable for putting in a prompt."""
+        """A compact text digest of this attempt, suitable for putting in a prompt.
+
+        Leads with the GAME outcome and end state; the FTL run score is shown last and explicitly
+        labeled a measurement (not the objective). The per-sub-objective `breakdown` — literally
+        `{'jumps': ...}` for a survive_n_jumps scenario — is intentionally kept OUT of the headline:
+        surfacing it made reflections treat "use more jumps" as the goal instead of "win the game".
+        """
+        f = self.final
         head = (
-            f"Attempt {self.index + 1} — {self.outcome}. "
-            f"ftl_score={self.ftl_score}, goal_score={self.score}/100, solved={self.solved}. "
-            f"Final state: {self.final}. Sub-objective credit: {self.breakdown}."
+            f"Attempt {self.index + 1}: {self.outcome}.\n"
+            f"  End state: sector {f.get('sector')}, hull {f.get('hull')}, "
+            f"crew_alive {f.get('crew_alive')}, oxygen {f.get('oxygen_pct')}%, "
+            f"scrap {f.get('scrap')}, fuel {f.get('fuel')}.\n"
+            f"  (FTL run score for reference: ftl_score={self.ftl_score}, solved={self.solved} "
+            f"— these MEASURE how well you played, not the objective.)"
         )
         steps = self.transcript[-max_steps:]
         omitted = len(self.transcript) - len(steps)
@@ -77,22 +87,35 @@ def _render_action(a: dict[str, Any]) -> str:
 def summarize_attempt(records: list[dict[str, Any]], result: dict[str, Any], index: int) -> Attempt:
     """Build an `Attempt` from a recorded trajectory + its `score_instance` result."""
     ach = result.get("achieved") or {}
+    # Lead with the game-outcome fields (sector/hull/crew); the jump counter is last and is NOT
+    # in the outcome headline — describing an attempt in jumps-used terms is what made past
+    # reflections conclude "the goal is jumps" (it isn't; the goal is to win the game).
     final = {
         "sector": ach.get("sector"),
         "hull": ach.get("final_hull"),
-        "jumps": ach.get("jumps"),
-        "scrap": ach.get("final_scrap"),
-        "fuel": ach.get("final_fuel"),
         "crew_alive": ach.get("crew_alive"),
         "oxygen_pct": ach.get("oxygen_pct"),
+        "scrap": ach.get("final_scrap"),
+        "fuel": ach.get("final_fuel"),
+        "jumps": ach.get("jumps"),
     }
+    sector = ach.get("sector", 0)
+    kills = ach.get("kills", 0)
+    crew = ach.get("crew_alive")
+    o2 = ach.get("oxygen_pct")
+    hull = ach.get("final_hull")
     if result.get("solved"):
-        outcome = "solved the instance"
+        outcome = "met the scenario goal"
     elif ach.get("alive", 1) == 0:
-        outcome = "ship destroyed (run lost)"
+        clauses = [f"killed {kills} enemies", f"crew alive {crew}"]
+        if o2 is not None:
+            clauses.append(f"O2 was {o2}%")
+        outcome = (f"LOST: ship destroyed in sector-{sector} combat "
+                   f"({'; '.join(clauses)})")
     else:
-        outcome = (f"survived but did not meet the goal "
-                   f"({ach.get('jumps', 0)}/{result.get('budget_jumps')} jumps used)")
+        outcome = (f"survived but did not win: reached sector {sector} with hull {hull}, "
+                   f"crew alive {crew}, O2 {o2}%, {kills} enemies killed; "
+                   f"the run ended without beating the flagship")
 
     transcript: list[str] = []
     step = 0

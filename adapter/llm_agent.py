@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))           # play_cli
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "harness" / "src"))
 
 from play_cli import apply_command, compact  # noqa: E402
+from ftl_bench.session import ftl_process_alive  # noqa: E402
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
@@ -75,27 +76,41 @@ def build_system_prompt(scenario, manual: str, play_to_gameover: bool = False,
 
     In play-to-game-over mode there is no jump budget: play until the game actually ends. We
     expose the stall rule (no progress for `stall_limit` turns = the run ends in a loss) so the
-    agent can avoid it — that's stating an eval rule, not scripting its moves."""
+    agent can avoid it — that's stating an eval rule, not scripting its moves.
+
+    Both modes share the SAME win-framed core (the goal is to win the game of FTL). They differ
+    only in how the run ends: a full game runs to a real win/death, a bounded probe runs within a
+    jump budget. The budget is stated honestly so the words the agent reads match the loop it runs
+    (the old default told the agent to "not count turns" while the harness silently ended the run
+    on a jump count)."""
+    win_core = (
+        "## YOUR OBJECTIVE\n"
+        "Play FTL to WIN: keep your ship and crew alive, fight and manage well, and advance "
+        "toward destroying the rebel flagship (the win). The game stays PAUSED while you decide, "
+        "so take all the thinking time you need each turn — deliberating and setting up (powering "
+        "systems, positioning crew, targeting) costs nothing. The ONLY wasted turn is repeating an "
+        "action that does nothing (a no-op). You know FTL; every decision is yours."
+    )
     if play_to_gameover:
         objective = (
-            f"## OBJECTIVE\n"
-            f"Play a FULL game to its conclusion. You WIN by destroying the rebel flagship after "
-            f"sector 8; you LOSE if your ship is destroyed. There is NO jump limit — keep playing "
-            f"until the game is over.\n"
+            f"{win_core}\n"
+            f"This is a FULL game: there is NO jump limit — keep playing until the game actually "
+            f"ends. You WIN by destroying the rebel flagship after sector 8; you LOSE if your ship "
+            f"is destroyed.\n"
             f"STALL RULE: if you make NO progress for {stall_limit} turns in a row — the game "
             f"state stops changing (re-issuing actions that already took effect, or idling while "
             f"nothing happens) — the run is declared a LOSS and ends. Every turn, do something "
-            f"that moves the game forward. You know FTL; every decision is yours."
+            f"that moves the game forward."
         )
     else:
+        budget = getattr(scenario, "budget_jumps", None)
+        budget_phrase = (f"about {budget} jumps" if budget else "a limited number of jumps")
         objective = (
-            "## YOUR OBJECTIVE\n"
-            "Play FTL and win: keep your ship and crew alive, fight and manage well, and get as "
-            "far as you can toward destroying the rebel flagship. The game stays PAUSED while you "
-            "decide, so take all the thinking time you need each turn — deliberating and setting "
-            "up (powering systems, positioning crew, targeting) costs nothing. The ONLY wasted "
-            "turn is repeating an action that does nothing (a no-op). Do not rush or count turns; "
-            "play to win. You know FTL; every decision is yours."
+            f"{win_core}\n"
+            f"This run is a bounded probe: you have {budget_phrase} to get as far toward that goal "
+            f"as you can. Don't waste them, but don't rush either — winning fights and keeping your "
+            f"ship healthy is what gets you further (and raises the score); jumping for its own "
+            f"sake does not."
         )
     lessons = ""
     if reflection:
@@ -252,7 +267,12 @@ def reflect(attempts, complete) -> str:
         "events). Below is what you did on your previous attempt(s) at this exact seed and how each "
         "ended. Find the decisions and mistakes that cost you, and write a SHORT, concrete plan for "
         "the next attempt: specific tactics to change, things to do earlier, things to avoid. Be "
-        "terse and actionable — it is a note to yourself."
+        "terse and actionable — it is a note to yourself. "
+        "The objective is to WIN the game of FTL (keep your ship and crew alive, win fights, and "
+        "advance toward beating the rebel flagship). ftl_score and jump counts are only how that is "
+        "MEASURED — do NOT treat 'use more jumps' or 'raise the score' as the goal. Diagnose what "
+        "went wrong in the GAME (combat lost, crew/oxygen/hull mismanaged, the enemy never killed) "
+        "and how to play it better."
     )
     user = (f"{digests}\n\nWrite 3-6 short bullet points: the concrete lessons and your plan for "
             f"the next attempt at this seed.")
@@ -305,6 +325,7 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
         prev_prog = None     # progress signature for the stall guard (play-to-gameover)
         repeat_count = 0
         stall_count = 0      # consecutive turns with NO forward progress (play-to-gameover)
+        timeouts = 0         # consecutive transient action-ack lags (reset on any success)
         HARD_CAP = 1500      # safety bound for play-to-gameover (a full FTL game is < this)
         max_steps = HARD_CAP if play_to_gameover else budget * step_mult
         for step in range(max_steps):
@@ -348,13 +369,25 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
             try:
                 o2 = apply_command(sess, cmd, cargs)
             except TimeoutError:
-                raise  # let run_instance handle the freeze (relaunch + next instance)
+                # An action ack can lag transiently (long warp/arrival, or slow file I/O on
+                # native Windows where Defender/NTFS briefly locks the action/obs files). Only a
+                # GONE process is truly frozen; tolerate a few consecutive lags and re-observe so
+                # the agent can re-issue, matching the scripted baseline. Without this, ONE lag
+                # propagates out and run_instance force-restarts FTL, truncating the whole episode.
+                timeouts += 1
+                dead = not ftl_process_alive()
+                log(f"    [llm] action ack timed out [{timeouts}]"
+                    + ("  — game frozen/dead" if dead else ""))
+                if dead or timeouts >= 4:
+                    raise  # real freeze: let run_instance relaunch + move on
+                continue
             except Exception as e:  # noqa: BLE001 — bad args / illegal action: tell the model, continue
                 history.append(f"step{step}: '{cmd} {' '.join(cargs)}' -> ERROR: {e}")
                 # a repeated illegal action is a no-op loop too (state can't change)
                 repeat_count = repeat_count + 1 if action_str == prev_action else 0
                 prev_action = action_str
                 continue
+            timeouts = 0  # a successful ack clears the transient-lag streak
             if cmd in ("jump", "leave"):
                 jumps += 1
             c2 = compact(o2)

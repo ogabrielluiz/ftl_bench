@@ -24,8 +24,9 @@ python3 adapter/run_benchmark.py [options]
 | `--max-instances N` | cap the number of instances |
 | `--budget-cap N` | cap each instance's jump budget (faster smoke runs) |
 | `--retries N` | give the agent up to N extra tries per instance on the **same seed**, handing it the prior attempts so it can learn from its mistakes (best try scored; see [Bring your model](/evaluate/bring-your-model/)) |
-| `--play-to-gameover` | LLM track: ignore the jump budget; play to a real game-over or a stall (see [Play-to-game-over](/reference/play-to-gameover/)) |
-| `--stall-limit N` | play-to-gameover: end as a loss after N turns with no progress (default 10) |
+| `--mode {gameover,budget}` | LLM track: **`gameover` (default)** plays a full game to win-or-die (ignores the jump budget; ends on a real win/death or a stall — see [Play-to-game-over](/reference/play-to-gameover/)); `budget` plays a bounded probe within the jump budget. The headline (FTL run score) is the same in both; the mode is recorded in the manifest and agent label so runs never get conflated. |
+| `--play-to-gameover` | deprecated alias for `--mode gameover` (gameover is now the default) |
+| `--stall-limit N` | gameover mode: end as a loss after N turns with no progress (default 10) |
 | `--out DIR` | output directory (default `runs/benchmark`) |
 
 ## Output

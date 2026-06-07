@@ -32,7 +32,11 @@ def test_enemy_ship_is_none_when_null():
     assert obs.enemy_ship is None
 
 
-def test_missing_file_raises():
+def test_missing_file_raises(monkeypatch):
+    # A genuinely-missing file is now retried (FileNotFoundError is an OSError subclass) and
+    # re-raised after the retry budget — patch sleep so the test stays fast.
+    import ftl_bench.observation as obs_mod
+    monkeypatch.setattr(obs_mod.time, "sleep", lambda *_a, **_k: None)
     client = ObservationClient(Path("/nonexistent/observation.json"))
     with pytest.raises(FileNotFoundError):
         client.read_latest()

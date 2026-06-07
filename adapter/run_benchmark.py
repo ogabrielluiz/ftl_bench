@@ -206,6 +206,18 @@ def _reset_to_seed(sess: AgentSession, scenario, log) -> bool:
             log(f"  [{scenario.id}] FTL not running (prior freeze?) — relaunching")
             restart_ftl()
             sess._sync_seq()
+        else:
+            # A prior run that ended at the GAME OVER screen (crew dead / ship lost / win) can't
+            # be cleared by reset_episode's return_to_menu — those don't touch the GAME OVER
+            # buttons, so a normal reset would just eat the 35s timeout. Detect it and hard-restart
+            # straight to a fresh menu (common in play-to-gameover mode, which ends at GAME OVER).
+            try:
+                if sess.observe().game_over:
+                    log(f"  [{scenario.id}] prior run ended at GAME OVER — restarting FTL for a clean reset")
+                    restart_ftl()
+                    sess._sync_seq()
+            except (FileNotFoundError, OSError):
+                pass
         try:
             sess.reset_episode(seed=scenario.seed, timeout=35.0)
             return True
@@ -229,8 +241,15 @@ def _play_once(sess, scenario, agent_fn, agent_name, path, log, extra_manifest, 
             else:
                 agent_fn(sess, scenario, log)
         except TimeoutError:
-            log(f"  [{scenario.id}] run wedged — restarting FTL")
-            restart_ftl()
+            # A TimeoutError reaching here on a LIVE game is a transient ack lag, not a freeze; a
+            # full taskkill+relaunch+reset would only perturb the obs files and trigger the reset
+            # races. Restart ONLY if the process is actually gone — the post-play check below is
+            # the genuine-freeze safety net.
+            if not game_alive():
+                log(f"  [{scenario.id}] run wedged (FTL down) — restarting FTL")
+                restart_ftl()
+            else:
+                log(f"  [{scenario.id}] run ended on a transient ack timeout (FTL still up)")
         except Exception as e:  # noqa: BLE001
             log(f"  [{scenario.id}] agent error: {e}")
     # If play froze the game, relaunch eagerly so the next try/instance starts clean.
@@ -285,9 +304,14 @@ def main() -> None:
                     help="llm track: max actions per instance = budget_jumps * this")
     ap.add_argument("--prompt-version", default="v3",
                     help="llm track: which prompts/ftl_agent_<v>.md manual to use (versioned)")
+    ap.add_argument("--mode", choices=["gameover", "budget"], default="gameover",
+                    help="llm track: 'gameover' (DEFAULT) plays a FULL game to win-or-die — "
+                         "ignores the jump budget, ends on a real win/death or a stall "
+                         "(see --stall-limit); 'budget' plays a bounded probe within the jump "
+                         "budget. The headline (FTL run score) is the same in both; the mode is "
+                         "recorded in the manifest and agent label so they never get conflated.")
     ap.add_argument("--play-to-gameover", action="store_true",
-                    help="llm track: ignore the jump budget; play until the game ends (win/death) "
-                         "or the agent stalls (see --stall-limit)")
+                    help="deprecated alias for --mode gameover (gameover is now the default)")
     ap.add_argument("--stall-limit", type=int, default=10,
                     help="play-to-gameover: end the run as a LOSS after this many consecutive "
                          "turns with no progress (the game state unchanged)")
@@ -321,14 +345,17 @@ def main() -> None:
     sess = AgentSession()
     # The LLM track is a factory (model/backend); scripted/random are plain functions.
     if args.agent == "llm":
+        # gameover is the canonical mode; --play-to-gameover stays as a back-compat alias.
+        play_to_gameover = args.play_to_gameover or args.mode == "gameover"
         agent_fn = make_llm_agent(args.model, args.backend, args.step_mult, args.prompt_version,
-                                  play_to_gameover=args.play_to_gameover,
+                                  play_to_gameover=play_to_gameover,
                                   stall_limit=args.stall_limit)
-        _mode = f"-gameover{args.stall_limit}" if args.play_to_gameover else ""
+        _mode = f"-gameover{args.stall_limit}" if play_to_gameover else "-budget"
         agent_label = f"llm-{args.backend}-{args.model or 'default'}-{args.prompt_version}{_mode}"
         extra_manifest = {"model": args.model or "default", "backend": args.backend,
                           "prompt_version": args.prompt_version,
-                          "play_to_gameover": args.play_to_gameover,
+                          "mode": "gameover" if play_to_gameover else "budget",
+                          "play_to_gameover": play_to_gameover,
                           "stall_limit": args.stall_limit}
     else:
         agent_fn = AGENTS[args.agent]
