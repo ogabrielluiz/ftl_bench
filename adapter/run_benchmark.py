@@ -283,7 +283,7 @@ def main() -> None:
                     help="llm track: anthropic API (needs ANTHROPIC_API_KEY) | local claude -p")
     ap.add_argument("--step-mult", type=int, default=8,
                     help="llm track: max actions per instance = budget_jumps * this")
-    ap.add_argument("--prompt-version", default="v1",
+    ap.add_argument("--prompt-version", default="v3",
                     help="llm track: which prompts/ftl_agent_<v>.md manual to use (versioned)")
     ap.add_argument("--play-to-gameover", action="store_true",
                     help="llm track: ignore the jump budget; play until the game ends (win/death) "

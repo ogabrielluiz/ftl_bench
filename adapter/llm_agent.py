@@ -89,10 +89,13 @@ def build_system_prompt(scenario, manual: str, play_to_gameover: bool = False,
         )
     else:
         objective = (
-            f"## OBJECTIVE\n"
-            f"Play to WIN — get as far as you can toward destroying the rebel flagship at the end "
-            f"of sector 8. You have up to about {scenario.budget_jumps} jumps this run. You know "
-            f"FTL; every decision is yours."
+            "## YOUR OBJECTIVE\n"
+            "Play FTL and win: keep your ship and crew alive, fight and manage well, and get as "
+            "far as you can toward destroying the rebel flagship. The game stays PAUSED while you "
+            "decide, so take all the thinking time you need each turn — deliberating and setting "
+            "up (powering systems, positioning crew, targeting) costs nothing. The ONLY wasted "
+            "turn is repeating an action that does nothing (a no-op). Do not rush or count turns; "
+            "play to win. You know FTL; every decision is yours."
         )
     lessons = ""
     if reflection:
@@ -105,8 +108,7 @@ def build_system_prompt(scenario, manual: str, play_to_gameover: bool = False,
 def build_turn_prompt(c: dict, history: list[str], step: int, jumps: int, budget: int) -> str:
     hist = "\n".join(history[-8:]) if history else "(none yet)"
     return (
-        f"Step {step} (jumps used {jumps}/{budget}).\n"
-        f"Recent actions:\n{hist}\n\n"
+        f"Your recent actions:\n{hist}\n\n"
         f"OBSERVATION:\n{json.dumps(c, separators=(',', ':'))}\n\n"
         f"Decide ONE action. End with `ACTION: <command>`."
     )
@@ -261,7 +263,7 @@ def reflect(attempts, complete) -> str:
 
 
 def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mult: int = 8,
-                   prompt_version: str = "v1", play_to_gameover: bool = False,
+                   prompt_version: str = "v3", play_to_gameover: bool = False,
                    stall_limit: int = 10):
     """Return an agent_fn(sess, scenario, log) that plays via the chosen model/backend, using the
     version-controlled prompt manual `prompt_version`.
