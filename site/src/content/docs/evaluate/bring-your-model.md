@@ -84,5 +84,44 @@ To get scored, record your run as a trajectory the same way the runner does (see
 through the runner's `agent_fn(sess, scenario, log)` hook so scoring and aggregation happen for
 free.
 
+## Learning from failure (retries)
+
+Run the suite with `--retries N` and the benchmark gives each agent up to `N`+1 tries at the **same
+seed**, handing it its prior attempts so it can learn from its mistakes and try again. This is part
+of the agent contract: in retry mode the runner calls
+
+```python
+def agent_fn(sess, scenario, log, attempts=()):  # attempts: tuple[ftl_bench.Attempt], oldest first
+    ...
+```
+
+`attempts` is empty on the first try and, on each retry, holds the previous same-seed attempts. An
+agent that doesn't declare the parameter is simply called the old way, so retries are opt-in.
+
+Each `ftl_bench.Attempt` records what happened, for you to learn from:
+
+```python
+@dataclass(frozen=True)
+class Attempt:
+    index: int             # 0-based try number
+    ftl_score: float       # FTL's native run score for that try
+    score: float           # goal-conditioned score in [0, 100]
+    solved: bool
+    outcome: str           # e.g. "ship destroyed (run lost)"
+    breakdown: dict        # which sub-objectives were/weren't met
+    final: dict            # final sector, hull, jumps, scrap, crew_alive, ...
+    transcript: list[str]  # per-step "action -> resulting state" summary
+    def digest(self) -> str: ...   # a compact text digest, handy to drop in a prompt
+```
+
+What you do with the attempts is up to you — reflect, change strategy, anything. The built-in LLM
+track is the reference: it reflects on the attempts (`reflect()` in `adapter/llm_agent.py`) and
+carries the lessons into the next try's system prompt (the Reflexion pattern).
+
+Scoring is **best of the tries**, labeled `retries=N` in the agent id and manifest so it is never
+conflated with the single-try (pass@1) number. The aggregate also reports the **solve@k learning
+curve** — solve rate and mean/median best score as a function of the number of tries — so you can
+see whether retrying actually helps.
+
 See the [Observation schema](/reference/observation/) and [Action set](/reference/actions/) for
 exactly what you read and what you can send.

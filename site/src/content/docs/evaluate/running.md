@@ -23,6 +23,7 @@ python3 adapter/run_benchmark.py [options]
 | `--type TYPE` | filter by scenario type |
 | `--max-instances N` | cap the number of instances |
 | `--budget-cap N` | cap each instance's jump budget (faster smoke runs) |
+| `--retries N` | give the agent up to N extra tries per instance on the **same seed**, handing it the prior attempts so it can learn from its mistakes (best try scored; see [Bring your model](/evaluate/bring-your-model/)) |
 | `--play-to-gameover` | LLM track: ignore the jump budget; play to a real game-over or a stall (see [Play-to-game-over](/reference/play-to-gameover/)) |
 | `--stall-limit N` | play-to-gameover: end as a loss after N turns with no progress (default 10) |
 | `--out DIR` | output directory (default `runs/benchmark`) |
@@ -44,6 +45,10 @@ Per instance you get a `Score` plus the sub-objective breakdown, then the aggreg
 ([How scoring works](/introduction/scoring/)). `Solve N/M` is the strict count of instances that
 achieved the goal (the win, for full games). The per-type and per-tier breakdowns show where an
 agent is strong or weak.
+
+With `--retries N` the results also include a **learning curve**: for each attempt budget k, the
+best-so-far mean and median FTL score and the cumulative solve rate (`solve@1 -> solve@k`), and the
+headline is labeled `[best of up to N tries]`.
 
 ## What gets written
 
