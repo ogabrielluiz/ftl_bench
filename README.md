@@ -35,14 +35,13 @@ cd harness && uv run python ../adapter/run_benchmark.py --agent llm --backend cl
 The **LLM track** (`adapter/llm_agent.py`) drives the model over the same intent-level surface the baselines use: each turn it gets the decision-complete observation + the scenario goal + a short action history and replies with one command, dispatched through the shared `apply_command()` in `play_cli.py`. It decides everything — no scripted policy. `--backend anthropic` is the canonical, portable track (Anthropic Messages API); `--backend claude-cli` shells out to a local `claude -p` so you can run it with no API key. The agent's rules/instructions are a **version-controlled operating manual** at `prompts/ftl_agent_<v>.md` (select with `--prompt-version`); the version is recorded in each run's manifest and agent label, so a manual change is a distinct, comparable agent — not a silent drift.
 Output: per-instance `ftl_score` + breakdown, then the aggregate `FTL score ± SE | Solve N/M` with per-type/tier breakdown. Each instance's trajectory + a reproducibility manifest (seed, ship, schema, runner/agent version) is saved under `runs/benchmark/`. The benchmark code: `harness/src/ftl_bench/{scenario,scoring,aggregate}.py`, `scenarios/suite_v1.json`, `adapter/run_benchmark.py`.
 
-**Baseline ladder (LEGACY typed-suite numbers, FTL 1.6.13 + Hyperspace 1.22.2, macOS/Rosetta).** The metric is now FTL's native run score; these are the old goal-conditioned scores, kept for reference pending a re-baseline:
+**Native baseline (scripted heuristic floor, 12-instance v1 suite, native Windows + Steam, no WSL).** The headline metric is FTL's own native run score (mean over the suite, ± seed SE):
 
-| Agent | score (legacy) | Solve | survive_n_jumps | reach_sector | reach_sector_healthy | full_run |
+| Agent | FTL score | Solve | survive_n_jumps | reach_sector | reach_sector_healthy | full_run |
 |---|---|---|---|---|---|---|
-| **scripted** (heuristic floor) | **70.2 ± 12.4** | 7/12 | 100.0 | 70.0 | 91.7 | 4.6 |
-| **random** (legal-move floor) | **5.2 ± 5.2** | 0/12 | 20.8 | 0.0 | 0.0 | 0.0 |
+| **scripted** (heuristic floor) | **143.75 ± 13.05** | 3/12 | 133.3 | 124.0 | 195.0 | 157.5 |
 
-The wide floor-to-heuristic gap (5 → 70) makes an agent score interpretable; the held-out `semi_private` tier (scripted 60.0) stays unsaturated, and `full_run` (beat-the-flagship progress) is near-zero — the unsaturated ceiling. A **frontier-LLM track is now wired** (`--agent llm`, above): a real model plays the suite over the same observe/act surface and is scored identically, so it slots into this ladder as a third row once a full pass is run.
+Median 11 jumps per instance; public tier 142.9, held-out `semi_private` tier 145.0. The full suite runs end to end on native Windows with no crashes. A native `random` floor and a frontier-LLM row (`--agent llm`, above, scored identically over the same observe/act surface) are the next rows to fill. Earlier macOS/Rosetta numbers used a goal-conditioned 0-100 score (scripted 70.2, random 5.2) and are not comparable to FTL's native score here.
 
 ## Why Hyperspace
 
