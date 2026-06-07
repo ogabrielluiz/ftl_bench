@@ -11,7 +11,7 @@
 #  Settings -> Environments, and add protection rules / required reviewers.)
 #
 # Then publishing is: bump the version in harness/pyproject.toml, add a LICENSE, and cut a
-# GitHub Release (e.g. tag v0.2.1). This workflow runs the tests, builds the wheel + sdist with
+# GitHub Release (e.g. tag v0.1.0). This workflow runs the tests, builds the wheel + sdist with
 # uv, and uploads to PyPI over OIDC. It NEVER runs on a plain push, so it cannot publish by
 # accident. Use the manual "Run workflow" button to dry-run the build (publish only fires on a
 # real Release event once the trusted publisher above is configured).

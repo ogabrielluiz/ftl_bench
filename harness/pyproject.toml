@@ -1,6 +1,6 @@
 [project]
 name = "ftl-bench"
-version = "0.2.1"
+version = "0.1.0"
 description = "A turn-based, intent-level environment + scenario suite for evaluating LLM agents on FTL: Faster Than Light"
 readme = "README.md"
 license = "MIT"

@@ -13,7 +13,7 @@ wheels = [
 
 [[package]]
 name = "ftl-bench"
-version = "0.2.1"
+version = "0.1.0"
 source = { editable = "." }
 
 [package.optional-dependencies]
