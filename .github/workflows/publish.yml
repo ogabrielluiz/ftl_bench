@@ -1,0 +1,48 @@
+# Publish ftl-bench to PyPI via Trusted Publishing (OIDC) — no API token, no GitHub secret.
+#
+# One-time setup on PyPI (https://pypi.org/manage/account/publishing/ -> "Add a pending publisher",
+# because the project does not exist yet):
+#   PyPI Project Name : ftl-bench
+#   Owner             : ogabrielluiz
+#   Repository name   : ftl_bench
+#   Workflow name     : publish.yml
+#   Environment name  : pypi
+# (Optional but recommended: create a GitHub Environment named "pypi" under
+#  Settings -> Environments, and add protection rules / required reviewers.)
+#
+# Then publishing is: bump the version in harness/pyproject.toml, add a LICENSE, and cut a
+# GitHub Release (e.g. tag v0.2.1). This workflow runs the tests, builds the wheel + sdist with
+# uv, and uploads to PyPI over OIDC. It NEVER runs on a plain push, so it cannot publish by
+# accident. Use the manual "Run workflow" button to dry-run the build (publish only fires on a
+# real Release event once the trusted publisher above is configured).
+name: publish
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/ftl-bench
+    permissions:
+      id-token: write # required for PyPI Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Run unit tests
+        run: uv run --directory harness --extra dev pytest -q
+
+      - name: Build wheel + sdist
+        run: uv build --directory harness
+
+      - name: Publish to PyPI (trusted publishing)
+        # Only on a real Release; the manual dispatch builds/tests but skips the upload.
+        if: github.event_name == 'release'
+        run: uv publish --trusted-publishing always harness/dist/*
