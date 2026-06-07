@@ -29,7 +29,16 @@ def _write_obs(folder: Path, *, seq, paused=True, tick=1):
     p = folder / "ftl_agent_observation.json"
     tmp = p.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(obs))
-    tmp.replace(p)
+    # The session reads this file concurrently; on Windows the replace can hit a transient
+    # sharing violation (PermissionError / WinError 5). Retry, mirroring the real bridge.
+    for attempt in range(9):
+        try:
+            tmp.replace(p)
+            return
+        except (PermissionError, OSError):
+            if attempt == 8:
+                raise
+            time.sleep(0.01)
 
 
 class FakeBridge(threading.Thread):
@@ -49,8 +58,8 @@ class FakeBridge(threading.Thread):
                     act = json.loads(self.action_path.read_text())
                     self._tick += 1
                     _write_obs(self.folder, seq=act["seq"], paused=True, tick=self._tick)
-            except (json.JSONDecodeError, FileNotFoundError):
-                pass
+            except (json.JSONDecodeError, FileNotFoundError, PermissionError, OSError):
+                pass  # transient file races on Windows must not kill the bridge thread
             time.sleep(0.005)
 
     def stop(self):
