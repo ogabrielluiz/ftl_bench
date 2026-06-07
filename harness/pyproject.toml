@@ -3,6 +3,7 @@ name = "ftl-bench"
 version = "0.2.1"
 description = "A turn-based, intent-level environment + scenario suite for evaluating LLM agents on FTL: Faster Than Light"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
 authors = [{ name = "ogabrielluiz" }]
 keywords = ["benchmark", "agents", "llm", "evaluation", "ftl", "game-playing"]
@@ -18,7 +19,6 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-# NOTE: no license is declared yet — pick one (add `license` here + a top-level LICENSE file).
 dependencies = []
 
 [project.urls]

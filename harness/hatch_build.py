@@ -21,7 +21,7 @@ from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
 # repo top-level entries to vendor under src/ftl_bench/_bundled/ (preserving names so each
 # module's own `REPO = __file__.parent.parent` path logic keeps resolving them).
-_VENDOR = ["adapter", "scenarios", "prompts", "mod", "scripts", "README.md"]
+_VENDOR = ["adapter", "scenarios", "prompts", "mod", "scripts", "README.md", "LICENSE"]
 _IGNORE = shutil.ignore_patterns(
     "__pycache__", "*.pyc", "runs", "dist", "build", ".venv", "node_modules", "*.log"
 )
