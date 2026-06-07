@@ -14,6 +14,7 @@ scores goal achievement only. Freeze-resilient: a stuck reset force-restarts FTL
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import os
 import random
@@ -28,11 +29,13 @@ sys.path.insert(0, str(REPO / "adapter"))
 
 from ftl_bench import (  # noqa: E402
     AgentSession,
+    Attempt,
     TrajectoryRecorder,
     load_suite,
     load_trajectory,
     score_instance,
     set_system_power,
+    summarize_attempt,
 )
 from ftl_bench.aggregate import aggregate  # noqa: E402
 from ftl_bench.session import ftl_user_folder  # noqa: E402
@@ -184,49 +187,90 @@ def manifest(scenario, agent: str, extra: dict | None = None) -> dict:
     return m
 
 
-def run_instance(sess: AgentSession, scenario, agent_fn, agent_name, out_dir, log,
-                 extra_manifest=None) -> dict:
-    path = out_dir / f"{scenario.id}.jsonl"
-    sess.recorder = TrajectoryRecorder(path, meta=manifest(scenario, agent_name, extra_manifest))
-    started = False
+def _agent_takes_attempts(fn) -> bool:
+    """Does this agent_fn accept the retry `attempts` context? Old 3-arg agents don't, so they
+    are called the old way — opting into retries is just accepting the parameter."""
+    try:
+        params = inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return True
+    return "attempts" in params or any(p.kind == p.VAR_KEYWORD for p in params.values())
+
+
+def _reset_to_seed(sess: AgentSession, scenario, log) -> bool:
+    """Reset the game to the scenario's seed, with fast freeze-recovery. True if started."""
     for attempt in range(3):
-        # FAST freeze recovery: if a prior instance froze, the watchdog already SIGKILLed
-        # FTL — relaunch NOW instead of eating a 60s reset_episode timeout to discover it.
+        # FAST freeze recovery: if a prior run froze, the watchdog already SIGKILLed FTL —
+        # relaunch NOW instead of eating a 35s reset timeout to discover it.
         if not game_alive():
             log(f"  [{scenario.id}] FTL not running (prior freeze?) — relaunching")
             restart_ftl()
             sess._sync_seq()
         try:
-            # Short timeout: a live game resets in well under 35s; a longer wait just means
-            # the game is freezing — fail fast, relaunch, retry rather than hang.
             sess.reset_episode(seed=scenario.seed, timeout=35.0)
-            started = True
-            break
+            return True
         except (TimeoutError, FileNotFoundError, OSError) as e:
             log(f"  [{scenario.id}] reset failed ({type(e).__name__}, attempt {attempt + 1}) "
                 f"— restarting FTL")
             restart_ftl()
             sess._sync_seq()
             time.sleep(1)
-    if started:
+    return False
+
+
+def _play_once(sess, scenario, agent_fn, agent_name, path, log, extra_manifest, attempts) -> dict:
+    """Reset to the seed, play ONE episode (handing the agent the prior `attempts` if it accepts
+    them), and score the recorded trajectory."""
+    sess.recorder = TrajectoryRecorder(path, meta=manifest(scenario, agent_name, extra_manifest))
+    if _reset_to_seed(sess, scenario, log):
         try:
-            agent_fn(sess, scenario, log)
+            if _agent_takes_attempts(agent_fn):
+                agent_fn(sess, scenario, log, attempts=attempts)
+            else:
+                agent_fn(sess, scenario, log)
         except TimeoutError:
-            log(f"  [{scenario.id}] run wedged — restarting FTL for the next instance")
+            log(f"  [{scenario.id}] run wedged — restarting FTL")
             restart_ftl()
         except Exception as e:  # noqa: BLE001
             log(f"  [{scenario.id}] agent error: {e}")
-    # If the episode froze the game (watchdog killed it during play), relaunch eagerly so
-    # the NEXT instance starts clean immediately rather than rediscovering death slowly.
+    # If play froze the game, relaunch eagerly so the next try/instance starts clean.
     if not game_alive():
-        log(f"  [{scenario.id}] FTL down after play (freeze) — relaunching for next instance")
+        log(f"  [{scenario.id}] FTL down after play (freeze) — relaunching")
         restart_ftl()
         sess._sync_seq()
     sess.recorder = None
-    result = score_instance(load_trajectory(path), scenario)
-    log(f"  [{scenario.id}] ftl_score={result.get('ftl_score', 0)} "
-        f"solved={result['solved']} breakdown={result['breakdown']}")
-    return result
+    return score_instance(load_trajectory(path), scenario)
+
+
+def run_instance(sess: AgentSession, scenario, agent_fn, agent_name, out_dir, log,
+                 extra_manifest=None, retries: int = 0) -> dict:
+    """Run one instance. With `retries` > 0 the agent gets up to `retries`+1 tries at the SAME
+    seed; before each retry it is handed the prior same-seed attempts (see `ftl_bench.retry`) so
+    it can learn from its mistakes. Stops early on a solve. The reported result is the BEST
+    attempt, annotated with every attempt's score so the learning curve is visible."""
+    attempts: list[Attempt] = []
+    results: list[dict] = []
+    for i in range(retries + 1):
+        path = out_dir / (f"{scenario.id}.jsonl" if retries == 0 else f"{scenario.id}.a{i}.jsonl")
+        result = _play_once(sess, scenario, agent_fn, agent_name, path, log, extra_manifest,
+                            tuple(attempts))
+        results.append(result)
+        tag = "" if retries == 0 else f" [try {i + 1}/{retries + 1}]"
+        log(f"  [{scenario.id}]{tag} ftl_score={result.get('ftl_score', 0)} "
+            f"solved={result['solved']} breakdown={result['breakdown']}")
+        if result["solved"]:
+            break
+        if i < retries:   # build the attempt record handed to the next try
+            attempts.append(summarize_attempt(load_trajectory(path), result, i))
+    # Best = solved first, then highest FTL score.
+    best = dict(max(results, key=lambda r: (r["solved"], r.get("ftl_score", 0))))
+    if retries:
+        best["attempts_used"] = len(results)
+        best["attempt_ftl_scores"] = [r.get("ftl_score", 0) for r in results]
+        best["attempt_solved"] = [r["solved"] for r in results]
+        log(f"  [{scenario.id}] BEST of {len(results)}: ftl_score={best.get('ftl_score', 0)} "
+            f"solved={best['solved']}  per-try={best['attempt_ftl_scores']}")
+    return best
 
 
 def main() -> None:
@@ -253,6 +297,10 @@ def main() -> None:
     ap.add_argument("--max-instances", type=int, default=None, help="cap # instances")
     ap.add_argument("--budget-cap", type=int, default=None,
                     help="cap each instance's jump budget (faster smoke runs)")
+    ap.add_argument("--retries", type=int, default=0,
+                    help="give the agent up to N extra tries per instance on the SAME seed, "
+                         "handing it the prior attempts each time so it can learn from its "
+                         "mistakes (Reflexion-style). The best attempt is scored.")
     ap.add_argument("--out", default="runs/benchmark")
     args = ap.parse_args()
 
@@ -286,6 +334,10 @@ def main() -> None:
         agent_fn = AGENTS[args.agent]
         agent_label = args.agent
         extra_manifest = None
+    # Retries are a distinct, labeled evaluation mode — never silently fold into the pass@1 number.
+    if args.retries:
+        agent_label += f"-retries{args.retries}"
+    extra_manifest = {**(extra_manifest or {}), "retries": args.retries}
 
     def log(m):
         print(m, flush=True)
@@ -295,14 +347,19 @@ def main() -> None:
     for sc in scenarios:
         log(f"-- {sc.id} ({sc.type}, seed {sc.seed}, budget {sc.budget_jumps}) --")
         results.append(run_instance(sess, sc, agent_fn, agent_label, out_dir, log,
-                                    extra_manifest))
+                                    extra_manifest, retries=args.retries))
 
     agg = aggregate(results, scenarios)
     agg["agent"] = agent_label
     log("\n== RESULTS ==")
     log(f"  {agg['headline']}")
-    for k in ("solve_pct", "median_jumps_per_instance"):
+    for k in ("ftl_score_median", "solve_pct", "median_jumps_per_instance"):
         log(f"  {k}: {agg[k]}")
+    if agg.get("retries"):
+        log("  retry learning curve (best of k tries):")
+        for c in agg["retry_curve"]:
+            log(f"    @{c['k']}: FTL mean {c['ftl_score_mean']} median {c['ftl_score_median']}  |  "
+                f"solve {c['solved']}/{agg['instances']} ({c['solve_pct']}%)")
     log(f"  by_type: {json.dumps(agg['by_type'])}")
     log(f"  by_tier: {json.dumps(agg['by_tier'])}")
     safe = agent_label.replace("/", "-").replace(":", "-")

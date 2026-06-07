@@ -54,7 +54,8 @@ def make_scenario(id="s0", tier="public", type="reach_sector"):
 
 def test_empty_results_returns_minimal_dict():
     out = aggregate([], [])
-    assert out == {"ftl_score_mean": None, "solve_rate": "0/0", "instances": 0}
+    assert out == {"ftl_score_mean": None, "ftl_score_median": None,
+                   "solve_rate": "0/0", "instances": 0}
 
 
 def test_empty_results_ignores_scenarios():

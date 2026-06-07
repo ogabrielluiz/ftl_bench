@@ -32,6 +32,7 @@ from ftl_bench.session import (
     teleport_crew,
 )
 from ftl_bench.trajectory import TrajectoryRecorder, load_trajectory
+from ftl_bench.retry import Attempt, summarize_attempt
 
 __all__ = [
     "Observation",
@@ -58,6 +59,8 @@ __all__ = [
     "teleport_crew",
     "TrajectoryRecorder",
     "load_trajectory",
+    "Attempt",
+    "summarize_attempt",
     "score_observation",
     "score_trajectory",
     "Scenario",

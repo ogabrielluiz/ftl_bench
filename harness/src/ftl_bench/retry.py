@@ -1,0 +1,121 @@
+"""Retry protocol for ftl_bench — learning from failure across attempts.
+
+When the suite is run with retries, the benchmark gives an agent more than one try at the SAME
+seeded instance, and between tries it hands the agent a record of what happened on its previous
+attempt(s): the actions it took, how the run ended, and the score. The agent decides what to do
+with that (reflect on its mistakes, change strategy) — the benchmark only provides the loop and
+the prior-attempt context. This makes "learn from your mistake and try again" a first-class part
+of the agent contract, not something each agent has to wire up itself.
+
+The contract: in retry mode the runner calls
+
+    agent_fn(sess, scenario, log, attempts=(<Attempt>, ...))
+
+where `attempts` holds the prior same-seed `Attempt`s, oldest first (empty on the first try). An
+agent that doesn't accept `attempts` is simply called the old way, so existing agents keep working.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass(frozen=True)
+class Attempt:
+    """One completed try at a seeded instance, handed back to the agent for its next try."""
+
+    index: int                      # 0-based attempt number
+    ftl_score: float                # FTL's native run score for this attempt
+    score: float                    # goal-conditioned score in [0, 100]
+    solved: bool                    # did this attempt fully meet the goal?
+    outcome: str                    # short human-readable end state (e.g. "ship destroyed")
+    breakdown: dict[str, float]     # per-sub-objective credit (which goals were/weren't met)
+    final: dict[str, Any]           # final state: sector, hull, jumps, scrap, fuel, crew_alive
+    transcript: list[str]           # per-step "action -> resulting state" summary of this attempt
+
+    def digest(self, max_steps: int = 40) -> str:
+        """A compact text digest of this attempt, suitable for putting in a prompt."""
+        head = (
+            f"Attempt {self.index + 1} — {self.outcome}. "
+            f"ftl_score={self.ftl_score}, goal_score={self.score}/100, solved={self.solved}. "
+            f"Final state: {self.final}. Sub-objective credit: {self.breakdown}."
+        )
+        steps = self.transcript[-max_steps:]
+        omitted = len(self.transcript) - len(steps)
+        lines = ([f"  ...({omitted} earlier steps omitted)"] if omitted > 0 else []) + \
+                [f"  {s}" for s in steps]
+        label = f" (last {len(steps)} of {len(self.transcript)} steps)" if omitted > 0 else ""
+        return head + f"\nWhat you did{label}:\n" + "\n".join(lines)
+
+
+def _render_action(a: dict[str, Any]) -> str:
+    """Compactly render one applied action dict for a transcript line."""
+    t = a.get("type", "?")
+    if t == "set_system_power":
+        return f"power s{a.get('system_id')}={a.get('level')}"
+    if t == "move_crew":
+        return f"crew {a.get('crew_id')}->r{a.get('room_id')}"
+    if t == "jump":
+        return f"jump->b{a.get('beacon_index')}"
+    if t == "choose_event":
+        return f"event->{a.get('choice_index')}"
+    if t == "fire_weapon":
+        return f"fire w{a.get('weapon_slot')}->r{a.get('target_room_id')}"
+    if t == "fire_beam":
+        return f"beam w{a.get('weapon_slot')}->r{a.get('room_a')}-r{a.get('room_b')}"
+    if t == "leave_sector":
+        return "leave"
+    if t in ("store_buy", "store_sell"):
+        return f"{t.split('_')[1]} #{a.get('index')}"
+    if t == "upgrade_system":
+        return f"upgrade s{a.get('system_id')}"
+    if t == "start_game":
+        return f"start({a.get('mode')})"
+    return t
+
+
+def summarize_attempt(records: list[dict[str, Any]], result: dict[str, Any], index: int) -> Attempt:
+    """Build an `Attempt` from a recorded trajectory + its `score_instance` result."""
+    ach = result.get("achieved") or {}
+    final = {
+        "sector": ach.get("sector"),
+        "hull": ach.get("final_hull"),
+        "jumps": ach.get("jumps"),
+        "scrap": ach.get("final_scrap"),
+        "fuel": ach.get("final_fuel"),
+        "crew_alive": ach.get("crew_alive"),
+        "oxygen_pct": ach.get("oxygen_pct"),
+    }
+    if result.get("solved"):
+        outcome = "solved the instance"
+    elif ach.get("alive", 1) == 0:
+        outcome = "ship destroyed (run lost)"
+    else:
+        outcome = (f"survived but did not meet the goal "
+                   f"({ach.get('jumps', 0)}/{result.get('budget_jumps')} jumps used)")
+
+    transcript: list[str] = []
+    step = 0
+    for r in records:
+        if r.get("kind") == "meta":
+            continue
+        acts = r.get("actions") or []
+        obs = r.get("obs") or {}
+        a_str = ", ".join(_render_action(a) for a in acts) or "wait"
+        ps = obs.get("player_ship") or {}
+        hull = (ps.get("hull") or {}).get("current")
+        sector = (obs.get("map") or {}).get("sector")
+        enemy = " enemy" if obs.get("enemy_ship") else ""
+        transcript.append(f"step {step}: {a_str} -> sector {sector} hull {hull}{enemy}")
+        step += 1
+
+    return Attempt(
+        index=index,
+        ftl_score=ach.get("ftl_score", result.get("ftl_score", 0)),
+        score=result.get("score", 0),
+        solved=bool(result.get("solved")),
+        outcome=outcome,
+        breakdown=dict(result.get("breakdown") or {}),
+        final=final,
+        transcript=transcript,
+    )

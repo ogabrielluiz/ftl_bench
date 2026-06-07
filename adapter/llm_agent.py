@@ -68,7 +68,7 @@ def _goal_text(scenario) -> str:
 
 
 def build_system_prompt(scenario, manual: str, play_to_gameover: bool = False,
-                        stall_limit: int = 10) -> str:
+                        stall_limit: int = 10, reflection: str = "") -> str:
     """The manual + the ONE real objective: win the game. No artificial per-scenario sub-goals
     — the agent plays the actual game of FTL with its own intelligence, and we measure how far
     it gets toward beating the rebel flagship. The scenario only pins the seed (the map/RNG).
@@ -94,7 +94,12 @@ def build_system_prompt(scenario, manual: str, play_to_gameover: bool = False,
             f"of sector 8. You have up to about {scenario.budget_jumps} jumps this run. You know "
             f"FTL; every decision is yours."
         )
-    return f"{manual}\n\n{objective}"
+    lessons = ""
+    if reflection:
+        lessons = ("\n\n## LESSONS FROM YOUR PREVIOUS ATTEMPTS (same seed)\n"
+                   "You have played this exact seed before without solving it. Apply what you "
+                   "learned:\n" + reflection)
+    return f"{manual}\n\n{objective}{lessons}"
 
 
 def build_turn_prompt(c: dict, history: list[str], step: int, jumps: int, budget: int) -> str:
@@ -228,6 +233,31 @@ def claude_cli_complete(system: str, user: str, model: str | None) -> str:
     return r.stdout or r.stderr
 
 
+# --- retry / reflection -------------------------------------------------------------
+
+def reflect(attempts, complete) -> str:
+    """Reference reflection step (Reflexion): given the prior same-seed `Attempt`s the benchmark
+    handed us, ask the model to name the key mistakes and a concrete plan for the next try, and
+    return that as a short note to carry into the next attempt's context. Best-effort — a failure
+    just yields no memory. Agents may use this, or do anything they like with the raw `attempts`."""
+    if not attempts:
+        return ""
+    digests = "\n\n".join(a.digest() for a in attempts)
+    system = (
+        "You are getting better at the game FTL across retries of the SAME seed (identical map and "
+        "events). Below is what you did on your previous attempt(s) at this exact seed and how each "
+        "ended. Find the decisions and mistakes that cost you, and write a SHORT, concrete plan for "
+        "the next attempt: specific tactics to change, things to do earlier, things to avoid. Be "
+        "terse and actionable — it is a note to yourself."
+    )
+    user = (f"{digests}\n\nWrite 3-6 short bullet points: the concrete lessons and your plan for "
+            f"the next attempt at this seed.")
+    try:
+        return complete(system, user).strip()
+    except Exception:  # noqa: BLE001 — reflection is best-effort
+        return ""
+
+
 def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mult: int = 8,
                    prompt_version: str = "v1", play_to_gameover: bool = False,
                    stall_limit: int = 10):
@@ -251,8 +281,15 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
             return claude_cli_complete(system, user, model)
         return anthropic_complete(system, user, model)
 
-    def agent_fn(sess, scenario, log) -> None:
-        system = build_system_prompt(scenario, manual, play_to_gameover, stall_limit)
+    def agent_fn(sess, scenario, log, attempts=()) -> None:
+        # Retry context: if the benchmark handed us prior same-seed attempts, reflect on them and
+        # carry the lessons into this try's system prompt (Reflexion). First try: attempts is empty.
+        reflection = reflect(attempts, complete) if attempts else ""
+        if reflection:
+            log(f"    [llm] reflected on {len(attempts)} prior attempt(s) at this seed; "
+                f"carrying the lessons into this try")
+        system = build_system_prompt(scenario, manual, play_to_gameover, stall_limit,
+                                     reflection=reflection)
         budget = scenario.budget_jumps
         history: list[str] = []
         jumps = 0
