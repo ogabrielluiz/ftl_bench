@@ -194,7 +194,9 @@ def anthropic_complete(system: str, user: str, model: str, max_tokens: int = 700
     import urllib.error
     import urllib.request
 
-    key = os.environ.get("ANTHROPIC_API_KEY")
+    # Tolerate a key set with surrounding quotes or stray whitespace (a common `setx KEY "..."`
+    # / shell mistake on Windows that otherwise stores the quotes literally and yields a 401).
+    key = (os.environ.get("ANTHROPIC_API_KEY") or "").strip().strip('"').strip("'")
     if not key:
         raise RuntimeError("ANTHROPIC_API_KEY not set (export it, or use --backend claude-cli)")
     body = json.dumps({
