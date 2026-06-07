@@ -2,11 +2,39 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
+// The repo is served as a GitHub *project* site under a subpath.
+const BASE = '/ftl_bench';
+
+// Astro does NOT prepend `base` to root-absolute links written in markdown (e.g. `[x](/foo)`),
+// so under a project subpath those links 404. This rehype pass prefixes the base onto internal
+// root-absolute links, leaving external, protocol-relative, anchor, and already-based links alone.
+function rehypeBaseLinks() {
+	return (tree) => {
+		const visit = (node) => {
+			if (node.tagName === 'a' && node.properties) {
+				const href = node.properties.href;
+				if (
+					typeof href === 'string' &&
+					href.startsWith('/') &&
+					!href.startsWith('//') &&
+					href !== BASE &&
+					!href.startsWith(BASE + '/')
+				) {
+					node.properties.href = BASE + href;
+				}
+			}
+			if (Array.isArray(node.children)) node.children.forEach(visit);
+		};
+		visit(tree);
+	};
+}
+
 // https://astro.build/config
 export default defineConfig({
 	// GitHub Pages (project site): served under https://ogabrielluiz.github.io/ftl_bench/
 	site: 'https://ogabrielluiz.github.io',
-	base: '/ftl_bench',
+	base: BASE,
+	markdown: { rehypePlugins: [rehypeBaseLinks] },
 	integrations: [
 		starlight({
 			title: 'ftl_bench',

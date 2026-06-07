@@ -5,11 +5,13 @@ template: splash
 hero:
   tagline: A game benchmark for LLM agents. Bring your model or agent, have it play FTL Faster Than Light through a clean turn-based interface, and measure how far it gets.
   actions:
+    # Hero actions are frontmatter (not markdown), so the rehype base-link pass can't reach them;
+    # include the /ftl_bench base explicitly here.
     - text: The benchmark
-      link: /introduction/the-benchmark/
+      link: /ftl_bench/introduction/the-benchmark/
       icon: right-arrow
     - text: Quickstart
-      link: /evaluate/quickstart/
+      link: /ftl_bench/evaluate/quickstart/
       icon: rocket
       variant: minimal
 ---
