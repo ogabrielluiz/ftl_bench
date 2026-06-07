@@ -288,8 +288,11 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
         # carry the lessons into this try's system prompt (Reflexion). First try: attempts is empty.
         reflection = reflect(attempts, complete) if attempts else ""
         if reflection:
-            log(f"    [llm] reflected on {len(attempts)} prior attempt(s) at this seed; "
-                f"carrying the lessons into this try")
+            log(f"    [llm] reflection after {len(attempts)} prior attempt(s) at this seed "
+                f"(carried into this try's system prompt):\n"
+                f"    ----- reflection -----\n"
+                + "\n".join("    " + ln for ln in reflection.splitlines())
+                + "\n    ----- end reflection -----")
         system = build_system_prompt(scenario, manual, play_to_gameover, stall_limit,
                                      reflection=reflection)
         budget = scenario.budget_jumps
