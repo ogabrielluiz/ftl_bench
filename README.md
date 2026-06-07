@@ -15,7 +15,7 @@ FTL is a real-time-with-pause roguelike: resource management, risk under uncerta
 - **Anti-memorization split**: a `public` tier to tune against and a held-out `semi_private` tier that is the leaderboard number.
 - **Baseline ladder**: a `random`-legal floor and a `scripted` heuristic floor, so a high agent score is interpretable.
 
-**Scenario types (v1 — run on today's action set):** `survive_n_jumps` (make N jumps alive), `reach_sector` (advance to sector K), `reach_sector_healthy` (reach K with hull + crew intact — a multi-attribute goal), `full_run` (milestone progress toward beating the flagship — the unsaturated ceiling). Higher-signal micro-encounters (`win_this_combat`, `escape_a_crisis`, `event_risk_choice`) and the flagship/store tiers are next (see `docs/NEXT.md`).
+**Scenario types (v1 — run on today's action set):** `survive_n_jumps` (make N jumps alive), `reach_sector` (advance to sector K), `reach_sector_healthy` (reach K with hull + crew intact — a multi-attribute goal), `full_run` (milestone progress toward beating the flagship — the unsaturated ceiling). Higher-signal micro-encounters (`win_this_combat`, `escape_a_crisis`, `event_risk_choice`) and the flagship/store tiers are next.
 
 **Run it** (the harness runs on native Windows, WSL, or macOS, and drives FTL for you):
 ```bash
@@ -114,11 +114,8 @@ The MCP server (`adapter/ftl_mcp_server.py`) exposes the env as tools for an LLM
 
 **Platform notes.** On **native Windows** FTL must be launched through Steam (`steam.exe -applaunch 212680`), which the runner does for you; a direct exe launch skips the Hyperspace injection and the bridge never loads. Windows Defender can briefly lock the action/observation files, so the harness retries those file operations. On **macOS**, keep FTL from being App-Napped with the `defaults` line above, and note the mic-permission dialog reappears after a Hyperspace C++ rebuild (it persists across plain relaunches).
 
-### Docs
-- [`docs/specs/2026-06-03-ftl-agent-interface-design.md`](docs/specs/2026-06-03-ftl-agent-interface-design.md) — M1 design spec
-- [`docs/specs/2026-06-03-m2-pause-action-design.md`](docs/specs/2026-06-03-m2-pause-action-design.md) — M2 design
-- [`docs/deepdive/hyperspace-lua-surface.md`](docs/deepdive/hyperspace-lua-surface.md) — source-grounded Lua state/action surface
-- [`docs/plans/2026-06-03-m1-observation-stream.md`](docs/plans/2026-06-03-m1-observation-stream.md) — M1 implementation plan
+### Documentation
+A documentation site covering the scoring model, the action set and observation schema, the per-platform install guides, and the architecture is in [`site/`](site/) (Astro Starlight). The Hyperspace Lua state/action surface is mapped in [`docs/deepdive/hyperspace-lua-surface.md`](docs/deepdive/hyperspace-lua-surface.md).
 
 ### Known gaps / next
 - **Store** transactions ✅ — `benchmark_store_{read,buy,sell}` bindings + `store_buy`/`store_sell`/`upgrade_system` actions let an agent read a store's inventory (names/prices/stock) and spend scrap (buy weapons/drones/systems/augments/repair/fuel, sell items, upgrade system max power). Beam weapons (two-point targeting) still deferred.
