@@ -122,6 +122,20 @@ def test_record_entry_shape(tmp_path):
     assert isinstance(body["t"], float)
 
 
+def test_record_includes_thought_only_when_present(tmp_path):
+    p = tmp_path / "traj.jsonl"
+    rec = TrajectoryRecorder(p)
+    obs = _make_obs(raw={"schema_version": 2, "tick": 1, "seed": 0, "game_started": True})
+    rec.record("step", [], obs, thought="power weapons then fire on their shields")
+    rec.record("step", [], obs)                       # no thought
+    with_thought = json.loads(_read_lines(p)[1])
+    without_thought = json.loads(_read_lines(p)[2])
+    assert with_thought["thought"] == "power weapons then fire on their shields"
+    # absent (not null) when no thought, so old records / non-LLM agents stay byte-identical
+    assert "thought" not in without_thought
+    assert set(without_thought.keys()) == {"i", "t", "kind", "actions", "obs"}
+
+
 def test_record_uses_obs_raw_attribute(tmp_path):
     p = tmp_path / "traj.jsonl"
     rec = TrajectoryRecorder(p)

@@ -53,7 +53,7 @@ sys.path.insert(0, str(REPO / "harness" / "src"))
 from ftl_bench import (  # noqa: E402
     AgentSession, set_system_power, move_crew, store_buy, store_sell, upgrade_system,
     cloak, set_doors, mind_control, battery, fire_beam, hack_system, deploy_drone,
-    recall_drones, teleport_crew,
+    recall_drones, teleport_crew, fire_weapon, jump, choose_event, leave_sector,
 )
 from capture import capture_ftl  # noqa: E402  (adapter/ is on sys.path as cwd-adjacent)
 
@@ -362,6 +362,61 @@ def apply_command(s: AgentSession, cmd: str, args: list[str]):
         return s.step([teleport_crew(1, int(args[0]) if args else -1)], advance_frames=120)
     elif cmd == "recall":       # recall [enemy_room_id]  (bring boarders home; -1 auto-resolves)
         return s.step([teleport_crew(2, int(args[0]) if args else -1)], advance_frames=120)
+    raise ValueError(f"unknown command {cmd!r}")
+
+
+def command_to_action(cmd: str, args: list[str]) -> dict | None:
+    """Convert ONE play_cli command into its env action dict WITHOUT dispatching it — so several
+    commands can be batched into a single `sess.step([...], advance_frames=N)` (the multi-action
+    'plan' turn). Mirrors apply_command's per-command mapping exactly; the bridge's dispatch_actions
+    applies each act.type, so a batched list behaves like issuing them in order while paused. Returns
+    None for `wait` (a pure time-advance, no action). Raises ValueError on an unknown verb."""
+    if cmd == "wait":
+        return None
+    if cmd == "power":
+        return set_system_power(int(args[0]), int(args[1]))
+    if cmd == "fire":
+        return fire_weapon(int(args[0]), int(args[1]))
+    if cmd == "jump":
+        return jump(int(args[0]))
+    if cmd == "event":
+        return choose_event(int(args[0]))
+    if cmd == "leave":
+        return leave_sector()
+    if cmd == "crew":
+        return move_crew(int(args[0]), int(args[1]))
+    if cmd == "buy":
+        return store_buy(int(args[0]))
+    if cmd == "sell":
+        return store_sell(int(args[0]))
+    if cmd == "upgrade":
+        return upgrade_system(int(args[0]))
+    if cmd == "cloak":
+        return cloak()
+    if cmd == "doors":
+        return set_doors(args[0] == "open",
+                         room_id=int(args[1]) if len(args) > 1 else None,
+                         include_airlocks=True)
+    if cmd == "mindcontrol":
+        return mind_control(int(args[0]))
+    if cmd == "battery":
+        return battery()
+    if cmd == "beam":
+        _ra = int(args[1])
+        _rb = int(args[2]) if len(args) > 2 else _ra
+        return fire_beam(int(args[0]), _ra, _rb)
+    if cmd == "hack":
+        return hack_system(int(args[0]) if args else 0)
+    if cmd == "drone":
+        _slot = int(args[0]) if args else None
+        _allow = (len(args) > 1 and args[1] in ("1", "crew", "allowcrew", "true"))
+        return deploy_drone(slot=_slot, allow_crew_drone=_allow)
+    if cmd == "dronerecall":
+        return recall_drones()
+    if cmd == "board":
+        return teleport_crew(1, int(args[0]) if args else -1)
+    if cmd == "recall":
+        return teleport_crew(2, int(args[0]) if args else -1)
     raise ValueError(f"unknown command {cmd!r}")
 
 

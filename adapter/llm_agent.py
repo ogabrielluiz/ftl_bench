@@ -28,7 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))           # play_cli
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "harness" / "src"))
 
-from play_cli import apply_command, compact  # noqa: E402
+from play_cli import apply_command, command_to_action, compact  # noqa: E402
 from ftl_bench.session import ftl_process_alive  # noqa: E402
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
@@ -123,9 +123,15 @@ def build_system_prompt(scenario, manual: str, play_to_gameover: bool = False,
 def build_turn_prompt(c: dict, history: list[str], step: int, jumps: int, budget: int) -> str:
     hist = "\n".join(history[-8:]) if history else "(none yet)"
     return (
-        f"Your recent actions:\n{hist}\n\n"
+        f"Your recent turns:\n{hist}\n\n"
         f"OBSERVATION:\n{json.dumps(c, separators=(',', ':'))}\n\n"
-        f"Decide ONE action. End with `ACTION: <command>`."
+        f"Decide your PLAN for this turn. The game is PAUSED while you think, so issue as many "
+        f"commands as the situation needs — they run IN ORDER while paused (power systems, position "
+        f"crew, target weapons, set doors) — then end with ONE `advance <frames>` saying how long to "
+        f"let the game run before your next turn (a combat beat is ~150; a jump warps in ~260; use a "
+        f"long advance to let things play out, a short one to react soon). Reply with a brief reason, "
+        f"then an `ACTION:` block, one command per line. Example:\n"
+        f"ACTION:\n  power 3 3\n  crew 0 8\n  doors close 9\n  fire 1 3\n  advance 150"
     )
 
 
@@ -148,6 +154,107 @@ def parse_action(text: str) -> tuple[str | None, list[str]]:
         if toks and toks[0].lower() in KNOWN_VERBS:
             return toks[0].lower(), toks[1:]
     return None, []
+
+
+def _extract_thought(reply: str, max_len: int = 240) -> str | None:
+    """The model's REASONING for this turn: its reply minus the `ACTION:` line parse_action
+    selects (the LAST one), collapsed to a single line and length-capped. Returns None if empty.
+    Single-line + capped so it stays cheap in the live log, the trajectory JSONL, and the reflection
+    transcript (where each entry must be one line)."""
+    if not reply:
+        return None
+    lines = [ln.strip() for ln in reply.strip().splitlines() if ln.strip()]
+    action_idx = None
+    for i in range(len(lines) - 1, -1, -1):           # mirror parse_action: the LAST action line
+        if lines[i].lower().startswith("action:"):
+            action_idx = i
+            break
+    reasoning = lines[:action_idx] if action_idx is not None else lines
+    text = " ".join(reasoning).strip()
+    if len(text) > max_len:
+        text = text[: max_len - 1].rstrip() + "…"
+    return text or None
+
+
+def parse_plan(text: str, max_actions: int = 12) -> tuple[list[tuple[str, list[str]]], int | None]:
+    """Parse a multi-action PLAN from the model's reply: the commands after the last `ACTION:`
+    marker (one per line; `#` comments and `-`/number bullets allowed), plus an optional
+    `advance <N>` / `wait <N>` directive for how long to let the game run after applying them.
+    Returns (commands, advance) — commands is a list of (verb, args); advance is the requested frame
+    budget or None for the default. A single `ACTION: <command>` parses as a one-command plan, so
+    this is backward-compatible with the old single-action contract."""
+    if not text:
+        return [], None
+    lines = text.splitlines()
+    start = None
+    for i in range(len(lines) - 1, -1, -1):
+        if lines[i].strip().lower().startswith("action:"):
+            start = i
+            break
+    body = lines if start is None else [lines[start].split(":", 1)[1]] + lines[start + 1:]
+    commands: list[tuple[str, list[str]]] = []
+    advance: int | None = None
+    for raw in body:
+        ln = raw.split("#", 1)[0].strip().strip("`").lstrip("-*•0123456789. )").strip()
+        if not ln:
+            continue
+        toks = ln.split()
+        verb, rest = toks[0].lower(), toks[1:]
+        if verb in ("advance", "wait"):                 # the time-advance directive
+            try:
+                advance = int(rest[0])
+            except (ValueError, IndexError):
+                advance = advance if advance is not None else 150
+            continue
+        if verb in KNOWN_VERBS:
+            commands.append((verb, rest))
+            if len(commands) >= max_actions:
+                break
+    return commands, advance
+
+
+def _plan_advance(commands: list[tuple[str, list[str]]], requested: int | None) -> int:
+    """How many frames to let the game run after applying a plan. Honors the model's requested
+    advance but enforces floors so the action completes: a jump/leave needs the full warp (~260),
+    a fire/beam wants a combat beat (~150). Caps runaway advances."""
+    adv = requested if requested is not None else 90
+    verbs = {c for c, _ in commands}
+    if verbs & {"jump", "leave"}:
+        adv = max(adv, 260)
+    elif verbs & {"fire", "beam"}:
+        adv = max(adv, 150)
+    return max(20, min(adv, 1200))
+
+
+def _batch_feedback(commands: list[tuple[str, list[str]]], c2: dict) -> str:
+    """Post-batch corrective notes (the multi-action analogue of the single-action feedback):
+    powering a broken module, or a fire that can't land (no enemy / not targetable / unpowered)."""
+    sysmap = {s.get("id"): s for s in (c2.get("systems") or [])}
+    weapons = {w.get("slot"): w for w in (c2.get("weapons") or [])}
+    en = c2.get("enemy")
+    notes: list[str] = []
+    for cmd, args in commands:
+        try:
+            if cmd == "power" and args:
+                sy = sysmap.get(int(args[0]))
+                if sy and (sy.get("damage") or sy.get("on_fire")):
+                    cond = "ON FIRE" if sy.get("on_fire") else "DAMAGED"
+                    notes.append(f"{sy.get('name')} is {cond} — powering does NOT fix it; send a "
+                                 f"crew member to room {sy.get('room')} to repair/extinguish.")
+            elif cmd in ("fire", "beam") and args:
+                if not en:
+                    notes.append("you fired with no enemy present — it hit nothing.")
+                elif en.get("targetable") is False:
+                    notes.append("the enemy is NOT targetable (warping out/gone) — fire hit nothing.")
+                else:
+                    w = weapons.get(int(args[0]))
+                    if w is not None and not w.get("powered"):
+                        notes.append(f"weapon slot {args[0]} is UNPOWERED — power weapons (system 3).")
+        except Exception:  # noqa: BLE001
+            pass
+    seen: set[str] = set()
+    uniq = [n for n in notes if not (n in seen or seen.add(n))]
+    return ("  [NOTE: " + " | ".join(uniq) + "]") if uniq else ""
 
 
 def _summarize(step: int, cmd: str, args: list[str], c: dict) -> str:
@@ -235,7 +342,14 @@ def anthropic_complete(system: str, user: str, model: str, max_tokens: int = 700
             last = e
             if e.code in (429, 500, 503, 529):
                 time.sleep(2 * (attempt + 1)); continue
-            raise
+            # Surface the API's error body (e.g. "Your credit balance is too low...", an invalid
+            # model, a malformed request) instead of a bare "HTTP Error 400" that hides the cause.
+            detail = ""
+            try:
+                detail = e.read().decode()[:300]
+            except Exception:  # noqa: BLE001
+                pass
+            raise RuntimeError(f"anthropic API HTTP {e.code}: {detail or e.reason}") from e
     raise RuntimeError(f"anthropic API failed after retries: {last}")
 
 
@@ -249,6 +363,12 @@ def claude_cli_complete(system: str, user: str, model: str | None) -> str:
     if model:
         cmd += ["--model", model]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    if r.returncode != 0:
+        # claude -p failed (e.g. "Credit balance is too low", auth / rate errors). Raise so the
+        # agent loop ENDS the episode cleanly, instead of returning the error text as a "reply"
+        # that parses to no action and silently waits the ship to death.
+        raise RuntimeError(f"claude -p failed (exit {r.returncode}): "
+                           f"{(r.stderr or r.stdout or '').strip()[:200]}")
     return r.stdout or r.stderr
 
 
@@ -283,7 +403,7 @@ def reflect(attempts, complete) -> str:
 
 
 def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mult: int = 8,
-                   prompt_version: str = "v3", play_to_gameover: bool = False,
+                   prompt_version: str = "v4", play_to_gameover: bool = False,
                    stall_limit: int = 10):
     """Return an agent_fn(sess, scenario, log) that plays via the chosen model/backend, using the
     version-controlled prompt manual `prompt_version`.
@@ -326,6 +446,7 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
         repeat_count = 0
         stall_count = 0      # consecutive turns with NO forward progress (play-to-gameover)
         timeouts = 0         # consecutive transient action-ack lags (reset on any success)
+        empty_plans = 0      # consecutive turns the model gave NOTHING parseable (dead backend?)
         HARD_CAP = 1500      # safety bound for play-to-gameover (a full FTL game is < this)
         max_steps = HARD_CAP if play_to_gameover else budget * step_mult
         for step in range(max_steps):
@@ -347,10 +468,10 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
                 # weapon already autofiring, wait with nothing changing). State the fact; the
                 # agent still decides (no policy baked in).
                 if repeat_count >= 2:
-                    turn += (f"\n\nNOTE: you have issued the IDENTICAL action '{prev_action}' "
+                    turn += (f"\n\nNOTE: you have issued the IDENTICAL plan '{prev_action}' "
                              f"{repeat_count + 1} times in a row with no meaningful change in the "
                              f"observation — it has already taken effect or isn't possible now. "
-                             f"Pick a DIFFERENT action to make progress toward the goal.")
+                             f"Try DIFFERENT actions to make progress toward the goal.")
                 # Stall warning: as the no-progress streak approaches the limit, tell the agent
                 # the run is about to end (exposing the eval rule — the agent still chooses).
                 if play_to_gameover and stall_limit and stall_count >= max(2, stall_limit - 4):
@@ -361,19 +482,47 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
                 reply = complete(system, turn)
             except Exception as e:  # noqa: BLE001 — a model/transport error ends the episode
                 log(f"    [llm] model error: {e}"); break
-            cmd, cargs = parse_action(reply)
-            if cmd is None:
-                history.append(f"step{step}: (no parseable action; waited)")
-                cmd, cargs = "wait", []
-            action_str = (cmd + " " + " ".join(map(str, cargs))).strip()
+            commands, adv_directive = parse_plan(reply)
+            # Backend-death backstop: a reply with NO commands and NO advance directive is the model
+            # giving nothing actionable (a dead/erroring backend returns its error text, which parses
+            # to this). The stall guard can miss it when hull is changing (e.g. a sun hazard), so
+            # don't wait the ship to death — end the episode after a few such turns in a row.
+            if not commands and adv_directive is None:
+                empty_plans += 1
+                if empty_plans >= 4:
+                    log(f"    [llm] no actionable plan {empty_plans} turns in a row "
+                        f"(backend dead/erroring?) — ending episode"); break
+            else:
+                empty_plans = 0
+            thought = _extract_thought(reply)
+            # Build the env batch from the plan; skip `wait` (a pure advance) and report a bad
+            # command individually instead of failing the whole turn.
+            action_dicts: list[dict] = []
+            good_cmds: list[tuple[str, list[str]]] = []
+            for vcmd, vargs in commands:
+                try:
+                    act = command_to_action(vcmd, vargs)
+                except Exception as e:  # noqa: BLE001 — bad args / unknown verb: tell the model
+                    history.append(f"step{step}: '{vcmd} {' '.join(vargs)}' -> ERROR: {e}")
+                    continue
+                good_cmds.append((vcmd, vargs))
+                if act is not None:
+                    action_dicts.append(act)
+            advance = _plan_advance(good_cmds, adv_directive)
+            plan_str = "; ".join((c + " " + " ".join(map(str, a))).strip()
+                                 for c, a in good_cmds) or "wait"
+            action_str = f"{plan_str} |adv {advance}"
+            # Capture the model's reasoning and hand it to the step()'s trajectory record (via the
+            # session side-channel) so the run logs THOUGHTS and reflection can see the reasoning.
+            sess.pending_thought = thought
             try:
-                o2 = apply_command(sess, cmd, cargs)
+                # Apply the WHOLE plan as one batched step: the bridge dispatches each action while
+                # paused, then advances `advance` frames and re-pauses (the agent's chosen beat).
+                o2 = sess.step(action_dicts, advance_frames=advance)
             except TimeoutError:
-                # An action ack can lag transiently (long warp/arrival, or slow file I/O on
-                # native Windows where Defender/NTFS briefly locks the action/obs files). Only a
-                # GONE process is truly frozen; tolerate a few consecutive lags and re-observe so
-                # the agent can re-issue, matching the scripted baseline. Without this, ONE lag
-                # propagates out and run_instance force-restarts FTL, truncating the whole episode.
+                # An action ack can lag transiently (long warp/arrival, or slow file I/O on native
+                # Windows where Defender/NTFS briefly locks the files). Only a GONE process is truly
+                # frozen; tolerate a few consecutive lags and re-observe, matching the baseline.
                 timeouts += 1
                 dead = not ftl_process_alive()
                 log(f"    [llm] action ack timed out [{timeouts}]"
@@ -381,60 +530,38 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
                 if dead or timeouts >= 4:
                     raise  # real freeze: let run_instance relaunch + move on
                 continue
-            except Exception as e:  # noqa: BLE001 — bad args / illegal action: tell the model, continue
-                history.append(f"step{step}: '{cmd} {' '.join(cargs)}' -> ERROR: {e}")
-                # a repeated illegal action is a no-op loop too (state can't change)
+            except Exception as e:  # noqa: BLE001 — dispatch error: tell the model, continue
+                history.append(f"step{step}: plan '{plan_str}' -> ERROR: {e}")
                 repeat_count = repeat_count + 1 if action_str == prev_action else 0
                 prev_action = action_str
                 continue
             timeouts = 0  # a successful ack clears the transient-lag streak
-            if cmd in ("jump", "leave"):
-                jumps += 1
+            jumps += sum(1 for c, _ in good_cmds if c in ("jump", "leave"))
             c2 = compact(o2)
-            # No-op-loop detection. Non-`wait` commands are idempotent SETS (power a system to a
-            # level, target a weapon, move crew to a room) — re-issuing the SAME one does nothing,
-            # regardless of incidental state drift (e.g. oxygen creeping back up), so flag any
-            # identical repeat. `wait` is the exception: repeating it is productive WHILE the state
-            # is actually changing (a repair/heal in progress), so only flag a `wait` repeat when
-            # the salient state is unchanged.
+            # No-op-loop detection: an IDENTICAL plan that left the salient state unchanged did
+            # nothing; a plan that moved the state is productive even if repeated.
             sig = _state_sig(c2)
-            same = (action_str == prev_action)
-            productive_wait = (cmd == "wait" and sig != prev_sig)
-            repeat_count = repeat_count + 1 if (same and not productive_wait) else 0
-            # Stall = no FORWARD PROGRESS vs the previous turn (map didn't move, the enemy isn't
-            # dying, no scrap gained). Catches both idling AND combat stalemates — "the agent is
-            # paused" — without being reset by incidental damage/charge micro-changes.
+            repeat_count = repeat_count + 1 if (action_str == prev_action and sig == prev_sig) else 0
+            # Stall = no FORWARD PROGRESS vs the previous turn (map didn't move, enemy not dying, no
+            # scrap). Catches idling AND combat stalemates without tripping on incidental micro-drift.
             prog = _progress_sig(c2)
             stall_count = stall_count + 1 if (prev_prog is not None and prog == prev_prog) else 0
             prev_action, prev_sig, prev_prog = action_str, sig, prog
-            # Direct feedback when the agent powers a BROKEN module: power can't restore a damaged
-            # or on-fire system — it needs a crew member in its room to repair/extinguish. The
-            # agent keeps re-powering broken modules because nothing tells it power is the wrong fix.
-            broken_note = ""
-            if cmd == "power" and cargs:
-                try:
-                    _tsys = next((sy for sy in c2.get("systems", [])
-                                  if sy.get("id") == int(cargs[0])), None)
-                    if _tsys and (_tsys.get("damage") or _tsys.get("on_fire")):
-                        _cond = "ON FIRE" if _tsys.get("on_fire") else "DAMAGED"
-                        broken_note = (f"  [NOTE: {_tsys.get('name')} is {_cond} — powering does NOT "
-                                       f"fix a broken module; send a crew member to room "
-                                       f"{_tsys.get('room')} to repair/extinguish it.]")
-                except Exception:  # noqa: BLE001
-                    pass
-            history.append(_summarize(step, cmd, cargs, c2) + broken_note)
+            note = _batch_feedback(good_cmds, c2)
+            history.append(f"step{step}: {plan_str} (adv {advance}) -> sector {c2.get('sector')} "
+                           f"hull {c2.get('hull')}{' enemy' if c2.get('enemy') else ''}{note}")
             _int = c2.get("interrupted_by")
-            log(f"    [llm] step {step}: {cmd} {' '.join(cargs)} -> "
+            log(f"    [llm] step {step}: {plan_str}  (adv {advance}) -> "
                 f"sector {c2.get('sector')} hull {c2.get('hull')} jumps {jumps}"
                 + (f"  [INTERRUPT:{_int}]" if _int else "")
                 + (f"  [stall {stall_count}/{stall_limit}]"
-                   if (play_to_gameover and stall_count) else ""))
+                   if (play_to_gameover and stall_count) else "")
+                + (f"\n        [thought: {thought}]" if thought else ""))
             # Stall-out: no progress for stall_limit turns -> the run is over (a loss).
             if play_to_gameover and stall_limit and stall_count >= stall_limit:
                 log(f"    [llm] STALLED {stall_count} turns with no progress -> GAME OVER")
                 break
-            # Natural end already handled at the top via game_status; play-to-gameover also stops
-            # when the obs reports the game is over (DESTROYED/GAME_OVER).
+            # play-to-gameover also stops when the obs reports the game is over (DESTROYED/GAME_OVER).
             if play_to_gameover and (c2.get("game_status") in TERMINAL or c2.get("game_over")):
                 log(f"    [llm] game over: {c2.get('game_status') or 'GAME_OVER'}"); break
 

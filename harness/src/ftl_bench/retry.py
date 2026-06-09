@@ -129,7 +129,14 @@ def summarize_attempt(records: list[dict[str, Any]], result: dict[str, Any], ind
         hull = (ps.get("hull") or {}).get("current")
         sector = (obs.get("map") or {}).get("sector")
         enemy = " enemy" if obs.get("enemy_ship") else ""
-        transcript.append(f"step {step}: {a_str} -> sector {sector} hull {hull}{enemy}")
+        # Carry the agent's recorded reasoning for this step into the transcript so the reflection
+        # can learn from WHY each move was made, not just the move + outcome. Single-line (it was
+        # collapsed at capture); omitted for old/non-LLM records that have no thought.
+        thought = (r.get("thought") or "").strip().replace("\n", " ")
+        line = f"step {step}: {a_str} -> sector {sector} hull {hull}{enemy}"
+        if thought:
+            line += f" [thought: {thought}]"
+        transcript.append(line)
         step += 1
 
     return Attempt(

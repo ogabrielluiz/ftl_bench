@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from ftl_bench import AgentSession, set_system_power, move_crew
+from ftl_bench import AgentSession, TrajectoryRecorder, set_system_power, move_crew
 
 
 def _write_obs(folder: Path, *, seq, paused=True, tick=1):
@@ -101,6 +101,29 @@ def test_step_acks_seq(tmp_path):
         # second step increments seq and is acked too
         obs2 = sess.step([set_system_power(1, 3)])
         assert obs2.last_action_seq == 2
+    finally:
+        bridge.stop()
+
+
+def test_step_threads_pending_thought_into_record_and_clears(tmp_path):
+    # The LLM agent stashes its reasoning in sess.pending_thought; step() must attach it to that
+    # step's record and clear it, so the NEXT step (no thought set) records none.
+    _write_obs(tmp_path, seq=None, paused=True)
+    bridge = FakeBridge(tmp_path)
+    bridge.start()
+    try:
+        traj = tmp_path / "traj.jsonl"
+        sess = AgentSession(tmp_path, step_timeout=3.0)
+        sess.recorder = TrajectoryRecorder(traj)
+        sess.reset()
+        sess.pending_thought = "drop their shields then fire on the helm"
+        sess.step([set_system_power(0, 2)], advance_frames=10)
+        assert sess.pending_thought is None                      # cleared by the step
+        sess.step([set_system_power(1, 3)], advance_frames=10)   # no thought this turn
+        recs = [json.loads(l) for l in traj.read_text().splitlines() if l.strip()]
+        steps = [r for r in recs if r["kind"] == "step"]
+        assert steps[0]["thought"] == "drop their shields then fire on the helm"
+        assert "thought" not in steps[1]
     finally:
         bridge.stop()
 

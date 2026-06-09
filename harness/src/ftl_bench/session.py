@@ -234,6 +234,10 @@ class AgentSession:
         self.step_timeout = step_timeout
         self.action_seq = 0
         self.recorder = recorder  # optional TrajectoryRecorder
+        # Side-channel: an agent stashes its reasoning for the NEXT step here, and step() reads +
+        # clears it into that step's trajectory record. Avoids threading a `thought` param through
+        # step() and every apply_command helper. None for agents that don't reason (scripted/random).
+        self.pending_thought: str | None = None
 
     def observe(self) -> Observation:
         """Latest validated observation (no action issued)."""
@@ -268,6 +272,11 @@ class AgentSession:
         """Write an action, advance the world, return the resulting observation."""
         self._sync_seq()
         self.action_seq += 1
+        # Read+clear the pending thought BEFORE the ack: if _wait_for times out below, no record is
+        # written, and clearing here ensures the thought can't leak onto the next step. (The
+        # leave_sector pump calls step() repeatedly; only the first sub-step carries the thought.)
+        thought = self.pending_thought
+        self.pending_thought = None
         payload = {
             "seq": self.action_seq,
             "advance_frames": int(advance_frames),
@@ -283,7 +292,7 @@ class AgentSession:
             timeout=timeout,
         )
         if self.recorder is not None:
-            self.recorder.record("step", payload["actions"], obs)
+            self.recorder.record("step", payload["actions"], obs, thought=thought)
         return obs
 
     # ---- autonomy: start a game from the menu without a human click ----

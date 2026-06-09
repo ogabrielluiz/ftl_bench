@@ -98,6 +98,21 @@ def test_summarize_attempt_outcomes():
     assert "jump" not in destroyed.outcome.lower()
 
 
+def test_summarize_attempt_surfaces_thought_in_transcript():
+    # A recorded per-step thought rides into the transcript so reflection sees the reasoning;
+    # a step with no thought gets no suffix (the thought is cleared between steps).
+    records = [
+        {"kind": "meta"},
+        {**_step([{"type": "fire_weapon", "weapon_slot": 0, "target_room_id": 1}],
+                 hull=30, sector=0, enemy=True),
+         "thought": "fire on their shield room to drop the layer"},
+        _step([{"type": "jump", "beacon_index": 3}], hull=30, sector=0),  # no thought
+    ]
+    att = summarize_attempt(records, _result(ftl_score=10, solved=False, sector=0, hull=30, jumps=1), 0)
+    assert att.transcript[0].endswith("[thought: fire on their shield room to drop the layer]")
+    assert "[thought:" not in att.transcript[1]
+
+
 def test_summarize_attempt_empty_action_is_wait():
     records = [{"kind": "meta"}, _step([], hull=30, sector=0)]
     att = summarize_attempt(records, _result(ftl_score=5, solved=False, sector=0, hull=30, jumps=0), 0)

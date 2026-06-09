@@ -24,7 +24,8 @@ class TrajectoryRecorder:
                   "meta": meta or {}}
         self.path.write_text(json.dumps(header) + "\n", encoding="utf-8")
 
-    def record(self, kind: str, actions: Iterable[dict[str, Any]] | None, obs) -> None:
+    def record(self, kind: str, actions: Iterable[dict[str, Any]] | None, obs,
+               thought: str | None = None) -> None:
         rec = {
             "i": self.n,
             "t": round(time.time(), 3),
@@ -32,6 +33,11 @@ class TrajectoryRecorder:
             "actions": list(actions) if actions else [],
             "obs": getattr(obs, "raw", None),
         }
+        # `thought` (the agent's reasoning for this step) is OPTIONAL and additive: only written
+        # when present, so old trajectories and non-LLM agents (no thought) stay byte-identical and
+        # every consumer that reads records via .get() is unaffected.
+        if thought:
+            rec["thought"] = thought
         with self.path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec) + "\n")
         self.n += 1

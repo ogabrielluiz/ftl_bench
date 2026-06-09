@@ -15,6 +15,15 @@ S.frame_budget     = S.frame_budget or 0
 S.last_applied_seq = S.last_applied_seq      -- nil until first action
 S.err_cooldown     = S.err_cooldown or 0
 
+-- Minimum frames an advancing step runs before the hybrid pause may cut it short on a critical
+-- event (taking a hit, a fire, a boarder). The old floor was 18 (~0.3s), so in combat the
+-- took_damage check re-paused almost immediately every step — the agent fired once, ate one hit,
+-- and was re-prompted, so a fight never flowed and weapons never resolved a kill. Raising the
+-- floor lets each combat step play a real beat (set power/target, then let the volley land) before
+-- handing control back. Setup actions whose own advance budget is already below this (power=20,
+-- crew=30) are unaffected — they just run their short budget and re-pause as before. Tune here.
+local MIN_STEP_FRAMES = 150
+
 local function log_err(msg)
   if S.err_cooldown > 0 then return end
   S.err_cooldown = 120
@@ -209,19 +218,30 @@ local function apply_fire_weapon(act)
   local slot = act.weapon_slot or 0
   local ship_id = act.target_ship_id or 1
   local room = act.target_room_id or 0
-  -- The C++ binding arms the weapon, sets a persistent target, and turns on global
-  -- autofire -- but it only supplies ONE target point. Multi-shot weapons need
-  -- NumTargetsRequired() points (Burst Laser II: 3 shots -> 3 points); with too few
-  -- they stay powered + fully charged + fire_when_ready yet NEVER release a shot
-  -- (the "burst laser ready but won't fire" bug). Top up the aim points here so every
-  -- shot of a burst weapon targets the chosen room.
+  -- The C++ binding arms the weapon and sets a persistent target, but it leaves the weapon's
+  -- fireWhenReady FALSE — so a charged, targeted weapon NEVER releases its shot (and FTL then
+  -- clears the pushed aim points, so n_targets drops back to 0). This is the "burst laser ready
+  -- but won't fire" bug: the agent sees a fully-charged, targeted weapon vs a near-dead enemy and
+  -- it just sits there. Set fireWhenReady so the weapon actually fires when charged, keep
+  -- autoFiring so it re-fires each cycle, and top up the aim points (multi-shot weapons need
+  -- NumTargetsRequired() points — Burst Laser II: 3 shots -> 3 points).
   Hyperspace.benchmark_fire_weapon(slot, ship_id, room)
+  -- Also flip the ship's GLOBAL autofire (the AUTOFIRE button). The per-weapon fireWhenReady is
+  -- rewritten every frame from this global state, so poking it once gets stomped; the global toggle
+  -- is the lever that persists. Best-effort — the exact binding may differ; if it doesn't take, the
+  -- agent re-issues `fire` each beat (the v4 manual instructs this).
+  pcall(function()
+    local cc = Hyperspace.App and Hyperspace.App.gui and Hyperspace.App.gui.combatControl
+    if cc and cc.weapControl then cc.weapControl.autoFiring = true end
+  end)
   pcall(function()
     local pl = Hyperspace.ships and Hyperspace.ships.player
     local target = (ship_id == 0) and pl or (Hyperspace.ships and Hyperspace.ships.enemy)
     if not (pl and target) then return end
     local pf = pl:GetWeaponList()[slot]
     if not pf then return end
+    pcall(function() pf.fireWhenReady = true end)   -- the flag that releases a charged shot
+    pcall(function() pf.autoFiring = true end)       -- keep firing on the target each cycle
     local need = pf:NumTargetsRequired()
     if not need or need <= pf.targets:size() then return end
     local center = target:GetRoomCenter(room)
@@ -1531,9 +1551,11 @@ _G.ftl_bench_tick = function()
   if S.frame_budget > 0 then
     S.frame_budget = S.frame_budget - 1
     S.adv_elapsed = (S.adv_elapsed or 0) + 1
-    -- HYBRID pause: after a short settle, end the advance EARLY on a critical event so the agent
-    -- gets a turn to react (combat start / hull damage / boarder / fire / event). Not mid-warp.
-    if S.frame_budget > 0 and S.adv_elapsed >= 18 then
+    -- HYBRID pause: after a MINIMUM beat (MIN_STEP_FRAMES), end the advance EARLY on a critical
+    -- event so the agent gets a turn to react (combat start / hull damage / boarder / fire /
+    -- event). The minimum stops a fight being chopped into ~18-frame slivers by chip damage. Not
+    -- mid-warp (check_critical excludes bJumping).
+    if S.frame_budget > 0 and S.adv_elapsed >= MIN_STEP_FRAMES then
       local r = check_critical(S.danger0, S.adv_elapsed)
       if r then S.frame_budget = 0; S.interrupt_reason = r end
     end
