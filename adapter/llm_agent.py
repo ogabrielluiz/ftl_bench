@@ -20,8 +20,10 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -372,6 +374,63 @@ def claude_cli_complete(system: str, user: str, model: str | None) -> str:
     return r.stdout or r.stderr
 
 
+def _codex_bin() -> str:
+    """Locate the OpenAI Codex CLI: $CODEX_BIN, then PATH, then the default Windows install dir
+    (chatgpt.com/codex/install.ps1 → %LOCALAPPDATA%\\Programs\\OpenAI\\Codex\\bin), else 'codex'."""
+    env = os.environ.get("CODEX_BIN")
+    if env and Path(env).exists():
+        return env
+    found = shutil.which("codex")
+    if found:
+        return found
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        cand = Path(local) / "Programs" / "OpenAI" / "Codex" / "bin" / "codex.exe"
+        if cand.exists():
+            return str(cand)
+    return "codex"
+
+
+def codex_complete(system: str, user: str, model: str | None) -> str:
+    """No-key track: drive the local OpenAI `codex exec` CLI (uses your Codex/ChatGPT auth). One
+    non-interactive run per turn; `--output-last-message` writes ONLY the model's final message, so
+    we parse the ACTION block out of that (not the agent scaffolding). The prompt is self-contained
+    and the sandbox is read-only, so Codex answers from the prompt instead of running tools."""
+    prompt = (f"{system}\n\n{user}\n\n"
+              f"(Respond with a brief reasoning then the `ACTION:` block exactly as instructed. "
+              f"Do NOT run any commands, use tools, or read files — answer ONLY from the text above.)")
+    fd, out_path = tempfile.mkstemp(prefix="codex_msg_", suffix=".txt")
+    os.close(fd)
+    try:
+        cmd = [_codex_bin(), "exec", "--skip-git-repo-check", "--ephemeral",
+               "--ignore-user-config", "-s", "read-only", "--color", "never", "-o", out_path]
+        if model:
+            cmd += ["-m", model]
+        cmd.append(prompt)
+        # CRITICAL: close stdin. `codex exec` reads stdin when it isn't a TTY (to append a
+        # piped <stdin> block); with no input and an open pipe it blocks forever ("Reading
+        # additional input from stdin..."). DEVNULL gives immediate EOF so it uses the arg prompt.
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300,
+                           stdin=subprocess.DEVNULL)
+        msg = ""
+        try:
+            msg = Path(out_path).read_text(encoding="utf-8").strip()
+        except OSError:
+            pass
+        if not msg:
+            # nothing captured — surface the failure (auth, model, sandbox) instead of a silent no-op
+            if r.returncode != 0:
+                raise RuntimeError(f"codex exec failed (exit {r.returncode}): "
+                                   f"{(r.stderr or r.stdout or '').strip()[:300]}")
+            msg = r.stdout or ""
+        return msg
+    finally:
+        try:
+            os.unlink(out_path)
+        except OSError:
+            pass
+
+
 # --- retry / reflection -------------------------------------------------------------
 
 def reflect(attempts, complete) -> str:
@@ -417,12 +476,19 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
 
     The session is already reset to the scenario seed by run_instance; we just play."""
     if model is None:
-        model = "claude-sonnet-4-6" if backend == "anthropic" else "sonnet"
+        # anthropic needs an explicit id; claude-cli defaults to 'sonnet'; codex uses its own
+        # configured default (pass no -m) so leave it None.
+        if backend == "anthropic":
+            model = "claude-sonnet-4-6"
+        elif backend == "claude-cli":
+            model = "sonnet"
     manual = load_prompt(prompt_version)  # load once; fail fast if the version is missing
 
     def complete(system: str, user: str) -> str:
         if backend == "claude-cli":
             return claude_cli_complete(system, user, model)
+        if backend == "codex":
+            return codex_complete(system, user, model)
         return anthropic_complete(system, user, model)
 
     def agent_fn(sess, scenario, log, attempts=()) -> None:

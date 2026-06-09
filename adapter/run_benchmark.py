@@ -298,8 +298,9 @@ def main() -> None:
                     help="scripted | random | llm (a real frontier model)")
     ap.add_argument("--model", default=None,
                     help="llm track: model id (default claude-sonnet-4-6 for anthropic)")
-    ap.add_argument("--backend", choices=["anthropic", "claude-cli"], default="anthropic",
-                    help="llm track: anthropic API (needs ANTHROPIC_API_KEY) | local claude -p")
+    ap.add_argument("--backend", choices=["anthropic", "claude-cli", "codex"], default="anthropic",
+                    help="llm track: anthropic API (needs ANTHROPIC_API_KEY) | local claude -p | "
+                         "local OpenAI codex exec (uses your codex auth)")
     ap.add_argument("--step-mult", type=int, default=8,
                     help="llm track: max actions per instance = budget_jumps * this")
     ap.add_argument("--prompt-version", default="v4",
