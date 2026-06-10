@@ -42,6 +42,12 @@ SYSTEM_NAMES = {
 }
 
 
+def _copy_keys(d: dict | None, keys: tuple[str, ...]) -> dict:
+    if not isinstance(d, dict):
+        return {}
+    return {k: d[k] for k in keys if k in d and d[k] is not None}
+
+
 def _summary(obs: Observation) -> dict[str, Any]:
     """A compact, agent-readable view of the observation."""
     out: dict[str, Any] = {
@@ -65,7 +71,8 @@ def _summary(obs: Observation) -> dict[str, Any]:
         "systems": [
             {"id": s["id"], "name": SYSTEM_NAMES.get(s["id"], str(s["id"])),
              "power": s.get("power"), "power_max": s.get("power_max"),
-             "damage": s.get("damage")}
+             "damage": s.get("damage"),
+             **({"needs_repair": True} if s.get("needs_repair") else {})}
             for s in ps.get("systems", [])
         ],
         "crew": [
@@ -80,19 +87,47 @@ def _summary(obs: Observation) -> dict[str, Any]:
             for w in ps.get("weapons", [])
         ],
     }
+    for key in ("cloak", "battery", "hacking", "drones", "teleporter", "mind_control"):
+        if ps.get(key):
+            out["player"][key] = ps[key]
+    if ps.get("rooms"):
+        out["player"]["rooms"] = [
+            _copy_keys(r, (
+                "room_id", "oxygen", "fires", "breaches", "breached", "breach",
+                "blacked_out", "rect",
+            ))
+            for r in ps.get("rooms", [])
+        ]
+    if ps.get("doors"):
+        out["player"]["doors"] = [
+            _copy_keys(d, (
+                "index", "id", "room_a", "room_b", "open", "locked",
+                "forced_open", "hacked",
+            ))
+            for d in ps.get("doors", [])
+        ]
     if obs.enemy_ship:
         es = obs.enemy_ship
         out["enemy"] = {
             "hull": es.get("hull"),
             "shields": es.get("shields"),
+            **({"flagship": True} if es.get("flagship") else {}),
+            **({"super_shield": es.get("super_shield")} if es.get("super_shield") else {}),
+            **_copy_keys(es, ("power_surge_timer", "power_surge_timer_max", "power_surge_type")),
             "rooms": [{"room_id": r["room_id"],
-                       "system": SYSTEM_NAMES.get(r["system_id"], str(r["system_id"]))}
+                       "system": SYSTEM_NAMES.get(r["system_id"], str(r["system_id"])),
+                       **({"hacked": True} if r.get("hacked") else {})}
                       for r in es.get("rooms", [])],
+            **({"rooms_with_crew": es.get("rooms_with_crew")} if es.get("rooms_with_crew") else {}),
+            **({"crew": es.get("crew")} if es.get("crew") else {}),
         }
+    if (obs.raw or {}).get("flagship"):
+        out["flagship"] = (obs.raw or {}).get("flagship")
     if obs.map:
         out["map"] = {
             "sector": obs.map.get("sector"),
             "beacons": obs.map.get("connected_beacons", []),
+            **({"sector_choices": obs.map.get("sector_choices")} if obs.map.get("sector_choices") else {}),
         }
     if obs.event:
         out["event"] = obs.event

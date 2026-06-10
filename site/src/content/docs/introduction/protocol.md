@@ -36,12 +36,12 @@ runs are never silently mixed.
 The agent receives:
 
 - a system prompt containing the versioned interface manual, currently
-  `prompts/ftl_agent_v4.md`;
+  `prompts/ftl_agent_v5.md`;
 - the objective and evaluation rules;
 - a compact JSON observation;
 - recent action history.
 
-The agent returns a brief reason plus an `ACTION:` block. In v4 the block may
+The agent returns a brief reason plus an `ACTION:` block. In v5 the block may
 contain multiple paused commands and should end with `advance <frames>`:
 
 ```text
@@ -99,7 +99,7 @@ uv run python ../adapter/run_benchmark.py \
   --suite ../scenarios/full_game.json \
   --tier semi_private \
   --mode gameover \
-  --prompt-version v4
+  --prompt-version v5
 ```
 
 For retries, include `--retries N` and report it as a separate row. Retry runs

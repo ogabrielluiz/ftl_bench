@@ -47,7 +47,7 @@ observe JSON state
   -> score the trajectory
 ```
 
-Example v4 model reply:
+Example v5 model reply:
 
 ```text
 I need weapons online, crew repairing oxygen, and the enemy weapons suppressed.
@@ -171,7 +171,7 @@ Median jumps per instance: 11. Public tier: 142.9. Held-out
 | `harness/` | Python environment, scenario loading, scoring, aggregation, trajectories. |
 | `adapter/` | CLI, benchmark runner, scripted/random baselines, LLM backends. |
 | `dashboard/` | React/Vite live dashboard served by `adapter/ftl_live.py`. |
-| `prompts/` | Versioned agent interface manuals. `v4` is the current multi-action contract. |
+| `prompts/` | Versioned agent interface manuals. `v5` is the current multi-action contract. |
 | `scenarios/` | Seeded benchmark suites. |
 | `site/` | Astro Starlight documentation site. |
 | `docs/deepdive/` | Source-grounded notes on Hyperspace and engine integration. |

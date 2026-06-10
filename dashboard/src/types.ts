@@ -14,12 +14,19 @@ export interface ActionView {
   label: string;
 }
 
+export interface EnemyDrone {
+  type: string | number;
+  firing: boolean;
+}
+
 export interface StepState {
   hull?: number | null;
   oxygen?: number | null;
   crew_min?: number | null;
   enemy?: string | null;
   fires?: number | null;
+  incoming?: number | null;
+  enemy_drones?: EnemyDrone[];
 }
 
 export interface FeedSummary {
@@ -62,6 +69,7 @@ export interface SystemStatus {
   power?: number | null;
   max?: number | null;
   damage?: number | null;
+  needs_repair?: boolean;
   ion?: number | null;
   powered?: boolean;
 }
@@ -87,10 +95,13 @@ export interface HeaderState {
   fire_rooms?: Array<number | null>;
   intruders?: number | null;
   damaged?: string[];
+  repair_needed?: string[];
   offline?: string[];
   systems?: SystemStatus[];
   enemy?: string | null;
   enemy_present?: boolean;
+  incoming?: number | null;
+  enemy_drones?: EnemyDrone[];
   event?: boolean;
   store?: boolean;
   ftl_score?: number | null;
@@ -113,6 +124,7 @@ export interface ProcessState {
 export interface RunState {
   agent?: string | null;
   run_id?: string | null;
+  current_instance?: string | null;
   suite: string;
   bench: string;
   dashboard_built: boolean;

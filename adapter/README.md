@@ -8,7 +8,7 @@ compact, agent-readable summary of the resulting state):
 
 | Tool | What it does |
 |------|--------------|
-| `observe()` | Current state: context (menu/in_space/combat/event), your ship (hull, reactor, systems+power, crew, weapons+charge), enemy (hull, shields, rooms), jump beacons, event choices |
+| `observe()` | Current state: context (menu/in_space/combat/event), your ship (hull, reactor, systems+power, room/door state, crew, weapons+charge), enemy (hull, shields, rooms/crew/drones/boss facts), jump beacons, event choices |
 | `reset(mode)` | Start a run — `'new'` (fresh seeded) or `'continue'` (resume the save) |
 | `do_jump(beacon_index)` | FTL-jump to a connected beacon |
 | `pick_choice(choice_index)` | Choose an event option |

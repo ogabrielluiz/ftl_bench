@@ -3,11 +3,11 @@ title: Action set
 description: The intent-level commands an agent can issue through the paused FTL interface.
 ---
 
-The agent controls FTL through intent-level text commands. In the current v4 LLM
+The agent controls FTL through intent-level text commands. In the current v5 LLM
 interface, a turn is one `ACTION:` block: several paused commands followed by
 `advance <frames>`. The lower-level CLI can also send one command at a time.
 
-Example v4 turn:
+Example v5 turn:
 
 ```text
 ACTION:
@@ -40,7 +40,7 @@ drone / dronerecall              deploy or recall drones
 board <enemy_room> / recall      teleport boarders or recall them
 mindcontrol <enemy_room>         activate mind control
 doors <open|close> [room]        open or close doors
-advance <frames>                 v4 plan terminator: let time pass
+advance <frames>                 plan terminator: let time pass
 wait [frames]                    CLI-compatible wait command
 ```
 
@@ -68,8 +68,9 @@ wait [frames]                    CLI-compatible wait command
 - **Most commands are one-time sets.** Repeating `power`, `crew`, `doors`, or a
   weapon target that is already in effect usually does nothing. Read the
   observation and choose the next useful change.
-- **Power does not repair damage.** A system with `damage > 0` or `on_fire:
-  true` is broken. Send crew to that system's `room`; do not keep adding power.
+- **Power does not repair damage.** A system with `damage > 0`,
+  `needs_repair: true`, or `on_fire: true` is broken. Send crew to that
+  system's `room`; do not keep adding power.
 - **Powering a weapon does not fire it.** Use `fire <slot> <enemy_room>` or
   `beam <slot> ...` to set a target.
 - **Events freeze the simulation.** If `event` is non-null, resolve it with

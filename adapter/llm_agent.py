@@ -237,10 +237,18 @@ def _batch_feedback(commands: list[tuple[str, list[str]]], c2: dict) -> str:
         try:
             if cmd == "power" and args:
                 sy = sysmap.get(int(args[0]))
-                if sy and (sy.get("damage") or sy.get("on_fire")):
-                    cond = "ON FIRE" if sy.get("on_fire") else "DAMAGED"
-                    notes.append(f"{sy.get('name')} is {cond} — powering does NOT fix it; send a "
-                                 f"crew member to room {sy.get('room')} to repair/extinguish.")
+                if sy and (sy.get("damage") or sy.get("needs_repair") or sy.get("on_fire")):
+                    if sy.get("needs_repair"):
+                        notes.append(
+                            f"{sy.get('name')} NEEDS REPAIR — powering does NOT fix it; send a "
+                            f"crew member to room {sy.get('room')} to repair."
+                        )
+                    else:
+                        cond = "ON FIRE" if sy.get("on_fire") else "DAMAGED"
+                        notes.append(
+                            f"{sy.get('name')} is {cond} — powering does NOT fix it; send a "
+                            f"crew member to room {sy.get('room')} to repair/extinguish."
+                        )
             elif cmd in ("fire", "beam") and args:
                 if not en:
                     notes.append("you fired with no enemy present — it hit nothing.")
@@ -272,13 +280,14 @@ def _state_sig(c: dict):
     """Signature of the salient game state. If it's unchanged after an action, that action made
     no progress — so the repeated-action nudge can fire on TRUE no-op loops (re-power a maxed
     system, re-fire an autofiring weapon) while NOT discouraging productive waiting (a repair or
-    heal in progress changes `damage`/`hp`, so the signature changes and the nudge stays quiet)."""
+    heal in progress changes `damage`/`needs_repair`/`hp`, so the signature changes and the
+    nudge stays quiet)."""
     en = c.get("enemy") or {}
     sh = c.get("shots") or {}
     return (
         c.get("hull"), c.get("sector"), c.get("scrap"), c.get("fuel"), c.get("missiles"),
         c.get("oxygen_pct"),
-        sum((s.get("damage") or 0) for s in c.get("systems", [])),
+        sum((s.get("damage") or 0) + int(bool(s.get("needs_repair"))) for s in c.get("systems", [])),
         tuple(sorted(str(cr.get("hp")) for cr in c.get("crew", []))),
         (en.get("hull") if en else None),
         (c.get("map") or {}).get("at_exit"),
@@ -303,7 +312,10 @@ def _progress_sig(c: dict):
         bool(en), (en.get("hull") if en else None), c.get("game_status"),
         # active ship-management (handling a crisis is NOT a stall)
         c.get("hull"), c.get("oxygen_pct"),
-        sum((s.get("damage") or 0) for s in (c.get("systems") or [])),
+        sum(
+            (s.get("damage") or 0) + int(bool(s.get("needs_repair")))
+            for s in (c.get("systems") or [])
+        ),
         sum(int(f.get("fires") or 0) for f in (c.get("fires") or [])),
         len(c.get("intruders") or []),
         tuple(sorted(str(cr.get("hp")) for cr in (c.get("crew") or []))),
@@ -467,7 +479,7 @@ def reflect(attempts, complete) -> str:
 
 
 def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mult: int = 8,
-                   prompt_version: str = "v4", play_to_gameover: bool = False,
+                   prompt_version: str = "v5", play_to_gameover: bool = False,
                    stall_limit: int = 10):
     """Return an agent_fn(sess, scenario, log) that plays via the chosen model/backend, using the
     version-controlled prompt manual `prompt_version`.

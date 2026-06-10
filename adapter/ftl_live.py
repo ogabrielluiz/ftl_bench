@@ -295,6 +295,7 @@ def summarize_obs(obs: dict | None) -> dict:
     fires = player.get("fires") or []
     intruders = player.get("intruders") or []
     damaged = []
+    repair_needed = []
     offline = []
     system_status = []
     for system in player.get("systems", []) or []:
@@ -302,9 +303,12 @@ def summarize_obs(obs: dict | None) -> dict:
         power = system.get("power")
         power_max = system.get("power_max")
         damage = system.get("damage") or 0
+        needs_repair = bool(system.get("needs_repair"))
         ion = system.get("ion") or 0
         if damage or ion:
             damaged.append(name)
+        if needs_repair:
+            repair_needed.append(name)
         if power_max and not power and name in {"shields", "engines", "oxygen", "weapons", "medbay"}:
             offline.append(name)
         if name in {"shields", "engines", "oxygen", "weapons", "medbay", "piloting", "doors"}:
@@ -314,16 +318,27 @@ def summarize_obs(obs: dict | None) -> dict:
                     "power": power,
                     "max": power_max,
                     "damage": damage,
+                    "needs_repair": needs_repair,
                     "ion": ion,
                     "powered": bool(system.get("powered")),
                 }
             )
     enemy_hull = None
     enemy = obs.get("enemy_ship")
+    enemy_drones = []
     if enemy:
         ehull = enemy.get("hull") or {}
         if ehull.get("current") is not None and ehull.get("max") is not None:
             enemy_hull = f"{ehull.get('current')}/{ehull.get('max')}"
+        enemy_drones = [
+            {
+                "type": drone.get("name")
+                or {0: "defense", 1: "combat", 7: "shield"}.get(drone.get("type"), drone.get("type")),
+                "firing": bool(drone.get("firing")),
+            }
+            for drone in (enemy.get("drones") or [])
+            if drone.get("deployed")
+        ]
     return {
         "sector": deep(obs, "map", "sector"),
         "hull": hull.get("current"),
@@ -340,10 +355,13 @@ def summarize_obs(obs: dict | None) -> dict:
         "fire_rooms": [fire.get("room_id") for fire in fires if fire.get("fires")],
         "intruders": len(intruders),
         "damaged": damaged[:6],
+        "repair_needed": repair_needed[:6],
         "offline": offline[:6],
         "systems": system_status,
         "enemy": enemy_hull,
         "enemy_present": bool(enemy),
+        "incoming": obs.get("incoming_projectiles") or 0,
+        "enemy_drones": enemy_drones,
         "event": bool(obs.get("choice_box_open") or obs.get("event")),
         "store": bool(obs.get("store")),
         "ftl_score": obs.get("ftl_score"),
@@ -544,6 +562,8 @@ def build(sel: str | None) -> dict:
                         "crew_min": obs_summary["crew_min"],
                         "enemy": obs_summary["enemy"],
                         "fires": obs_summary["fires"],
+                        "incoming": obs_summary["incoming"],
+                        "enemy_drones": obs_summary["enemy_drones"],
                     },
                 }
             )
@@ -562,6 +582,7 @@ def build(sel: str | None) -> dict:
         "run": {
             "agent": (cur_meta or {}).get("agent"),
             "run_id": (cur_meta or {}).get("run_id"),
+            "current_instance": cur_name,
             "suite": str(SUITE),
             "bench": str(BENCH),
             "dashboard_built": (DASHBOARD_DIST / "index.html").exists(),

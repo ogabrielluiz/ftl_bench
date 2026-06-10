@@ -303,9 +303,9 @@ def main() -> None:
                          "local OpenAI codex exec (uses your codex auth)")
     ap.add_argument("--step-mult", type=int, default=8,
                     help="llm track: max actions per instance = budget_jumps * this")
-    ap.add_argument("--prompt-version", default="v4",
-                    help="llm track: which prompts/ftl_agent_<v>.md manual to use (versioned). v4 is "
-                         "the multi-action 'plan' contract; v3 is the older one-action-per-turn manual")
+    ap.add_argument("--prompt-version", default="v5",
+                    help="llm track: which prompts/ftl_agent_<v>.md manual to use (versioned). v5 is "
+                         "the current multi-action contract; v4 is the previous multi-action manual")
     ap.add_argument("--mode", choices=["gameover", "budget"], default="gameover",
                     help="llm track: 'gameover' (DEFAULT) plays a FULL game to win-or-die — "
                          "ignores the jump budget, ends on a real win/death or a stall "

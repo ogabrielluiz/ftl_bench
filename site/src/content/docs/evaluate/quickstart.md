@@ -60,7 +60,7 @@ uv run python ../adapter/run_benchmark.py --agent llm --backend claude-cli --mod
 uv run python ../adapter/run_benchmark.py --agent llm --backend codex --model gpt-5
 ```
 
-By default, the LLM track uses `--mode gameover` and `--prompt-version v4`: the
+By default, the LLM track uses `--mode gameover` and `--prompt-version v5`: the
 agent plays until a real win, death, or stall, and replies with a paused
 multi-command action plan.
 
@@ -76,7 +76,7 @@ uv run python ../adapter/run_benchmark.py \
   --suite ../scenarios/full_game.json \
   --tier semi_private \
   --mode gameover \
-  --prompt-version v4
+  --prompt-version v5
 ```
 
 Each run writes trajectories, summaries, and manifests under `runs/benchmark/`.

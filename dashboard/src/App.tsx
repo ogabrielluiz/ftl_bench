@@ -29,6 +29,12 @@ function percent(value: number | null | undefined, max = 100) {
   return clamp((asNumber(value) / max) * 100);
 }
 
+function shortPath(path: string | null | undefined) {
+  if (!path) return "path unknown";
+  const parts = path.split(/[\\/]+/).filter(Boolean);
+  return parts.slice(-3).join("/");
+}
+
 function toneForLowGood(value: number | null | undefined, warn: number, danger: number): Tone {
   if (value === null || value === undefined) return "neutral";
   if (value <= danger) return "danger";
@@ -88,6 +94,7 @@ function buildAttention(header: HeaderState) {
   const crewMin = header.crew_min;
   const fires = asNumber(header.fires);
   const intruders = asNumber(header.intruders);
+  const repairNeeded = new Set(header.repair_needed ?? []);
 
   if (hull !== null && hull !== undefined && hull <= Math.max(8, hullMax * 0.35)) {
     items.push({ label: "Hull", value: `${hull}/${hullMax}`, tone: hull <= 6 ? "danger" : "warn" });
@@ -104,10 +111,22 @@ function buildAttention(header: HeaderState) {
   if (intruders > 0) {
     items.push({ label: "Intruders", value: `${intruders} aboard`, tone: "danger" });
   }
+  for (const name of repairNeeded) {
+    items.push({ label: "Repair", value: name, tone: name === "oxygen" ? "danger" : "warn" });
+  }
+  const incoming = asNumber(header.incoming);
+  if (incoming > 0) {
+    items.push({ label: "Incoming fire", value: `${incoming} inbound`, tone: incoming >= 2 ? "danger" : "warn" });
+  }
+  for (const drone of header.enemy_drones ?? []) {
+    items.push({ label: "Enemy drone", value: `${drone.type}${drone.firing ? " - firing" : ""}`, tone: "danger" });
+  }
   for (const name of header.offline ?? []) {
+    if (repairNeeded.has(name)) continue;
     items.push({ label: "Offline", value: name, tone: name === "oxygen" ? "danger" : "warn" });
   }
   for (const name of header.damaged ?? []) {
+    if (repairNeeded.has(name)) continue;
     items.push({ label: "Damaged", value: name, tone: "warn" });
   }
   if (header.event) {
@@ -193,6 +212,10 @@ function StatePills({ state }: { state: StepState }) {
       {state.crew_min !== null && state.crew_min !== undefined ? <span>Crew min {state.crew_min.toFixed(0)}</span> : null}
       <span>Enemy {display(state.enemy, "none")}</span>
       <span>Fire {display(state.fires, "0")}</span>
+      {state.incoming ? <span className="threat">Incoming {state.incoming}</span> : null}
+      {state.enemy_drones && state.enemy_drones.length ? (
+        <span className="threat">Drone {state.enemy_drones.map((drone) => drone.type).join(", ")}</span>
+      ) : null}
     </div>
   );
 }
@@ -389,7 +412,23 @@ function SystemStrip({ systems }: { systems?: SystemStatus[] }) {
         const power = asNumber(system.power);
         const max = asNumber(system.max);
         const powerPct = max > 0 ? (power / max) * 100 : 0;
-        const tone: Tone = system.damage || system.ion ? "warn" : max > 0 && power === 0 ? "danger" : "good";
+        const needsRepair = Boolean(system.needs_repair);
+        const tone: Tone = needsRepair && system.name === "oxygen"
+          ? "danger"
+          : needsRepair || system.damage || system.ion
+            ? "warn"
+            : max > 0 && power === 0
+              ? "danger"
+              : "good";
+        const status = needsRepair
+          ? "repair"
+          : system.damage
+            ? `damage ${system.damage}`
+            : system.ion
+              ? `ion ${system.ion}`
+              : max > 0 && power === 0
+                ? "offline"
+                : "online";
         return (
           <div className={`system-tile ${tone}`} key={system.name}>
             <div>
@@ -397,6 +436,7 @@ function SystemStrip({ systems }: { systems?: SystemStatus[] }) {
               <strong>{max ? `${power}/${max}` : "--"}</strong>
             </div>
             <Bar value={powerPct} tone={tone} />
+            <small>{status}</small>
           </div>
         );
       })}
@@ -411,6 +451,7 @@ function TopPanel({ data, lastUpdated }: { data: DashboardState; lastUpdated: Da
   const score = data.selected_score?.score ?? header.ftl_score;
   const runLabel = data.following_live ? "following live" : "inspecting history";
   const processTone: Tone = data.process.alive === true ? "good" : data.process.alive === false ? "danger" : "neutral";
+  const currentInstance = data.run.current_instance || "none";
 
   return (
     <header className="top-panel">
@@ -428,6 +469,15 @@ function TopPanel({ data, lastUpdated }: { data: DashboardState; lastUpdated: Da
           <span>{display(data.run.run_id || header.run_id, "run id pending")}</span>
           <span>{lastUpdated ? `updated ${lastUpdated.toLocaleTimeString()}` : "not refreshed"}</span>
         </div>
+      </div>
+
+      <div className={`source-banner ${data.following_live ? "live" : "history"}`}>
+        <strong>{data.following_live ? "Live trajectory" : "Historical snapshot"}</strong>
+        <span>
+          {data.following_live
+            ? `${display(header.instance)} from ${shortPath(data.run.bench)}`
+            : `${display(header.instance)} is not the live FTL window. Live file: ${currentInstance} in ${shortPath(data.run.bench)}.`}
+        </span>
       </div>
 
       <div className="metric-grid">

@@ -69,6 +69,26 @@ def _pair(d, a="current", b="max"):
     return f"{d.get(a)}/{d.get(b)}"
 
 
+def _copy_keys(d: dict | None, keys: tuple[str, ...]) -> dict:
+    if not isinstance(d, dict):
+        return {}
+    return {k: d[k] for k in keys if k in d and d[k] is not None}
+
+
+def _event_choice(c, fallback_index: int) -> dict:
+    if isinstance(c, dict):
+        out = {
+            "index": c.get("index", fallback_index),
+            "text": c.get("text"),
+        }
+        out.update(_copy_keys(c, (
+            "blue", "color", "enabled", "available", "disabled", "locked",
+            "requirements_met", "cost", "selected", "potential",
+        )))
+        return out
+    return {"index": fallback_index, "text": str(c)}
+
+
 def compact(o) -> dict:
     """A token-lean but decision-complete snapshot of the game."""
     ps = o.player_ship or {}
@@ -129,9 +149,10 @@ def compact(o) -> dict:
          "power": f"{s.get('power')}/{s.get('power_max')}",
          # room: where to send a crew member (`crew <id> <room>`) to repair/extinguish this system.
          **({"room": s.get("room_id")} if s.get("room_id") is not None else {}),
-         # damage>0 = the module is BROKEN (reduced/zero function); on_fire = its room is burning.
-         # Either way it needs a crew member in its room to REPAIR/EXTINGUISH — power will NOT fix it.
+         # damage>0 or needs_repair=true = the module is BROKEN; on_fire = its room is burning.
+         # Any of these needs a crew member in its room to REPAIR/EXTINGUISH — power will NOT fix it.
          **({"damage": s.get("damage")} if s.get("damage") else {}),
+         **({"needs_repair": True} if s.get("needs_repair") else {}),
          **({"on_fire": True} if s.get("room_id") in _burning else {}),
          **({"ion": s.get("ion")} if s.get("ion") else {})}
         for s in ps.get("systems", []) if s.get("power_max")
@@ -146,6 +167,27 @@ def compact(o) -> dict:
          **({"boarding": True} if c.get("on_enemy_ship") else {})}
         for c in ps.get("crew", []) if not c.get("dead")
     ]
+    # Special-system state. These actions are first-class commands, so their readiness/cooldown
+    # must be visible too; otherwise the model can know `cloak` exists but not whether it can fire.
+    for _key in ("cloak", "battery", "hacking", "drones", "teleporter", "mind_control"):
+        if ps.get(_key):
+            st[_key] = ps[_key]
+    if ps.get("rooms"):
+        st["rooms"] = [
+            _copy_keys(r, (
+                "room_id", "oxygen", "fires", "breaches", "breached", "breach",
+                "blacked_out", "rect",
+            ))
+            for r in ps.get("rooms", [])
+        ]
+    if ps.get("doors"):
+        st["doors"] = [
+            _copy_keys(d, (
+                "index", "id", "room_a", "room_b", "open", "locked",
+                "forced_open", "hacked",
+            ))
+            for d in ps.get("doors", [])
+        ]
     # intruders = enemy boarders aboard YOUR ship (send crew to .room to fight); fires = burning
     # rooms (send crew to extinguish). Both empty when none.
     if ps.get("intruders"):
@@ -214,6 +256,14 @@ def compact(o) -> dict:
             # still a LIVE THREAT (weapons powered, or incoming_fire>0 e.g. a drone) vs forfeit
             # (guns depowered AND nothing inbound). Don't stop defending just because guns are off.
             "active": _enemy_active,
+            **({"flagship": True} if en.get("flagship") else {}),
+            **({"super_shield": en.get("super_shield")} if en.get("super_shield") else {}),
+            **({"power_surge_timer": en.get("power_surge_timer")}
+               if en.get("power_surge_timer") is not None else {}),
+            **({"power_surge_timer_max": en.get("power_surge_timer_max")}
+               if en.get("power_surge_timer_max") is not None else {}),
+            **({"power_surge_type": en.get("power_surge_type")}
+               if en.get("power_surge_type") is not None else {}),
             # enemy DEPLOYED drones (flying around): combat/beam drones damage your hull, defense
             # drones shoot down your missiles/drones -- all INDEPENDENT of enemy.weapons. type is
             # the drone's name (e.g. "Combat Drone Mark I"); firing = powered + deployed + alive.
@@ -233,8 +283,13 @@ def compact(o) -> dict:
             # limited missiles. This is why a run can waste missiles on an evasive auto-ship.
             "evasion": en.get("evasion"),
             "rooms": [{"room_id": r.get("room_id"),
-                       "system": SYS_NAMES.get(r.get("system_id"), r.get("system_id"))}
+                       "system": SYS_NAMES.get(r.get("system_id"), r.get("system_id")),
+                       **({"hacked": True} if r.get("hacked") else {})}
                       for r in en.get("rooms", []) if r.get("system_id") is not None],
+            # Enemy crew occupancy by room. Required for boarding/mind-control play and for
+            # deciding whether a disabled system will be repaired.
+            **({"rooms_with_crew": en.get("rooms_with_crew")} if en.get("rooms_with_crew") else {}),
+            **({"crew": en.get("crew")} if en.get("crew") else {}),
             # The incoming threat: each enemy weapon's TYPE + DAMAGE PROFILE + how close to firing.
             # type: MISSILES/BOMB bypass shields, BEAM sweeps, LASER/BURST are shield-blocked;
             # dmg/pierces/fire/ion say HOW bad a hit is; about_to_fire = charged this turn. A real
@@ -265,6 +320,8 @@ def compact(o) -> dict:
         }
     else:
         st["enemy"] = None
+    if (o.raw or {}).get("flagship"):
+        st["flagship"] = (o.raw or {}).get("flagship")
     # shots: OUR weapons' effectiveness THIS combat — fired / hit / shields_blocked / missed
     # (+ a recent-outcomes log). missed running high means the enemy is DODGING (evasion): target
     # its engines/piloting to cut evasion, or flee — don't keep dumping ammo. In-combat only.
@@ -288,6 +345,8 @@ def compact(o) -> dict:
 
     st["map"] = {
         "at_exit": m.get("at_exit"),
+        "choosing_new_sector": m.get("choosing_new_sector"),
+        "out_of_fuel": m.get("out_of_fuel"),
         "jump_charged": o.raw.get("jump_charged") if o.raw else None,
         # jump_charge_pct/jump_charge: FTL-drive recharge in [0,1] + raw {current,max} seconds.
         # Meaningful as a progress bar IN COMBAT only; out of combat it reads ~0.0 while jumps are
@@ -303,15 +362,24 @@ def compact(o) -> dict:
         "exit_pos": m.get("exit_pos"),
         "beacons": [{"index": b.get("index"), "visited": b.get("visited"),
                      "exit": b.get("exit_beacon"), "fleet": b.get("fleet"),
-                     "quest": b.get("quest"),
+                     "quest": b.get("quest"), "known": b.get("known"),
+                     "danger_zone": b.get("danger_zone"), "boss": b.get("boss"),
+                     "nebula": b.get("nebula"),
+                     **({"store": b.get("store")} if b.get("store") is not None else {}),
+                     **({"distress": b.get("distress")} if b.get("distress") is not None else {}),
+                     "has_event": b.get("has_event"),
+                     "new_sector": b.get("new_sector"),
                      "pos": [b.get("pos_x"), b.get("pos_y")],
                      "dist_to_exit": _dist_to_exit(b.get("pos_x"), b.get("pos_y"))}
                     for b in m.get("connected_beacons", [])],
     }
+    if m.get("sector_choices"):
+        st["map"]["sector_choices"] = m.get("sector_choices")
     if o.choice_box_open and (o.event or {}).get("choices"):
         st["event"] = {
-            "text": (o.event.get("text") or "").replace("\n", " ")[:300],
-            "choices": [c.get("text") for c in o.event["choices"]],
+            "text": (o.event.get("text") or "").replace("\n", " "),
+            "choices": [_event_choice(c, i) for i, c in enumerate(o.event["choices"])],
+            **_copy_keys(o.event, ("selected_choice", "potential_choice")),
         }
     else:
         st["event"] = None
@@ -508,10 +576,20 @@ def main() -> None:
                                       f"{_cur}/{_pmax}. Setting a system to a power level it already "
                                       f"holds does nothing; re-issuing won't help — do something else."}
                     elif _cur < _lvl:
-                        _dmg, _ion = _sys.get("damage") or 0, _sys.get("ion") or 0
+                        _dmg = _sys.get("damage") or 0
+                        _needs_repair = bool(_sys.get("needs_repair"))
+                        _ion = _sys.get("ion") or 0
                         _free = ((o.player_ship or {}).get("reactor") or {}).get("available")
-                        if _dmg:
-                            _why = f"system damaged — usable max is {(_pmax or 0) - _dmg} of {_pmax} until repaired"
+                        if _dmg or _needs_repair:
+                            if _dmg:
+                                _why = (
+                                    f"system damaged — usable max is {(_pmax or 0) - _dmg} "
+                                    f"of {_pmax} until repaired"
+                                )
+                            else:
+                                _room = _sys.get("room_id")
+                                _where = f" room {_room}" if _room is not None else " its room"
+                                _why = f"system needs repair — send crew to{_where}; power will not restore it"
                         elif _ion:
                             _why = "system is ion-locked (wait for ion to clear)"
                         elif isinstance(_free, int) and _free <= 0:

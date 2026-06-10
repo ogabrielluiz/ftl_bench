@@ -20,7 +20,7 @@ uv run python ../adapter/run_benchmark.py [options]
 | `--agent {scripted,random,llm}` | Which agent to run. |
 | `--backend {anthropic,claude-cli,codex}` | LLM track backend. Add your own in `adapter/llm_agent.py`. |
 | `--model MODEL` | LLM model id. Anthropic defaults to `claude-sonnet-4-6`; CLI backends use their local defaults when omitted. |
-| `--prompt-version V` | Which `prompts/ftl_agent_<v>.md` manual to use. Default is `v4`. |
+| `--prompt-version V` | Which `prompts/ftl_agent_<v>.md` manual to use. Default is `v5`. |
 | `--suite PATH` | Suite file. Default is `scenarios/suite_v1.json`; use `../scenarios/full_game.json` for the pure full-game track. |
 | `--tier TIER` | Filter by tier, usually `public` or `semi_private`. |
 | `--type TYPE` | Filter by scenario type. |
@@ -65,8 +65,8 @@ Under `--out`:
 The agent label encodes configuration, for example:
 
 ```text
-llm-anthropic-claude-sonnet-4-6-v4-gameover10
-llm-codex-gpt-5-v4-gameover10-retries2
+llm-anthropic-claude-sonnet-4-6-v5-gameover10
+llm-codex-gpt-5-v5-gameover10-retries2
 ```
 
 Different prompts, modes, backends, models, and retry settings are distinct
@@ -84,7 +84,7 @@ uv run python ../adapter/run_benchmark.py \
   --suite ../scenarios/full_game.json \
   --tier semi_private \
   --mode gameover \
-  --prompt-version v4
+  --prompt-version v5
 ```
 
 Tune against `public`; report `semi_private`. Include the suite path and commit

@@ -22,11 +22,16 @@ are omitted (for example, `enemy` is `null` out of combat; `store` appears only 
 
 ## Ship state
 
-- `systems`: each `{id, name, power: "cur/max", room, damage, ion, on_fire}`. `damage > 0` or
-  `on_fire: true` means the system is broken and works poorly until a crew member repairs it.
+- `systems`: each `{id, name, power: "cur/max", room, damage, needs_repair, ion, on_fire}`.
+  `damage > 0`, `needs_repair: true`, or `on_fire: true` means the system is broken and works
+  poorly until a crew member repairs it.
 - `crew`: each `{id, room, species, hp, busy, boarding}`.
 - `fires`: burning rooms, each `{room_id, fires}` where `fires` is the number of fire blobs in that
   room (sum them for the total active fires).
+- `rooms`: player ship room facts when available, including `{room_id, oxygen, fires,
+  breaches/breached, rect}`.
+- `doors`: door topology/state when available, including `{id/index, room_a, room_b, open, locked,
+  forced_open, hacked}`.
 - `intruders`: enemy crew aboard your ship, `{room, health, species}`.
 - `weapons`: each `{slot, type, is_beam, dmg, pierces, eff_pierce, ready_to_fire, targeted, charge,
   charge_max, req_power, shots}`. `targeted: false` means the weapon has no target and will never
@@ -34,13 +39,18 @@ are omitted (for example, `enemy` is `null` out of combat; `store` appears only 
 
 ## Enemy (`null` if no combat)
 
-`{hull, shields, evasion, rooms, weapons, systems, active, targetable, fleeing, jump_charge_pct}`.
+`{hull, shields, evasion, rooms, rooms_with_crew, crew, weapons, systems, active, targetable,
+fleeing, jump_charge_pct, flagship, super_shield, power_surge_timer}`.
 
 - `active`: the enemy is still fighting (its weapons are powered). `false` means it has forfeit and
   depowered its guns.
 - `targetable`: you can actually aim a weapon at it right now. `false` once it is warping out or
   gone, in which case firing hits nothing (the agent's equivalent of "no targeting cursor").
 - `fleeing` / `jump_charge_pct`: it has given up and is charging its FTL drive to escape.
+- `rooms_with_crew` and `crew`: enemy crew positions and optional health/species/task fields when
+  the bridge can read them.
+- `flagship`, `super_shield`, `power_surge_timer`: boss-specific facts when the current Hyperspace
+  build exposes them.
 
 ## Combat feedback
 
@@ -52,9 +62,11 @@ are omitted (for example, `enemy` is `null` out of combat; `store` appears only 
 
 - `map`: `{at_exit, jump_charged, jump_charge_pct, hazard (none/nebula/ion_storm/sun/pulsar/
   asteroids), pds, current_pos, exit_pos, beacons[]}`. Each beacon: `{index, visited, exit, fleet,
-  quest, pos, dist_to_exit}`.
-- `event`: non-null only when a popup is blocking the game: `{text, choices[]}`. Resolve it with
-  `event <choice_index>`.
+  quest, known, danger_zone, boss, nebula, store, distress, has_event, new_sector, pos,
+  dist_to_exit}`. `sector_choices` appears when the sector picker exposes choices.
+- `event`: non-null only when a popup is blocking the game: `{text, choices[]}`. Choices preserve
+  `index`, `text`, and optional `blue`, `enabled`, `available`, `disabled`, `locked`, and `cost`
+  fields when exposed. Resolve it with `event <choice_index>`.
 - `store`: non-null only on a store beacon: `{buy[], sell[]}`.
 
 See the [Action set](/reference/actions/) for what you can send in response.

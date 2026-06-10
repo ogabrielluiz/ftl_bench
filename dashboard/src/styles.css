@@ -312,6 +312,44 @@ button {
   white-space: nowrap;
 }
 
+.source-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-top: 14px;
+  border: 1px solid rgba(35, 50, 71, 0.82);
+  border-radius: 8px;
+  background: rgba(7, 11, 18, 0.5);
+  padding: 10px 12px;
+  color: #aebbd0;
+  font-size: 12px;
+}
+
+.source-banner strong {
+  flex: 0 0 auto;
+  color: #f8fbff;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.source-banner span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-banner.live {
+  border-color: rgba(71, 209, 140, 0.32);
+}
+
+.source-banner.history {
+  border-color: rgba(242, 193, 78, 0.42);
+  background: rgba(242, 193, 78, 0.08);
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -448,6 +486,15 @@ button {
 
 .system-tile strong {
   color: #f8fbff;
+}
+
+.system-tile small {
+  display: block;
+  margin-top: 6px;
+  color: #7f8da3;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .system-tile.danger {
@@ -917,4 +964,8 @@ button {
     border-right: 0;
     border-bottom: 1px solid rgba(35, 50, 71, 0.75);
   }
+}
+.state-pills .threat {
+  color: #ff8a8a;
+  font-weight: 600;
 }

@@ -19,7 +19,7 @@ The backend contract is:
 def complete(system: str, user: str) -> str:
     """Return the model reply for one turn.
 
-    The reply should include brief reasoning and an ACTION block. In v4, the
+    The reply should include brief reasoning and an ACTION block. In v5, the
     ACTION block may contain multiple commands and should end with advance N.
     """
 ```
@@ -68,7 +68,7 @@ uv run python ../adapter/run_benchmark.py --agent llm --backend my-model --model
 Each turn includes:
 
 - a **system prompt**: the versioned interface manual
-  (`prompts/ftl_agent_v4.md` by default) plus the objective and run rules;
+  (`prompts/ftl_agent_v5.md` by default) plus the objective and run rules;
 - a **user turn**: the compact [observation](/reference/observation/) and recent
   action history.
 

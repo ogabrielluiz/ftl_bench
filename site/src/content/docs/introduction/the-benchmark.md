@@ -45,7 +45,7 @@ ACTION:
   advance 150
 ```
 
-This is the v4 interface. It is deliberately closer to human pause-play than a
+This is the v5 interface. It is deliberately closer to human pause-play than a
 one-click loop: set up the ship, let the game run, then react to the next
 decision point.
 

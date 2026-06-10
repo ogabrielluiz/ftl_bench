@@ -31,6 +31,17 @@ local function log_err(msg)
   print("[ftl_bench] " .. msg)
 end
 
+local function put_scalar_if_present(t, key, fn)
+  if not t or t[key] ~= nil then return false end
+  local ok, v = pcall(fn)
+  local tv = type(v)
+  if ok and (tv == "number" or tv == "boolean" or tv == "string") then
+    t[key] = v
+    return true
+  end
+  return false
+end
+
 -- M4 reproducible seeds: override the run seed at NewGame when one is requested.
 -- Registered ONCE (the dev script is re-run on hot-reload; the guard prevents
 -- accumulating duplicate callbacks). The handler reads the global each call.
@@ -843,6 +854,50 @@ local function add_m3_obs(obs)
     obs.enemy_ship.fleeing = (jumping or (mx and mx > 0 and cur and cur > 0)) and true or false
   end)
 
+  -- Flagship/boss metadata. Some boss internals are not bound in stock Hyperspace, so every
+  -- field below is best-effort. We still expose the guaranteed player-visible fact available
+  -- through the map: whether the current beacon is the boss beacon.
+  pcall(function()
+    local en = Hyperspace.ships and Hyperspace.ships.enemy
+    local sm = world and world.starMap
+    local flag = {}
+    local added = 0
+    local is_boss = false
+    if put_scalar_if_present(flag, "present", function() return sm.currentLoc.boss end) then
+      added = added + 1
+      is_boss = flag.present == true
+    end
+    if put_scalar_if_present(flag, "phase", function() return world.bossLevel end) then added = added + 1 end
+    if put_scalar_if_present(flag, "phase", function() return world.bossPhase end) then added = added + 1 end
+    if put_scalar_if_present(flag, "stage", function() return world.bossStage end) then added = added + 1 end
+    if put_scalar_if_present(flag, "power_surge_timer", function() return world.bossPowerTimer.first end) then added = added + 1 end
+    if put_scalar_if_present(flag, "power_surge_timer_max", function() return world.bossPowerTimer.second end) then added = added + 1 end
+    if put_scalar_if_present(flag, "power_surge_type", function() return world.bossPowerType end) then added = added + 1 end
+    if en and obs.enemy_ship then
+      if is_boss then obs.enemy_ship.flagship = true end
+      local ss = {}
+      put_scalar_if_present(ss, "value", function() return en.superShield end)
+      put_scalar_if_present(ss, "value", function() return en.superShieldPower end)
+      put_scalar_if_present(ss, "value", function() return en.zoltanShield end)
+      put_scalar_if_present(ss, "value", function() return en.shieldSystem.superShield end)
+      put_scalar_if_present(ss, "max", function() return en.superShieldMax end)
+      put_scalar_if_present(ss, "active", function() return en.bHasZoltanShield end)
+      if next(ss) ~= nil then
+        flag.super_shield = ss
+        obs.enemy_ship.super_shield = ss
+        added = added + 1
+      end
+      put_scalar_if_present(obs.enemy_ship, "power_surge_timer", function() return en.bossPowerTimer.first end)
+      put_scalar_if_present(obs.enemy_ship, "power_surge_timer_max", function() return en.bossPowerTimer.second end)
+      put_scalar_if_present(obs.enemy_ship, "power_surge_type", function() return en.bossPowerType end)
+    end
+    local has_flagship_details = flag.present == true or flag.phase ~= nil or flag.stage ~= nil
+      or flag.super_shield ~= nil or flag.power_surge_timer ~= nil or flag.power_surge_type ~= nil
+    if added > 0 and has_flagship_details then
+      obs.flagship = flag
+    end
+  end)
+
   -- FTL's NATIVE run score: the game's own scoring (scrap collected, ships destroyed, beacons /
   -- sectors explored, the flagship kill, times the difficulty multiplier). Read from the bound
   -- ScoreKeeper (Hyperspace.Score.currentScore). This is the benchmark's headline metric for full
@@ -900,23 +955,36 @@ local function add_m3_obs(obs)
     local cl = en.vCrewList
     if not cl then return end
     local counts = {}
+    local crew = {}
     for i = 0, cl:size() - 1 do
       local c = cl[i]
       if c then pcall(function()
         if c.iShipId == 1 and not c:IsDead() and not c:OutOfGame() then
           local r = c.iRoomId
-          local e = counts[r] or { room_id = r, crew = 0, controllable = 0 }
+          local e = counts[r] or { room_id = r, crew = 0, controllable = 0, members = {} }
+          local m = { id = i, room_id = r }
+          put_scalar_if_present(m, "health", function() return c.health.first end)
+          put_scalar_if_present(m, "health_max", function() return c.health.second end)
+          put_scalar_if_present(m, "species", function() return c.species end)
+          put_scalar_if_present(m, "drone", function() return c:IsDrone() end)
+          put_scalar_if_present(m, "mind_controlled", function() return c.bMindControlled end)
+          put_scalar_if_present(m, "fighting", function() return c.bFighting end)
+          put_scalar_if_present(m, "repairing", function() return c:Repairing() end)
+          put_scalar_if_present(m, "telepathic", function() return c:IsTelepathic() end)
           e.crew = e.crew + 1
           if not c:IsDrone() and not c:IsTelepathic() and not c.bMindControlled then
             e.controllable = e.controllable + 1
           end
+          e.members[#e.members + 1] = m
           counts[r] = e
+          crew[#crew + 1] = m
         end
       end) end
     end
     local rooms = {}
     for _, e in pairs(counts) do rooms[#rooms + 1] = e end
     obs.enemy_ship.rooms_with_crew = rooms
+    obs.enemy_ship.crew = crew
   end)
 
   -- backup battery state (id 12): temp reactor power on a timer. ready => can fire it now.
@@ -1160,7 +1228,7 @@ local function add_m3_obs(obs)
       if loc then
         local px, py
         pcall(function() px, py = loc.loc.x, loc.loc.y end)
-        beacons[#beacons + 1] = {
+        local b = {
           index = i, known = loc.known, visited = loc.visited,
           danger_zone = loc.dangerZone, boss = loc.boss,
           nebula = loc.nebula, has_event = (loc.event ~= nil),
@@ -1170,6 +1238,9 @@ local function add_m3_obs(obs)
           quest = loc.questLoc, fleet = loc.fleetChanging,
           pos_x = px, pos_y = py,  -- map position (to navigate toward the exit)
         }
+        put_scalar_if_present(b, "store", function() return loc.store end)
+        put_scalar_if_present(b, "distress", function() return loc.distressBeacon end)
+        beacons[#beacons + 1] = b
       end
     end
     obs.map.connected_beacons = beacons
@@ -1198,6 +1269,30 @@ local function add_m3_obs(obs)
     end  -- close the not-jumping / not-choosing-sector guard around the exit_pos scan
     pcall(function() obs.map.choosing_new_sector = sm.bChoosingNewSector end)
     pcall(function() obs.map.out_of_fuel = sm.outOfFuel end)
+    pcall(function()
+      if not sm.bChoosingNewSector then return end
+      local sectors = sm.sectors
+      if not sectors then return end
+      local opts = {}
+      for i = 0, sectors:size() - 1 do
+        local sec = sectors[i]
+        if sec then
+          local opt = { index = i }
+          local n = 0
+          if put_scalar_if_present(opt, "name", function() return sec.name end) then n = n + 1 end
+          if put_scalar_if_present(opt, "type", function() return sec.type end) then n = n + 1 end
+          if put_scalar_if_present(opt, "level", function() return sec.level end) then n = n + 1 end
+          if put_scalar_if_present(opt, "visited", function() return sec.visited end) then n = n + 1 end
+          if put_scalar_if_present(opt, "reachable", function() return sec.reachable end) then n = n + 1 end
+          if put_scalar_if_present(opt, "nebula", function() return sec.nebula end) then n = n + 1 end
+          if put_scalar_if_present(opt, "civilian", function() return sec.civilian end) then n = n + 1 end
+          if put_scalar_if_present(opt, "hostile", function() return sec.hostile end) then n = n + 1 end
+          if put_scalar_if_present(opt, "unique", function() return sec.unique end) then n = n + 1 end
+          if n > 0 then opts[#opts + 1] = opt end
+        end
+      end
+      if #opts > 0 then obs.map.sector_choices = opts end
+    end)
 
     -- map.hazard: environmental hazard active at THIS beacon. Scalar flags off SpaceManager
     -- (world.space) -- all bound in the compiled SWIG wrapper, all bools, no collection
@@ -1254,21 +1349,42 @@ local function add_m3_obs(obs)
     if cb then
       local okt, mt = pcall(function() return cb.mainText end)
       if okt and type(mt) == "string" then text = mt end
+      local selected, potential
+      pcall(function() selected = cb.selectedChoice end)
+      pcall(function() potential = cb.potentialChoice end)
       local ok, ev_choices = pcall(function() return cb:GetChoices() end)
       if ok and ev_choices then
         for i = 0, ev_choices:size() - 1 do
           local c = ev_choices[i]
           if c then
             -- ChoiceText::text is a plain std::string (already resolved), not a TextString.
+            local choice = { index = i }
             local ctext = ""
             local okc, t = pcall(function() return c.text end)
             if okc and type(t) == "string" then ctext = t end
-            choices[#choices + 1] = { index = i, text = ctext }
+            choice.text = ctext
+            if selected == i then choice.selected = true end
+            if potential == i then choice.potential = true end
+            put_scalar_if_present(choice, "blue", function() return c.blue end)
+            put_scalar_if_present(choice, "blue", function() return c.bBlue end)
+            put_scalar_if_present(choice, "color", function() return c.color end)
+            put_scalar_if_present(choice, "enabled", function() return c.enabled end)
+            put_scalar_if_present(choice, "available", function() return c.available end)
+            put_scalar_if_present(choice, "disabled", function() return c.disabled end)
+            put_scalar_if_present(choice, "locked", function() return c.locked end)
+            put_scalar_if_present(choice, "requirements_met", function() return c.requirementMet end)
+            put_scalar_if_present(choice, "cost", function() return c.cost end)
+            if choice.disabled == nil and (choice.enabled == false or choice.available == false) then
+              choice.disabled = true
+            end
+            choices[#choices + 1] = choice
           end
         end
       end
     end
     obs.event = { text = text, choices = choices }
+    put_scalar_if_present(obs.event, "selected_choice", function() return cb.selectedChoice end)
+    put_scalar_if_present(obs.event, "potential_choice", function() return cb.potentialChoice end)
   end
 
   -- enemy room ids (for weapon targeting): system_id -> room_id
@@ -1465,7 +1581,10 @@ local function add_m3_obs(obs)
     if en then scan(en.vCrewList) end
     obs.player_ship.intruders = intr
 
-    -- (d) FIRES per room (send crew to extinguish). GetFireCount(roomId)>0 = burning.
+    -- (d) ROOM STATUS + FIRES. Room oxygen/doors/breaches are visible in the game UI and
+    -- essential for venting/fire/suffocation decisions. Keep `fires` as the old compact crisis
+    -- list while also surfacing all room rows for agents that need the full topology.
+    local rooms = {}
     local fires = {}
     local ship = pl.ship
     if ship and ship.vRoomList then
@@ -1474,12 +1593,52 @@ local function add_m3_obs(obs)
         local rm = rl[i]
         if rm then pcall(function()
           local rid = rm.iRoomId
+          local room = { room_id = rid }
+          pcall(function()
+            if rm.rect then
+              room.rect = { x = rm.rect.x, y = rm.rect.y, w = rm.rect.w, h = rm.rect.h }
+            end
+          end)
+          local o2 = pl.oxygenSystem
+          if o2 then
+            put_scalar_if_present(room, "oxygen", function() return o2.oxygenLevels[rid] end)
+            put_scalar_if_present(room, "oxygen", function() return o2.oxygenLevels[i] end)
+          end
           local fc = pl:GetFireCount(rid)
+          if fc ~= nil then room.fires = fc end
+          put_scalar_if_present(room, "breaches", function() return rm.iBreaches end)
+          put_scalar_if_present(room, "breached", function() return rm.bBreached end)
+          put_scalar_if_present(room, "breach", function() return rm.breach end)
+          put_scalar_if_present(room, "blacked_out", function() return rm.bBlackedOut end)
+          rooms[#rooms + 1] = room
           if fc and fc > 0 then fires[#fires + 1] = { room_id = rid, fires = fc } end
         end) end
       end
     end
+    obs.player_ship.rooms = rooms
     obs.player_ship.fires = fires
+
+    -- Door graph for venting/topology. Door ids are engine ids when exposed; `index` is the
+    -- vector index used only as a stable fallback display key.
+    local doors = {}
+    if ship and ship.vDoorList then
+      local dl = ship.vDoorList
+      for i = 0, dl:size() - 1 do
+        local door = dl[i]
+        if door then pcall(function()
+          local d = { index = i }
+          put_scalar_if_present(d, "id", function() return door.iDoorId end)
+          put_scalar_if_present(d, "room_a", function() return door.iRoom1 end)
+          put_scalar_if_present(d, "room_b", function() return door.iRoom2 end)
+          put_scalar_if_present(d, "open", function() return door.bOpen end)
+          put_scalar_if_present(d, "locked", function() return door.lockedDown.running end)
+          put_scalar_if_present(d, "forced_open", function() return door.forcedOpen.running end)
+          put_scalar_if_present(d, "hacked", function() return door.iHacked end)
+          doors[#doors + 1] = d
+        end) end
+      end
+    end
+    obs.player_ship.doors = doors
   end)
 end
 

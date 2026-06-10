@@ -17,7 +17,7 @@ Verified capabilities:
   hack, drones, boarding, mind control, doors, buy, sell, and upgrade;
 - scripted and random baselines through the same runner;
 - LLM track with Anthropic API, Claude CLI, and Codex CLI backends;
-- v4 paused multi-action plans with `advance`;
+- v5 paused multi-action plans with `advance`;
 - play-to-game-over mode with a stall guard;
 - trajectory JSONL, summary JSON, and reproducibility manifests.
 
@@ -53,7 +53,8 @@ Median jumps per instance: 11. Public tier: 142.9. Held-out
 ## Reporting notes
 
 - Tune against `public`; report `semi_private`.
-- Keep `--prompt-version v4` fixed for comparable model rows.
+- Keep `--prompt-version` fixed within a comparison set. Use `v5` for new rows unless you are
+  reproducing an older `v4` result.
 - Treat `--retries N` as a separate benchmark condition.
 - Include suite path, tier, mode, prompt version, backend, model, commit hash,
   and summary JSON path with every result.
