@@ -14,6 +14,7 @@ S.frame_counter    = S.frame_counter or 0
 S.frame_budget     = S.frame_budget or 0
 S.last_applied_seq = S.last_applied_seq      -- nil until first action
 S.err_cooldown     = S.err_cooldown or 0
+S.manual_fire      = S.manual_fire or {}      -- slot -> one-shot fire request
 
 -- Minimum frames an advancing step runs before the hybrid pause may cut it short on a critical
 -- event (taking a hit, a fire, a boarder). The old floor was 18 (~0.3s), so in combat the
@@ -214,41 +215,142 @@ local function apply_choose_event(act)
   Hyperspace.benchmark_choose_event(act.choice_index or 0)
 end
 
+local function weapon_charge(pf)
+  local cur, mx = nil, nil
+  pcall(function() cur = pf.cooldown.first end)
+  pcall(function() mx = pf.cooldown.second end)
+  return cur, mx
+end
+
+local function target_ship(ship_id)
+  if ship_id == 0 then return Hyperspace.ships and Hyperspace.ships.player end
+  return Hyperspace.ships and Hyperspace.ships.enemy
+end
+
+local function set_global_weapon_autofire(enabled)
+  pcall(function()
+    local cc = Hyperspace.App and Hyperspace.App.gui and Hyperspace.App.gui.combatControl
+    if cc and cc.weapControl then cc.weapControl.autoFiring = enabled end
+  end)
+end
+
+local function fill_weapon_targets(pf, target, room)
+  local need = 1
+  pcall(function() need = pf:NumTargetsRequired() end)
+  if not need or need < 1 then need = 1 end
+  local ok, center = pcall(function() return target:GetRoomCenter(room) end)
+  if not ok or not center then return end
+  pcall(function()
+    while pf.targets:size() > 0 do pf.targets:pop_back() end
+    while pf.targets:size() < need do pf.targets:push_back(center) end
+  end)
+end
+
+local function clear_weapon_fire_state(pf)
+  if not pf then return end
+  pcall(function() pf.fireWhenReady = false end)
+  pcall(function() pf.autoFiring = false end)
+end
+
+local function clear_manual_fire_slot(slot)
+  if not S.manual_fire then return end
+  S.manual_fire[tostring(slot)] = nil
+  pcall(function()
+    local pl = Hyperspace.ships and Hyperspace.ships.player
+    local wl = pl and pl:GetWeaponList()
+    clear_weapon_fire_state(wl and wl[slot])
+  end)
+end
+
+local function clear_idle_weapon_fire_states()
+  pcall(function()
+    local pl = Hyperspace.ships and Hyperspace.ships.player
+    if not pl or pl.bJumping then return end
+    local wl = pl:GetWeaponList()
+    if not wl then return end
+    for i = 0, wl:size() - 1 do
+      if not (S.manual_fire and S.manual_fire[tostring(i)] ~= nil) then
+        clear_weapon_fire_state(wl[i])
+      end
+    end
+  end)
+end
+
+local function arm_manual_fire_slot(slot, req)
+  local pl = Hyperspace.ships and Hyperspace.ships.player
+  local target = target_ship(req.ship_id or 1)
+  if not (pl and target) or pl.bJumping then clear_manual_fire_slot(slot); return nil end
+  if (req.ship_id or 1) ~= 0 then
+    local destroyed = false
+    pcall(function() destroyed = target.bDestroyed end)
+    if destroyed then clear_manual_fire_slot(slot); return nil end
+  end
+  local wl = pl:GetWeaponList()
+  local pf = wl and wl[slot]
+  if not pf then clear_manual_fire_slot(slot); return nil end
+  local powered = false
+  pcall(function() powered = pf.powered end)
+  if not powered then clear_manual_fire_slot(slot); return nil end
+
+  set_global_weapon_autofire(false)
+  fill_weapon_targets(pf, target, req.room or 0)
+  pcall(function() pf.autoFiring = false end)
+  pcall(function() pf.fireWhenReady = true end)
+  return pf
+end
+
+local function update_manual_fire()
+  if not S.manual_fire then return end
+  set_global_weapon_autofire(false)
+  clear_idle_weapon_fire_states()
+  for key, req in pairs(S.manual_fire) do
+    local slot = tonumber(key)
+    if not slot or type(req) ~= "table" then
+      S.manual_fire[key] = nil
+    else
+      local pf = arm_manual_fire_slot(slot, req)
+      if pf then
+        local cur, mx = weapon_charge(pf)
+        if type(cur) == "number" and type(mx) == "number" and mx > 0 then
+          if cur >= mx - 0.05 then req.seen_ready = true end
+          if req.seen_ready and cur < mx * 0.75 then
+            clear_manual_fire_slot(slot)
+          else
+            req.last_charge = cur
+            req.max_charge = mx
+          end
+        end
+      end
+    end
+  end
+end
+
 local function apply_fire_weapon(act)
   local slot = act.weapon_slot or 0
   local ship_id = act.target_ship_id or 1
   local room = act.target_room_id or 0
-  -- The C++ binding arms the weapon and sets a persistent target, but it leaves the weapon's
-  -- fireWhenReady FALSE — so a charged, targeted weapon NEVER releases its shot (and FTL then
-  -- clears the pushed aim points, so n_targets drops back to 0). This is the "burst laser ready
-  -- but won't fire" bug: the agent sees a fully-charged, targeted weapon vs a near-dead enemy and
-  -- it just sits there. Set fireWhenReady so the weapon actually fires when charged, keep
-  -- autoFiring so it re-fires each cycle, and top up the aim points (multi-shot weapons need
-  -- NumTargetsRequired() points — Burst Laser II: 3 shots -> 3 points).
+
+  -- Manual fire control: release this weapon once when charged, then idle. The C++ helper sets
+  -- target state but also enables autofire; immediately turn autofire back off and keep only this
+  -- slot's fireWhenReady asserted while it is pending. When the weapon charge resets, the shot or
+  -- burst volley has released and the pending request is cleared.
   Hyperspace.benchmark_fire_weapon(slot, ship_id, room)
-  -- Also flip the ship's GLOBAL autofire (the AUTOFIRE button). The per-weapon fireWhenReady is
-  -- rewritten every frame from this global state, so poking it once gets stomped; the global toggle
-  -- is the lever that persists. Best-effort — the exact binding may differ; if it doesn't take, the
-  -- agent re-issues `fire` each beat (the v4 manual instructs this).
-  pcall(function()
-    local cc = Hyperspace.App and Hyperspace.App.gui and Hyperspace.App.gui.combatControl
-    if cc and cc.weapControl then cc.weapControl.autoFiring = true end
-  end)
-  pcall(function()
-    local pl = Hyperspace.ships and Hyperspace.ships.player
-    local target = (ship_id == 0) and pl or (Hyperspace.ships and Hyperspace.ships.enemy)
-    if not (pl and target) then return end
-    local pf = pl:GetWeaponList()[slot]
-    if not pf then return end
-    pcall(function() pf.fireWhenReady = true end)   -- the flag that releases a charged shot
-    pcall(function() pf.autoFiring = true end)       -- keep firing on the target each cycle
-    local need = pf:NumTargetsRequired()
-    if not need or need <= pf.targets:size() then return end
-    local center = target:GetRoomCenter(room)
-    while pf.targets:size() < need do
-      pf.targets:push_back(center)
+  S.manual_fire[tostring(slot)] = {
+    ship_id = ship_id,
+    room = room,
+    last_charge = nil,
+    max_charge = nil,
+    seen_ready = false,
+  }
+  local pf = arm_manual_fire_slot(slot, S.manual_fire[tostring(slot)])
+  if pf then
+    local cur, mx = weapon_charge(pf)
+    if type(cur) == "number" and type(mx) == "number" and mx > 0 then
+      S.manual_fire[tostring(slot)].last_charge = cur
+      S.manual_fire[tostring(slot)].max_charge = mx
+      S.manual_fire[tostring(slot)].seen_ready = cur >= mx - 0.05
     end
-  end)
+  end
 end
 
 -- Fire a BEAM weapon. Unlike apply_fire_weapon (one room center repeated, correct for a burst
@@ -1008,10 +1110,9 @@ local function add_m3_obs(obs)
         pcall(function() ow.required_power = pf.requiredPower end)
         pcall(function() ow.fire_when_ready = pf.fireWhenReady end)
         pcall(function() ow.has_target = (pf.currentShipTarget ~= nil) end)
-        -- autofiring: the RELIABLE "this weapon is armed and will fire at its target when
-        -- charged" flag (set true by the benchmark fire path's SetAutoFire). currentShipTarget
-        -- is left nil by that path, so has_target flickers false even after a successful fire —
-        -- which made an agent re-issue `fire` every turn (fire-spam). Prefer autoFiring.
+        ow.manual_fire_pending = (S.manual_fire and S.manual_fire[tostring(i)] ~= nil) or false
+        -- autofiring is raw engine state only. The benchmark fire path is manual one-shot:
+        -- prefer manual_fire_pending/fire_when_ready when reasoning about queued releases.
         pcall(function() ow.autofiring = pf.autoFiring end)
         -- shots/targets: a multi-shot weapon needs NumTargetsRequired() aim points to
         -- actually fire (see apply_fire_weapon). Expose both so an agent can tell a
@@ -1507,6 +1608,7 @@ _G.ftl_bench_tick = function()
   local in_game = (world ~= nil) and world.bStartedGame or false
   if not in_game then
     S.frame_budget = 0
+    S.manual_fire = {}
     -- A reset_episode that has reached the menu: kick off a fresh seeded game.
     if S.resetting then
       _G.ftl_bench_desired_seed = S.reset_seed
@@ -1554,6 +1656,7 @@ _G.ftl_bench_tick = function()
   -- reset_episode: abandon this run back to the main menu (the menu-guard above
   -- then launches a fresh seeded game). Runs UNFROZEN so the transition plays out.
   if S.resetting then
+    S.manual_fire = {}
     set_frozen(false)
     S.reset_throttle = (S.reset_throttle or 0) + 1
     if S.reset_throttle % 10 == 0 then
@@ -1578,6 +1681,7 @@ _G.ftl_bench_tick = function()
   end
 
   if S.frame_budget > 0 then
+    update_manual_fire()
     S.frame_budget = S.frame_budget - 1
     S.adv_elapsed = (S.adv_elapsed or 0) + 1
     -- HYBRID pause: after a MINIMUM beat (MIN_STEP_FRAMES), end the advance EARLY on a critical

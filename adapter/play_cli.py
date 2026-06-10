@@ -12,7 +12,7 @@ Commands:
   reset <seed>            start a fresh seeded run (abandons the current one)
   obs                     just look (no action)
   power <sys_id> <level>  set a system's power (weapons=3, shields=0, engines=1, oxygen=2)
-  fire <slot> <room>      fire weapon `slot` at enemy `room` (autofires until it dies/flees)
+  fire <slot> <room>      manually release/queue one shot or burst at enemy `room`
   jump <beacon_index>     jump to a connected beacon
   event <choice_index>    pick an event/dialog choice (resolve a popup)
   leave                   leave the sector from the exit beacon
@@ -167,16 +167,17 @@ def compact(o) -> dict:
                             or w.get("weapon_type") in ("MISSILES", "BOMB")),
          **({"fire": w.get("fire_chance")} if w.get("fire_chance") else {}),
          **({"ion": w.get("ion_damage")} if w.get("ion_damage") else {}),
-         # ready_to_fire: charged enough to release a volley THIS turn (clearer than the
-         # raw `charge` float, which keeps climbing past the threshold). Autofire keeps the
-         # weapon firing once targeted, so you don't need to re-`fire` every cycle.
+         # ready_to_fire: charged enough to release a shot/volley THIS turn. Fire control is
+         # manual: `fire` queues one release, then the weapon idles again.
          "ready_to_fire": bool(w.get("powered")
                                and (w.get("charge") or 0) >= (w.get("charge_max") or w.get("base_cooldown") or 1e9)),
-         # targeted: armed + autofiring at a target. A powered weapon with targeted:false NEVER
-         # fires no matter how long you wait — `fire <slot> <enemy_room>` to target it. Reads
-         # autoFiring (reliable; set by the fire path) — NOT currentShipTarget, which the fire
-         # path leaves nil so it false-flickered and induced fire-spam. Once targeted, just wait.
-         "targeted": bool(w.get("autofiring") or w.get("has_target")),
+         "queued_fire": bool(w.get("manual_fire_pending")),
+         # queued_fire: a manual one-shot release is pending for this slot.
+         # targeted: this weapon has a pending/visible target, but it still needs queued_fire to fire.
+         # A powered weapon with queued_fire:false will not fire just because time advances.
+         "targeted": bool(w.get("manual_fire_pending") or w.get("has_target") or (
+             (w.get("n_targets") or 0) >= (w.get("targets_required") or 1)
+         )),
          "charge": round(w.get("charge") or 0, 1),
          "charge_max": round(w.get("charge_max") or w.get("base_cooldown") or 0, 1),
          "req_power": w.get("required_power"),

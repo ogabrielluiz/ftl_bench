@@ -20,6 +20,7 @@ from ftl_bench import (  # noqa: E402
     TrajectoryRecorder,
     load_trajectory,
     score_trajectory,
+    fire_weapon,
     set_system_power,
 )
 from ftl_bench.session import ftl_process_alive  # noqa: E402
@@ -47,6 +48,17 @@ def player_oxygen(o):
 def operational_weapons(o):
     """Player weapons that are powered (can actually deal damage)."""
     return [w for w in (o.player_ship or {}).get("weapons", []) if w.get("powered")]
+
+
+def ready_weapons(o):
+    """Powered weapons charged enough for one manual release."""
+    out = []
+    for w in operational_weapons(o):
+        cur = w.get("charge") or 0
+        mx = w.get("charge_max") or w.get("base_cooldown") or 0
+        if mx and cur >= mx:
+            out.append(w)
+    return out
 
 
 def min_crew_health(o):
@@ -123,17 +135,14 @@ def fight(sess, o, log, flee_below=8):
         log("  enemy has no targetable rooms — fleeing")
         return _flee(sess, o, log)
     log(f"  combat: target enemy room {target}, enemy hull {enemy_hull(o)}")
-    for w in operational_weapons(o):
-        o = sess.fire_weapon(w["slot"], target, advance_frames=30)
-    prev_eh, stall = enemy_hull(o), 0
+    prev_eh, stall, last_volley = enemy_hull(o), 0, False
     for _ in range(15):
         eh = enemy_hull(o)
         if not o.enemy_ship or (eh or 0) <= 0:
             log(f"  enemy destroyed (player hull {player_hull(o)})")
             return o, "kill"
-        # A damaged enemy pops a "trying to escape! / Continue..." dialog that PAUSES the
-        # whole combat sim (event_pause). Dismiss it so our autofire keeps hitting and can
-        # finish the kill before it jumps -- otherwise combat freezes and we'd false-stall.
+        # A damaged enemy can pop a "trying to escape! / Continue..." dialog that pauses combat.
+        # Dismiss it so manual volleys can continue before it jumps.
         if o.choice_box_open and (o.event or {}).get("choices"):
             n = len(o.event["choices"])
             o = sess.choose_event(n - 1, advance_frames=120)   # last = "Continue/leave"
@@ -145,14 +154,21 @@ def fight(sess, o, log, flee_below=8):
         if not operational_weapons(o):  # weapons knocked out mid-fight
             log("  weapons knocked out — fleeing")
             return _flee(sess, o, log)
-        # Stalemate: enemy hull isn't dropping (shields we can't break). Not dangerous,
-        # but unwinnable -- leave instead of looping here forever (the x=238 stall).
-        stall = stall + 1 if (eh is not None and prev_eh is not None and eh >= prev_eh) else 0
-        prev_eh = eh
-        if stall >= 5:
-            log(f"  no progress vs enemy (hull stuck at {eh}) — fleeing")
-            return _flee(sess, o, log)
-        o = sess.step([], advance_frames=200)
+        # Stalemate: only count no-progress turns after we actually fired a volley. Waiting for
+        # weapons to charge is not a combat failure under manual fire control.
+        if last_volley:
+            stall = stall + 1 if (eh is not None and prev_eh is not None and eh >= prev_eh) else 0
+            prev_eh = eh
+            if stall >= 5:
+                log(f"  no progress vs enemy (hull stuck at {eh}) — fleeing")
+                return _flee(sess, o, log)
+        volley = ready_weapons(o)
+        if volley:
+            o = sess.step([fire_weapon(w["slot"], target) for w in volley], advance_frames=150)
+            last_volley = True
+        else:
+            o = sess.step([], advance_frames=160)
+            last_volley = False
     log("  fight inconclusive — fleeing")
     return _flee(sess, o, log)
 

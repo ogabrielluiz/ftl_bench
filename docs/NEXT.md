@@ -46,8 +46,9 @@ multi-shot weapon needs `ProjectileFactory::NumTargetsRequired()` aim points to 
 `fire_weapon` supplied only one — so the 3-shot Burst Laser II stayed fully charged +
 `fire_when_ready` yet never released (the Artemis missile, 1 shot, worked). Fix (live, pure
 Lua in `apply_fire_weapon`): top up `pf.targets` to `NumTargetsRequired()` copies of the
-target-room center; the first fire copies them to `lastTargets` so autofire keeps firing all
-3 bolts. C++ `hs_benchmark_fire_weapon` also corrected for the next rebuild. The obs now
+target-room center so the whole burst can release. The current interface is manual one-shot
+fire control: `fire_weapon` queues one release, then clears `fireWhenReady`/autofire. C++
+`hs_benchmark_fire_weapon` also corrected for the next rebuild. The obs now
 exposes per-weapon `num_shots`/`targets_required`/`n_targets`. Two combat facts this exposed:
 (1) FTL gates `World::OnLoop` on `bPaused || event_pause || menu_pause || bAutoPaused`, so an
 unresolved (often **chained**) event/flee dialog freezes the *whole* combat sim — clear the

@@ -16,8 +16,8 @@ to read the observation and what commands to issue. **All strategy and judgement
   doors, *then* unpause and watch it play out. Set up everything you need in ONE turn rather than
   one click at a time.
 - End the plan with **`advance <frames>`**: how long to run before your next turn. A combat beat is
-  ~150; a `jump` warp needs ~260; use a long advance (e.g. `advance 600`) to let a slow weapon
-  charge and fire or a repair finish, a short one (`advance 30`) to react again soon. If you omit
+  ~150; a `jump` warp needs ~260; use a long advance (e.g. `advance 600`) to let weapons charge
+  or a repair finish, a short one (`advance 30`) to react again soon. If you omit
   `advance`, a short default beat is used.
 - An advance also **stops early** if something critical happens; the observation's `interrupted_by`
   field says what — `combat_started` / `took_damage` / `boarder_aboard` / `fire` / `event` — so you
@@ -28,7 +28,7 @@ to read the observation and what commands to issue. **All strategy and judgement
     power 3 3        # max weapons
     crew 0 8         # send crew to fight the fire in room 8
     doors close 9    # contain it
-    fire 1 3         # burst laser on their weapons room
+    fire 1 3         # release one burst laser volley at their weapons room
     advance 150
   ```
   `#` comments are ignored. A reply with no commands just advances (a pure wait).
@@ -44,8 +44,8 @@ advance stopped early, if it did).
 - `crew`: each `{id, room, species, hp, busy, boarding}`. `intruders`: enemy crew aboard YOUR ship
   `{room, health, species}`. `fires`: burning rooms `{room_id, fires}`.
 - `weapons` (yours): each `{slot, type (LASER/MISSILES/BURST/BEAM/BOMB), is_beam, dmg, pierces
-  (shield layers ignored), eff_pierce, ready_to_fire, targeted, charge, charge_max, req_power,
-  shots}`.
+  (shield layers ignored), eff_pierce, ready_to_fire, queued_fire, targeted, charge, charge_max,
+  req_power, shots}`.
 - `enemy` (null if none): `{hull, shields: "NL charger=..", evasion, targetable, active (false once
   it forfeits/flees), rooms: [{room_id, system}], weapons: [{type?, dmg, pierces, about_to_fire,
   charge, charge_max}], systems: [{name, power}]}`.
@@ -60,7 +60,7 @@ advance stopped early, if it did).
 ## Commands (put as many as you need in the ACTION block, one per line)
 ```
 power <sys_id> <level>          set a system's power (needs reactor_free >= the added cost)
-fire <slot> <enemy_room>        aim a weapon at an enemy room (sets its target)
+fire <slot> <enemy_room>        manually release/queue ONE shot or burst at an enemy room
 beam <slot> <room_a> [room_b]   fire a BEAM weapon, sweeping room_a -> room_b
 jump <beacon_index>             jump to a connected beacon (see map.beacons[].index)
 event <choice_index>            resolve a blocking event / popup
@@ -74,6 +74,18 @@ advance <frames>                end the plan; let the game run this long (a wait
 System ids: 0 shields, 1 engines, 2 oxygen, 3 weapons, 4 drones, 5 medbay, 6 piloting,
 7 sensors, 8 doors, 9 teleporter, 10 cloaking, 12 battery, 14 mind, 15 hacking.
 
+## Manual weapon control
+- Weapons do **not** autofire. `fire <slot> <room>` queues exactly one release for that weapon.
+  After that shot/burst releases, the weapon idles again. To fire another cycle, issue another
+  `fire` command.
+- Expert play is volley play: wait until the weapons you need are charged (`ready_to_fire:true`),
+  then issue several `fire` commands in the same paused ACTION block so the shots land together and
+  overwhelm shields. Do not dribble lasers one at a time into a regenerating shield layer.
+- Missiles and bombs cost ammo. Hold them by not issuing `fire`; spend them only when the damage is
+  worth the missile.
+- `queued_fire:true` means a one-shot release is pending for that slot. `queued_fire:false` means
+  the weapon will not fire just because time advances, even if it is powered and charged.
+
 ## Interface quirks (these differ from clicking in the real game)
 - **Most commands are one-time SETS.** `power`, `crew`, `doors`, and weapon targeting set a state
   once; re-issuing the identical command when it's already in effect does nothing. Read the
@@ -81,12 +93,10 @@ System ids: 0 shields, 1 engines, 2 oxygen, 3 weapons, 4 drones, 5 medbay, 6 pil
 - **A broken module is not a power problem.** A system with `damage > 0` or `on_fire: true` is
   BROKEN — it works poorly or not at all no matter how much power it has. Fix it by sending a crew
   member to its `room` (`crew <id> <room>`) to repair/extinguish. Powering it will NOT restore it.
-- **Powering a weapon does NOT fire it; `fire <slot> <enemy_room>` targets it.** A targeted, charged
-  weapon should fire when it finishes charging — but if the enemy's hull is NOT dropping and the
-  weapon shows `fire_when_ready:false` / `ready_to_fire:true` while nothing happens, the shot isn't
-  releasing: **re-issue `fire <slot> <room>` on your next beat** (and keep doing so each beat) until
-  the enemy is down. Don't sit waiting for autofire that isn't coming. A multi-shot BURST weapon and
-  a `BEAM` are fine — just re-`fire`/`beam` them per beat. `targeted:false` means no target set.
+- **Powering a weapon does NOT fire it.** `fire <slot> <enemy_room>` queues one manual release for
+  that weapon. Use it when you want that charged shot/burst to go out; do not spam it every beat.
+  If `ready_to_fire:true` and `queued_fire:false`, the weapon is being held. That is correct when
+  waiting for a coordinated volley or conserving missiles.
 - **`enemy.targetable:false`** means it's warping out or gone — firing hits nothing; jump on instead.
   **`enemy.active:false`** means it forfeited/fled (guns depowered) — it's no longer a threat.
 - A non-null `event` freezes the entire sim until you resolve it with `event <choice_index>`.

@@ -152,8 +152,9 @@ def send_crew(crew_id: int, room_id: int) -> dict[str, Any]:
 @mcp.tool()
 def shoot(weapon_slot: int, enemy_room_id: int) -> dict[str, Any]:
     """In combat, aim weapon `weapon_slot` at enemy `enemy_room_id` (see
-    enemy.rooms) and fire. The weapon keeps auto-firing at that room as it charges.
-    Power the weapons system (id 3) and ensure the weapon is charged first."""
+    enemy.rooms) and queue one manual shot/burst. It does not keep auto-firing;
+    issue shoot again for the next volley. Power the weapons system (id 3) and
+    ensure the weapon is charged first."""
     return _summary(_session.fire_weapon(weapon_slot, enemy_room_id, advance_frames=90))
 
 

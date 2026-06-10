@@ -158,7 +158,7 @@ def parse_action(text: str) -> tuple[str | None, list[str]]:
     return None, []
 
 
-def _extract_thought(reply: str) -> str | None:
+def _extract_thought(reply: str, max_len: int = 240) -> str | None:
     """The model's REASONING for this turn: its reply minus the `ACTION:` line parse_action
     selects (the LAST one), collapsed to a single line. Returns None if empty."""
     if not reply:
@@ -171,6 +171,8 @@ def _extract_thought(reply: str) -> str | None:
             break
     reasoning = lines[:action_idx] if action_idx is not None else lines
     text = " ".join(reasoning).strip()
+    if max_len > 0 and len(text) > max_len:
+        text = text[:max_len - 1].rstrip() + "…"
     return text or None
 
 

@@ -14,7 +14,7 @@ compact, agent-readable summary of the resulting state):
 | `pick_choice(choice_index)` | Choose an event option |
 | `power_system(system_id, level)` | Set a system's power (0=shields 1=engines 3=weapons …) |
 | `send_crew(crew_id, room_id)` | Move a crew member to one of your rooms |
-| `shoot(weapon_slot, enemy_room_id)` | Aim+fire a weapon at an enemy room (auto-fires as it charges) |
+| `shoot(weapon_slot, enemy_room_id)` | Queue one manual shot/burst at an enemy room; issue it again for the next volley |
 | `advance(frames)` | Let game time pass (charge weapons, finish a jump/combat) then re-pause |
 | `run_strategy(code)` | **Code mode**: run agent-authored Python against the env (loops, whole combats) in one call — fewer round-trips than per-action tool calls |
 
@@ -64,4 +64,3 @@ cd harness && uv run python ../adapter/eval.py --seeds 1,2,3 --jumps 6
   code-execution agent (Claude Code), by writing+running a script that imports `ftl_bench` directly.
   Recommended for FTL: one script can drive a whole combat without flooding context with
   intermediate observations.
-
