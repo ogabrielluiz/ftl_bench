@@ -1,61 +1,61 @@
 ---
 title: How scoring works
-description: The benchmark metric is FTL's own native run score, plus a solve/win rate, over reproducible seeded instances.
+description: ftl_bench reports FTL native score, solve/win rate, efficiency, and per-suite breakdowns over seeded instances.
 ---
 
-`ftl_bench` uses **FTL's own native run score** as the metric. It evaluates agents on reproducible
-**instances**, so results are comparable across models and runs.
+`ftl_bench` reports the game's own run score as the headline metric. The runner
+evaluates agents on reproducible seeded instances and aggregates the resulting
+trajectories.
 
-## The metric: FTL's native score
+## Headline metric: FTL score
 
-At the end of every FTL run the game computes a score from how well you played: scrap collected,
-ships destroyed, beacons and sectors explored, and the flagship kill, all times a difficulty
-multiplier. That is the designers' own holistic measure of run quality, and it is what we report.
+At the end of a run, FTL computes a native score from real game progress: scrap
+collected, ships destroyed, beacons and sectors explored, flagship progress, and
+difficulty. `ftl_bench` reports the mean of that value over the evaluated suite.
 
-Using the game's score instead of a coined metric has real advantages:
+Using the native score is useful because it is:
 
-- **Holistic.** It already weighs the things that matter (loot, kills, depth, the win), so we do
-  not have to invent and justify a formula.
-- **Non-saturating.** A high score essentially requires beating the flagship and playing
-  thoroughly, so the ceiling stays high as models improve.
-- **Gaming-resistant.** You cannot farm score by jumping in place; the game only rewards real
-  progress.
-- **Interpretable.** Anyone who has played FTL knows what a score means.
+- **Holistic:** it rewards the same progress the game rewards.
+- **Hard to farm:** it requires real exploration, combat, loot, sector progress,
+  and ultimately the flagship.
+- **Comparable:** it is easier to interpret than a newly invented scalar.
+- **Unsaturated:** full wins and stronger routes leave room for better agents.
 
-The run's score is read live from the game (`ftl_score` in the observation) and taken at the
-natural game-over, which is exactly when [play-to-game-over](/reference/play-to-gameover/) ends a
-run.
+## Solve and win rate
 
-## Reported metrics
+Each instance also has a strict goal check. The aggregate reports `Solve N/M`.
+For full-game runs, a solve is the real win: destroying the rebel flagship. For
+mixed-suite probes, solve means the instance's explicit goal was met, such as
+surviving enough jumps or reaching a sector while healthy.
 
-- **FTL score** (headline): the mean of FTL's native run score over the suite, with a seed-based
-  standard error.
-- **Solve / win rate**: the fraction of instances that achieve the scenario goal. For full games
-  that is the win (flagship defeated).
-- **Efficiency**: jumps or turns per instance.
+## Efficiency
 
-## Instances
+Efficiency is reported separately, usually as jumps or turns per instance. It is
+not the headline number, but it helps distinguish an agent that reaches the same
+goal cleanly from one that burns many turns in no-op loops or low-value detours.
 
-An **instance** is a fully specified, seeded scenario: `(seed, ship, difficulty, goal)`. The seed
-pins the map and events; difficulty is pinned so the score multiplier is constant and runs are
-comparable. The agent decides everything in-game.
+## Instances and tiers
 
-## Tiers
+An instance pins the run:
 
-To discourage overfitting to known seeds, the suite is split into a `public` tier you tune
-against and a held-out `semi_private` tier that is the reported number.
+```text
+(seed, ship, difficulty, tier, goal)
+```
+
+The seed fixes map and event RNG. Tiers split development seeds from held-out
+reporting seeds:
+
+- `public`: tune, debug, and compare during development.
+- `semi_private`: report the benchmark number.
 
 ## Baseline ladder
 
-Two reference agents make any score interpretable:
+Scores should be interpreted against reference floors:
 
-- **`random`**: a legal-move floor.
-- **`scripted`**: a heuristic floor (exit navigation, flee on danger, event-choice escalation,
-  stalemate-flee).
+- `random`: legal actions sampled from the same interface.
+- `scripted`: heuristic navigation, fleeing, event handling, and simple combat.
+- model rows: real LLM or agent systems, using the same runner and scorer.
 
-A high agent score is meaningful because it sits between these floors and the unsaturated ceiling
-of actually beating the flagship.
-
-The scoring code lives in `harness/src/ftl_bench/{scoring,aggregate}.py`, the suites in
-`scenarios/`, and the runner in `adapter/run_benchmark.py`. See
-[Running and results](/evaluate/running/) to produce these numbers.
+The scoring and aggregation code lives in
+`harness/src/ftl_bench/{scoring,aggregate}.py`. Suites live in `scenarios/`, and
+the runner is `adapter/run_benchmark.py`.

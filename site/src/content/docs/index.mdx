@@ -1,14 +1,13 @@
 ---
 title: ftl_bench
-description: A game benchmark for LLM agents. Evaluate your model or agent by having it play FTL Faster Than Light.
+description: Evaluate long-horizon agents by having them play FTL Faster Than Light through a paused, structured interface.
 template: splash
 hero:
-  tagline: A game benchmark for LLM agents. Bring your model or agent, have it play FTL Faster Than Light through a clean turn-based interface, and measure how far it gets.
+  tagline: A long-horizon game benchmark for LLM agents. Models play the real FTL, paused between decisions, and are scored by native run progress, wins, and full trajectories.
   actions:
-    # Hero actions are frontmatter (not markdown), so the rehype base-link pass can't reach them;
-    # include the /ftl_bench base explicitly here.
-    - text: The benchmark
-      link: /ftl_bench/introduction/the-benchmark/
+    # Hero actions are frontmatter (not markdown), so the rehype base-link pass cannot reach them.
+    - text: Benchmark protocol
+      link: /ftl_bench/introduction/protocol/
       icon: right-arrow
     - text: Quickstart
       link: /ftl_bench/evaluate/quickstart/
@@ -18,33 +17,72 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-`ftl_bench` evaluates agents through a game: a solo, long-horizon one. Your model plays
-*FTL: Faster Than Light* turn by turn, managing power, crew and weapons; fighting, fleeing and
-surviving events; jumping across a branching map toward the rebel flagship. The harness scores
-how far it gets. There is no scripted policy in the way.
+`ftl_bench` evaluates agents in *FTL: Faster Than Light*: a real-time-with-pause
+roguelike about keeping a ship alive across combat, hazards, events, stores, and
+a branching sector map. The harness turns the game into a reproducible agent
+environment: observe structured state, issue a paused plan, advance the clock,
+log the trajectory, and score the run.
 
 <CardGrid stagger>
-	<Card title="Bring your own model or agent" icon="rocket">
-		Plug a model in as a one-function backend, or wire your whole agent around the env. The
-		same harness drives everything, so results stay comparable. See
-		[Bring your model or agent](/evaluate/bring-your-model/).
+	<Card title="Real FTL runs" icon="rocket">
+		The environment uses the actual FTL engine through Hyperspace. Agents are not solving a
+		text adventure or a hand-written simulator; they are playing seeded game states.
 	</Card>
-	<Card title="Resists saturation" icon="seti:lock">
-		FTL is a long sequence of interdependent decisions under uncertainty: resource management,
-		combat micro, risk, and planning across sectors. There is no single right move and the
-		ceiling is high.
+	<Card title="Paused multi-action control" icon="seti:lock">
+		The v4 interface lets an agent set power, move crew, target weapons, close doors, and then
+		advance time in one turn, matching how skilled players use pause.
 	</Card>
-	<Card title="Scored by goal achievement" icon="approve-check">
-		The metric is **FTL's own native run score** (scrap, kills, sectors, flagship, x
-		difficulty), plus a strict solve/win rate, with random and scripted baselines for context.
+	<Card title="Reportable benchmark numbers" icon="approve-check">
+		Report FTL native score, solve/win rate, efficiency, per-tier breakdowns, and seed standard
+		error. Public and semi-private tiers discourage memorization.
 	</Card>
-	<Card title="Reproducible and transparent" icon="document">
-		Seed-pinned runs, held-out tiers, and a full trajectory plus manifest logged for every run.
+	<Card title="Bring your own agent" icon="document">
+		Use the built-in loop with Anthropic, Claude CLI, or Codex CLI, or drive the environment
+		directly through the same observe/act surface.
 	</Card>
 </CardGrid>
 
-## Get going
+## Why FTL is hard for agents
 
-- **[Quickstart](/evaluate/quickstart/)**: run a baseline, then your model.
-- **[Bring your model or agent](/evaluate/bring-your-model/)**: the integration contract.
-- **[Install the game](/install/pc/)**: set up FTL and Hyperspace (PC recommended).
+- **Combat is tactical and time-sensitive.** Agents must target systems, manage power, handle
+  missiles and shields, repair damage, fight boarders, and decide when to run.
+- **Resources are scarce.** Fuel, missiles, drone parts, scrap, hull, crew health, and reactor
+  bars all trade off against each other.
+- **The map is a long-horizon planning problem.** The agent chooses routes through uncertain
+  events while the rebel fleet closes in.
+- **Recovery matters.** Strong play means adapting after fires, oxygen loss, bad events, missed
+  shots, damaged weapons, or a poor store.
+
+## One turn
+
+```text
+OBSERVATION: compact JSON state
+
+ACTION:
+  power 3 3
+  crew 1 2
+  fire 0 3
+  fire 1 3
+  advance 150
+```
+
+The game is paused while the agent decides. The harness applies the commands, advances the
+simulation, re-pauses on the next decision point, and records the result.
+
+## What to run first
+
+1. Install FTL and the bench Hyperspace mod: [PC setup](/install/pc/).
+2. Smoke-test the environment with the scripted floor: [Quickstart](/evaluate/quickstart/).
+3. Read the exact reporting rules: [Benchmark protocol](/introduction/protocol/).
+4. Plug in a model or custom agent: [Bring your model or agent](/evaluate/bring-your-model/).
+
+## Current public floor
+
+Native Windows + Steam, 12-instance `suite_v1`, scripted heuristic floor:
+
+| Agent | FTL score | Solve |
+|---|---:|---:|
+| `scripted` | 143.75 +/- 13.05 | 3/12 |
+
+The reportable track uses held-out `semi_private` seeds. See
+[Results and baselines](/project/status/) for the current status and open rows.

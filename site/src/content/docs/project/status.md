@@ -1,45 +1,62 @@
 ---
-title: Results & baselines
-description: Current state of ftl_bench, the baseline ladder, and what runs natively.
+title: Results and baselines
+description: Current ftl_bench status, verified capabilities, baseline rows, and open benchmark work.
 ---
 
-## What works
+## Current state
 
-The full loop runs end to end: an agent plays FTL through the turn-based interface, and the
-trajectory is scored and aggregated automatically. Capabilities verified live:
+The benchmark loop runs end to end: an agent can start a seeded run, observe the
+game, issue commands, advance the paused simulation, record a trajectory, and
+produce aggregate scores.
 
-- Observation stream, pause-gating, and the closed `reset / observe / step` loop.
-- The full action set: power, crew, jump, event, fire, beam, leave (sector transition), plus
-  cloak, battery, hack, drones, teleporter/boarding, mind control, doors, and store transactions.
-- Combat that resolves, autonomous start/restart and in-game reset, reproducible seeds.
-- Trajectory recording, scoring, and aggregation (mean FTL native score, solve/win rate).
-- The LLM track with pluggable backends, and play-to-game-over mode with a stall guard.
+Verified capabilities:
 
-## Native x86 vs Rosetta
+- observation stream and pause-gated `reset / observe / step` loop;
+- combat, events, jumping, sector transition, stores, and game-over detection;
+- full action set: power, crew, fire, beam, jump, event, leave, cloak, battery,
+  hack, drones, boarding, mind control, doors, buy, sell, and upgrade;
+- scripted and random baselines through the same runner;
+- LLM track with Anthropic API, Claude CLI, and Codex CLI backends;
+- v4 paused multi-action plans with `advance`;
+- play-to-game-over mode with a stall guard;
+- trajectory JSONL, summary JSON, and reproducibility manifests.
 
-The benchmark runs on native Windows (the recommended path), on WSL, and on macOS (under Rosetta).
-The runner drives FTL on all three; native Windows needs no WSL and no env vars. Native x86
-removes the address-translation crash class that freezes jumps and sector transitions under
-Rosetta. On native x86 the scripted baseline runs jumps, combat, and a sector crossing crash-free;
-under Rosetta those same operations can freeze, which caps full-length runs.
+## Recommended platform
 
-## Baseline ladder
+Native Windows x86 through Steam is the recommended path for reportable long
+runs. The runner launches FTL through Steam so Hyperspace injects correctly.
 
-The reference floors make any agent score interpretable:
+WSL can drive the Windows game if `FTL_SAVE_DIR` points at the Windows FTL user
+folder. macOS/Rosetta is useful for short development runs but remains secondary
+for long trajectories because it can hit an address-translation freeze class.
 
-| Agent | What it is |
+## Current public floor
+
+Native Windows + Steam, 12-instance `suite_v1`, scripted heuristic floor:
+
+| Agent | FTL score | Solve | survive_n_jumps | reach_sector | reach_sector_healthy | full_run |
+|---|---:|---:|---:|---:|---:|---:|
+| `scripted` | 143.75 +/- 13.05 | 3/12 | 133.3 | 124.0 | 195.0 | 157.5 |
+
+Median jumps per instance: 11. Public tier: 142.9. Held-out
+`semi_private` tier: 145.0.
+
+## Rows still needed
+
+| Row | Why it matters |
 |---|---|
-| `random` | legal-move floor |
-| `scripted` | heuristic floor: exit navigation, flee on danger (low oxygen / crew / no powered weapons), event-choice escalation, stalemate-flee |
+| `random` on native Windows | Legal-action floor for the current native setup. |
+| `scripted` on `full_game.json` | Baseline for the pure play-the-game track. |
+| Frontier LLMs on `full_game.json` | Main comparison rows. |
+| Human references | Validate instance quality and anchor efficiency. |
 
-Run them with `--agent random` and `--agent scripted`. A real model on the LLM track slots in as a
-third row, scored identically. See [How scoring works](/introduction/scoring/) and
-[Running and results](/evaluate/running/).
+## Reporting notes
 
-## Notes for evaluators
+- Tune against `public`; report `semi_private`.
+- Keep `--prompt-version v4` fixed for comparable model rows.
+- Treat `--retries N` as a separate benchmark condition.
+- Include suite path, tier, mode, prompt version, backend, model, commit hash,
+  and summary JSON path with every result.
 
-- Tune against the `public` tier; report the held-out `semi_private` tier.
-- Keep the prompt manual fixed (`--prompt-version v3`, the interface-only manual) so a number
-  reflects the model rather than prompt changes. A different manual is a different, non-comparable
-  agent, and the version is recorded in every run's manifest.
-- Every run writes a full trajectory plus a reproducibility manifest under `runs/`.
+See [Benchmark protocol](/introduction/protocol/) for the canonical reporting
+contract.

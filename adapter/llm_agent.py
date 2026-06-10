@@ -158,11 +158,9 @@ def parse_action(text: str) -> tuple[str | None, list[str]]:
     return None, []
 
 
-def _extract_thought(reply: str, max_len: int = 240) -> str | None:
+def _extract_thought(reply: str) -> str | None:
     """The model's REASONING for this turn: its reply minus the `ACTION:` line parse_action
-    selects (the LAST one), collapsed to a single line and length-capped. Returns None if empty.
-    Single-line + capped so it stays cheap in the live log, the trajectory JSONL, and the reflection
-    transcript (where each entry must be one line)."""
+    selects (the LAST one), collapsed to a single line. Returns None if empty."""
     if not reply:
         return None
     lines = [ln.strip() for ln in reply.strip().splitlines() if ln.strip()]
@@ -173,8 +171,6 @@ def _extract_thought(reply: str, max_len: int = 240) -> str | None:
             break
     reasoning = lines[:action_idx] if action_idx is not None else lines
     text = " ".join(reasoning).strip()
-    if len(text) > max_len:
-        text = text[: max_len - 1].rstrip() + "…"
     return text or None
 
 

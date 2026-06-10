@@ -1,76 +1,91 @@
 ---
-title: Running & results
-description: The run_benchmark CLI, modes, output, and where results are written.
+title: Running and results
+description: The run_benchmark CLI, modes, output, manifests, and reporting conventions.
 ---
 
-`adapter/run_benchmark.py` runs an agent over a suite and reports the headline metrics. The same
-runner drives the scripted, random, and LLM agents, so any result is comparable.
+`adapter/run_benchmark.py` runs an agent over a suite and reports the headline
+metrics. Scripted, random, and LLM agents all use the same runner and scorer.
 
 ## CLI
 
+Run from the repository checkout:
+
 ```bash
-python3 adapter/run_benchmark.py [options]
+cd harness
+uv run python ../adapter/run_benchmark.py [options]
 ```
 
 | Option | Meaning |
 |---|---|
-| `--agent {scripted,random,llm}` | which agent to run |
-| `--model MODEL` | LLM track: model id (default `claude-sonnet-4-6` for the anthropic backend) |
-| `--backend {anthropic,claude-cli}` | LLM track: how the model is called (add your own; see [Bring your model](/evaluate/bring-your-model/)) |
-| `--prompt-version V` | LLM track: which `prompts/ftl_agent_<v>.md` manual to use |
-| `--suite PATH` | suite file (default `scenarios/suite_v1.json`) |
-| `--tier TIER` | filter: `public`, `semi_private`, … |
-| `--type TYPE` | filter by scenario type |
-| `--max-instances N` | cap the number of instances |
-| `--budget-cap N` | cap each instance's jump budget (faster smoke runs) |
-| `--retries N` | give the agent up to N extra tries per instance on the **same seed**, handing it the prior attempts so it can learn from its mistakes (best try scored; see [Bring your model](/evaluate/bring-your-model/)) |
-| `--mode {gameover,budget}` | LLM track: **`gameover` (default)** plays a full game to win-or-die (ignores the jump budget; ends on a real win/death or a stall — see [Play-to-game-over](/reference/play-to-gameover/)); `budget` plays a bounded probe within the jump budget. The headline (FTL run score) is the same in both; the mode is recorded in the manifest and agent label so runs never get conflated. |
-| `--play-to-gameover` | deprecated alias for `--mode gameover` (gameover is now the default) |
-| `--stall-limit N` | gameover mode: end as a loss after N turns with no progress (default 10) |
-| `--out DIR` | output directory (default `runs/benchmark`) |
+| `--agent {scripted,random,llm}` | Which agent to run. |
+| `--backend {anthropic,claude-cli,codex}` | LLM track backend. Add your own in `adapter/llm_agent.py`. |
+| `--model MODEL` | LLM model id. Anthropic defaults to `claude-sonnet-4-6`; CLI backends use their local defaults when omitted. |
+| `--prompt-version V` | Which `prompts/ftl_agent_<v>.md` manual to use. Default is `v4`. |
+| `--suite PATH` | Suite file. Default is `scenarios/suite_v1.json`; use `../scenarios/full_game.json` for the pure full-game track. |
+| `--tier TIER` | Filter by tier, usually `public` or `semi_private`. |
+| `--type TYPE` | Filter by scenario type. |
+| `--max-instances N` | Cap the number of instances. |
+| `--budget-cap N` | Cap jump budget for faster smoke runs. |
+| `--mode {gameover,budget}` | LLM track mode. `gameover` is default and plays to real win/death/stall; `budget` stops within the jump budget. |
+| `--stall-limit N` | Gameover mode: declare a loss after N no-progress turns. Default is 10. |
+| `--retries N` | Give up to N extra same-seed tries and score the best attempt. |
+| `--out DIR` | Output directory. Default is `runs/benchmark`. |
 
 ## Output
 
-Per instance you get a `Score` plus the sub-objective breakdown, then the aggregate:
+Per instance, the runner prints score, solve status, and sub-objective
+breakdown. It then prints the aggregate:
 
-```
+```text
 == RESULTS ==
-  FTL score 184 ± 31  |  Solve 1/7
-  solve_pct: 35.7
+  FTL score 184 +/- 31  |  Solve 1/7
+  ftl_score_median: 160
+  solve_pct: 14.3
   median_jumps_per_instance: 6
-  by_type: {"survive_n_jumps": {...}, "reach_sector": {...}, ...}
-  by_tier: {"public": {...}}
+  by_type: {"full_run": {...}}
+  by_tier: {"semi_private": {...}}
 ```
 
-`FTL score` (the mean of FTL's native run score) is the headline
-([How scoring works](/introduction/scoring/)). `Solve N/M` is the strict count of instances that
-achieved the goal (the win, for full games). The per-type and per-tier breakdowns show where an
-agent is strong or weak.
+`FTL score` is the mean of the native FTL run score. `Solve N/M` is the strict
+goal count. For full-game runs, a solve is a flagship win.
 
-With `--retries N` the results also include a **learning curve**: for each attempt budget k, the
-best-so-far mean and median FTL score and the cumulative solve rate (`solve@1 -> solve@k`), and the
-headline is labeled `[best of up to N tries]`.
+With `--retries N`, output also includes the best-of-k learning curve:
+mean/median best FTL score and cumulative solve rate at each attempt budget.
 
-## What gets written
+## Files written
 
-Under `--out` (default `runs/benchmark/`):
+Under `--out`:
 
-- `<instance>.jsonl`: the full trajectory (each decision, the action, the resulting state).
-- a per-agent `summary_<label>.json` with the aggregate.
-- a reproducibility **manifest** per instance: seed, ship, schema version, runner and agent
-  version, and for the LLM track the model, backend, and prompt version.
+- `<instance>.jsonl`: full trajectory for one attempt.
+- `summary_<agent-label>.json`: aggregate plus per-instance results.
+- manifest metadata in each trajectory: seed, ship, difficulty, tier, schema,
+  runner version, agent label, backend, model, prompt version, mode, and retry
+  count.
 
-The agent label encodes the configuration, for example
-`llm-anthropic-claude-sonnet-4-6-v3`, so different models, backends, prompts, and modes never get
-silently mixed.
+The agent label encodes configuration, for example:
+
+```text
+llm-anthropic-claude-sonnet-4-6-v4-gameover10
+llm-codex-gpt-5-v4-gameover10-retries2
+```
+
+Different prompts, modes, backends, models, and retry settings are distinct
+benchmark rows.
 
 ## Reporting a number
 
-Run the held-out tier for the comparable figure:
+Use the held-out tier:
 
 ```bash
-python3 adapter/run_benchmark.py --agent llm --backend <yours> --model <id> --tier semi_private
+uv run python ../adapter/run_benchmark.py \
+  --agent llm \
+  --backend <anthropic|claude-cli|codex> \
+  --model <id> \
+  --suite ../scenarios/full_game.json \
+  --tier semi_private \
+  --mode gameover \
+  --prompt-version v4
 ```
 
-Tune against `public`, report `semi_private`. Keep the prompt manual fixed (`--prompt-version v3`)
-so your number reflects the model, not prompt drift.
+Tune against `public`; report `semi_private`. Include the suite path and commit
+hash with the score.

@@ -39,8 +39,8 @@ export default defineConfig({
 		starlight({
 			title: 'ftl_bench',
 			description:
-				'A game benchmark for LLM agents: evaluate your model or agent by having it play ' +
-				'FTL: Faster Than Light through a clean, intent-level interface.',
+				'A long-horizon game benchmark for LLM agents playing FTL: Faster Than Light ' +
+				'through a paused, intent-level interface.',
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/ogabrielluiz/ftl_bench' },
 			],
@@ -49,6 +49,7 @@ export default defineConfig({
 					label: 'Introduction',
 					items: [
 						{ label: 'The benchmark', slug: 'introduction/the-benchmark' },
+						{ label: 'Benchmark protocol', slug: 'introduction/protocol' },
 						{ label: 'How scoring works', slug: 'introduction/scoring' },
 					],
 				},
@@ -63,8 +64,8 @@ export default defineConfig({
 				{
 					label: 'Install the game',
 					items: [
-						{ label: 'PC — native x86 (recommended)', slug: 'install/pc', badge: 'recommended' },
-						{ label: 'macOS — Rosetta', slug: 'install/macos' },
+						{ label: 'PC - native x86 (recommended)', slug: 'install/pc', badge: 'recommended' },
+						{ label: 'macOS - Rosetta', slug: 'install/macos' },
 					],
 				},
 				{

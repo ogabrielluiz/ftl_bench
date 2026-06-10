@@ -366,7 +366,8 @@ def main() -> None:
     # Retries are a distinct, labeled evaluation mode — never silently fold into the pass@1 number.
     if args.retries:
         agent_label += f"-retries{args.retries}"
-    extra_manifest = {**(extra_manifest or {}), "retries": args.retries}
+    run_id = f"{int(time.time())}-{os.getpid()}"
+    extra_manifest = {**(extra_manifest or {}), "retries": args.retries, "run_id": run_id}
 
     def log(m):
         print(m, flush=True)
@@ -380,6 +381,7 @@ def main() -> None:
 
     agg = aggregate(results, scenarios)
     agg["agent"] = agent_label
+    agg["run_id"] = run_id
     log("\n== RESULTS ==")
     log(f"  {agg['headline']}")
     for k in ("ftl_score_median", "solve_pct", "median_jumps_per_instance"):

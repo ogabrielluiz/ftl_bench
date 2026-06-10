@@ -1,64 +1,88 @@
 ---
 title: Quickstart
-description: Run a baseline, then evaluate your own model on ftl_bench.
+description: Run a baseline, then evaluate a model on ftl_bench.
 ---
 
-This gets you from a fresh checkout to a scored run. It assumes FTL and Hyperspace are installed
-(see [Install the game](/install/pc/)) and the game is launched and sitting at the main menu.
+This gets you from a checkout to a scored run. It assumes FTL and Hyperspace are
+installed and the game can be launched. For reportable long runs, use the
+[native Windows setup](/install/pc/).
 
 ## 1. Point the harness at FTL
 
-The harness talks to the running game through files in FTL's user folder. On **native Windows**
-there is nothing to do: it finds the folder (`Documents\My Games\FasterThanLight`) automatically.
-On **WSL or macOS**, set `FTL_SAVE_DIR` to that folder:
+On native Windows, there is nothing to set: the runner finds
+`Documents\My Games\FasterThanLight` and launches FTL through Steam.
+
+On WSL or macOS, set `FTL_SAVE_DIR` to the FTL user folder:
 
 ```bash
-# WSL: the Windows user folder, via /mnt/c
+# WSL
 export FTL_SAVE_DIR="/mnt/c/Users/<you>/Documents/My Games/FasterThanLight"
+
 # macOS
 export FTL_SAVE_DIR="$HOME/Library/Application Support/FasterThanLight"
 ```
 
-## 2. Run a baseline
+## 2. Smoke-test a baseline
 
-Start with the scripted baseline on one instance and a small jump budget, so a full pass does not
-get in the way of a smoke test:
+From the repository root:
 
 ```bash
-python3 adapter/run_benchmark.py --agent scripted --max-instances 1 --budget-cap 8
+cd harness
+uv run python ../adapter/run_benchmark.py --agent scripted --max-instances 1 --budget-cap 8
 ```
 
-You should see per-instance scoring and then an aggregate line:
+You should see per-instance output and an aggregate:
 
-```
+```text
 == RESULTS ==
-  FTL score 40.0 ± 0.0  |  Solve 1/1
+  FTL score 40.0 +/- 0.0  |  Solve 1/1
 ```
 
-`--agent random` gives the legal-move floor for comparison.
-
-## 3. Run your model
-
-The LLM track drives a real model over the same observe/act surface the baselines use:
+Run the random floor the same way:
 
 ```bash
-# Anthropic API (set ANTHROPIC_API_KEY first)
-python3 adapter/run_benchmark.py --agent llm --backend anthropic --model claude-sonnet-4-6
-
-# Local Claude CLI (no API key; uses your claude login)
-python3 adapter/run_benchmark.py --agent llm --backend claude-cli --model sonnet
+uv run python ../adapter/run_benchmark.py --agent random --max-instances 1 --budget-cap 8
 ```
 
-To run your **own** model (any provider, a local model, or a full custom agent), see
-[Bring your model or agent](/evaluate/bring-your-model/).
+## 3. Run a model
 
-## 4. Read the results
+The LLM track uses the same observation/action surface as the baselines. Pick a
+backend you can run:
 
-Each run prints per-instance `ftl_score` plus the aggregate `FTL score ± SE | Solve N/M`, and writes the
-trajectory and a reproducibility manifest under `runs/`. See
-[Running and results](/evaluate/running/) for the full flag set and how to interpret the output.
+```bash
+# Anthropic API: requires ANTHROPIC_API_KEY
+uv run python ../adapter/run_benchmark.py --agent llm --backend anthropic --model claude-sonnet-4-6
+
+# Local Claude CLI: uses your local claude login
+uv run python ../adapter/run_benchmark.py --agent llm --backend claude-cli --model sonnet
+
+# Local Codex CLI: uses your Codex/ChatGPT auth
+uv run python ../adapter/run_benchmark.py --agent llm --backend codex --model gpt-5
+```
+
+By default, the LLM track uses `--mode gameover` and `--prompt-version v4`: the
+agent plays until a real win, death, or stall, and replies with a paused
+multi-command action plan.
+
+## 4. Report a full-game number
+
+For the pure play-the-game track:
+
+```bash
+uv run python ../adapter/run_benchmark.py \
+  --agent llm \
+  --backend <anthropic|claude-cli|codex> \
+  --model <model-id> \
+  --suite ../scenarios/full_game.json \
+  --tier semi_private \
+  --mode gameover \
+  --prompt-version v4
+```
+
+Each run writes trajectories, summaries, and manifests under `runs/benchmark/`.
+See [Benchmark protocol](/introduction/protocol/) for what to report.
 
 :::tip[PC: launch via Steam]
-On Windows, FTL must be launched through Steam for Hyperspace to inject. The runner handles
-relaunches for you. See [Install the game (PC)](/install/pc/).
+On Windows, FTL must be launched through Steam for Hyperspace to inject. The
+runner handles relaunches for you.
 :::
