@@ -904,6 +904,35 @@ local function add_m3_obs(obs)
     obs.player_ship.drones = D
   end)
 
+  -- Enemy Drone Control (id 4): which drones the ENEMY has DEPLOYED (flying around) + their TYPE.
+  -- A deployed SpaceDrone (combat/defense/beam) attacks/defends INDEPENDENTLY of the enemy's
+  -- WEAPONS, so an enemy with depowered guns + a live drone is still a threat. Mirrors the player
+  -- droneSystem emission; READ-ONLY, same pcall guards, combat-only (not mid-warp).
+  pcall(function()
+    local en = Hyperspace.ships and Hyperspace.ships.enemy
+    if not (en and obs.enemy_ship) or en.bJumping then return end
+    if not en:HasSystem(4) then return end
+    local ds = en.droneSystem
+    if not ds then return end
+    local CREW = { [2] = true, [3] = true, [4] = true, [5] = true }
+    local list = {}
+    local n = 0; pcall(function() n = ds.drones:size() end)
+    for i = 0, n - 1 do
+      local d = ds.drones[i]
+      if d then
+        local name = ""; pcall(function() name = d:GetName() end)
+        local t = d.type
+        list[#list + 1] = {
+          slot = i, name = name, type = t,
+          is_space = (not CREW[t]),
+          powered = d.powered, deployed = d.deployed, dead = d.bDead,
+          firing  = (d.powered and d.deployed and not d.bDead),
+        }
+      end
+    end
+    obs.enemy_ship.drones = list
+  end)
+
   -- teleporter system state (id 9) + ORGANIC boarder picture. iShipId is the OWNER ship (player
   -- crew is always 0, even while boarding); currentShipId is where the crew physically is.
   -- "Aboard enemy" = owned by us (iShipId==0) AND on the enemy (currentShipId==1). Drones are

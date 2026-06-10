@@ -200,15 +200,26 @@ def compact(o) -> dict:
         # ship's weapons are gone, and reading that as "inactive" makes the agent stop defending.
         _ew = en.get("weapons") or []
         _wsys = next((s for s in (en.get("systems") or []) if s.get("id") == 3), None)
+        # deployed enemy drones fly + attack independently of the ship's weapons, so a ship
+        # with depowered guns is still a live threat if it has a drone out.
+        _edrones = [d for d in (en.get("drones") or []) if d.get("deployed")]
         _enemy_active = bool((_wsys and (_wsys.get("power") or 0) > 0)
                              or any(w.get("powered") for w in _ew)
-                             or _incoming > 0)
+                             or _incoming > 0
+                             or _edrones)
         st["enemy"] = {
             "hull": _pair(en.get("hull")),
             "shields": f"{sh.get('layers')}L charger={sh.get('charger')}" if sh else None,
             # still a LIVE THREAT (weapons powered, or incoming_fire>0 e.g. a drone) vs forfeit
             # (guns depowered AND nothing inbound). Don't stop defending just because guns are off.
             "active": _enemy_active,
+            # enemy DEPLOYED drones (flying around): combat/beam drones damage your hull, defense
+            # drones shoot down your missiles/drones -- all INDEPENDENT of enemy.weapons. type is
+            # the drone's name (e.g. "Combat Drone Mark I"); firing = powered + deployed + alive.
+            **({"drones": [{"type": (d.get("name")
+                                     or {0: "defense", 1: "combat", 7: "shield"}.get(d.get("type"), d.get("type"))),
+                            "firing": bool(d.get("firing"))} for d in _edrones]}
+               if _edrones else {}),
             # targetable = you can actually aim a weapon at it now (false once it's warping out
             # or gone — firing then hits NOTHING, the agent's equivalent of "no targeting cursor").
             "targetable": en.get("targetable"),
