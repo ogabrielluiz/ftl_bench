@@ -400,6 +400,13 @@ def codex_complete(system: str, user: str, model: str | None) -> str:
     try:
         cmd = [_codex_bin(), "exec", "--skip-git-repo-check", "--ephemeral",
                "--ignore-user-config", "-s", "read-only", "--color", "never", "-o", out_path]
+        # Reasoning effort: codex 0.138's gpt-5.5 DEFAULTS to "none" (no deliberation) and
+        # --ignore-user-config strips config.toml, so without this the agent thinks at zero effort.
+        # Drive it via env (CODEX_REASONING_EFFORT=xhigh|high|...); unset = codex's default ("none").
+        # codex parses the -c value as TOML, falling back to a literal string, so `xhigh` is fine.
+        effort = os.environ.get("CODEX_REASONING_EFFORT", "").strip()
+        if effort:
+            cmd += ["-c", f"model_reasoning_effort={effort}"]
         if model:
             cmd += ["-m", model]
         cmd.append(prompt)
