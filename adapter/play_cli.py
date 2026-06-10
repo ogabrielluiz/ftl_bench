@@ -184,21 +184,30 @@ def compact(o) -> dict:
          "n_targets": w.get("n_targets"), "fire_when_ready": w.get("fire_when_ready")}
         for w in ps.get("weapons", [])
     ]
+    # incoming_fire = shots currently inbound at YOU (space.projectiles with targetId==0). This
+    # counts ENEMY DRONE fire too: a combat drone is NOT in enemy.weapons, so a ship whose guns
+    # are depowered can still be shooting you via a drone. Surfacing it (and folding it into
+    # enemy.active below) stops the agent misreading a drone-armed enemy as "surrendered/inactive".
+    _incoming = (o.raw or {}).get("incoming_projectiles") or 0
+    if _incoming:
+        st["incoming_fire"] = _incoming
     if o.enemy_ship:
         en = o.enemy_ship
         sh = en.get("shields") or {}
-        # enemy "active" = still fighting with weapons. An enemy that has FORFEIT the fight
-        # (given up / fleeing) depowers its guns — its weapon system drops to 0 power and no
-        # weapon is powered. Surfacing this lets the agent tell a live threat from one that has
-        # quit, instead of dumping ammo into a ship that's already leaving.
+        # enemy "active" = still a LIVE THREAT: weapons powered OR something still inbound at you
+        # (incoming_fire > 0, e.g. a combat drone). A truly forfeit enemy depowers its guns AND
+        # stops firing; depowered guns alone is NOT enough — a drone keeps attacking after the
+        # ship's weapons are gone, and reading that as "inactive" makes the agent stop defending.
         _ew = en.get("weapons") or []
         _wsys = next((s for s in (en.get("systems") or []) if s.get("id") == 3), None)
         _enemy_active = bool((_wsys and (_wsys.get("power") or 0) > 0)
-                             or any(w.get("powered") for w in _ew))
+                             or any(w.get("powered") for w in _ew)
+                             or _incoming > 0)
         st["enemy"] = {
             "hull": _pair(en.get("hull")),
             "shields": f"{sh.get('layers')}L charger={sh.get('charger')}" if sh else None,
-            # still fighting (weapons powered) vs forfeit/giving up (guns depowered)
+            # still a LIVE THREAT (weapons powered, or incoming_fire>0 e.g. a drone) vs forfeit
+            # (guns depowered AND nothing inbound). Don't stop defending just because guns are off.
             "active": _enemy_active,
             # targetable = you can actually aim a weapon at it now (false once it's warping out
             # or gone — firing then hits NOTHING, the agent's equivalent of "no targeting cursor").
