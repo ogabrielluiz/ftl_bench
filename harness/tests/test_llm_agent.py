@@ -73,6 +73,11 @@ def test_parse_plan_no_action_block_returns_empty():
     assert cmds == [] and adv is None
 
 
+def test_parse_plan_accepts_giveup_aliases():
+    assert llm_agent.parse_plan("ACTION: giveup")[0] == [("giveup", [])]
+    assert llm_agent.parse_plan("ACTION: surrender")[0] == [("surrender", [])]
+
+
 # --------------------------------------------------------------------------- #
 # _plan_advance — floors + caps
 # --------------------------------------------------------------------------- #
@@ -93,6 +98,7 @@ def test_command_to_action_builds_dicts_and_wait_is_none():
     assert llm_agent.command_to_action("fire", ["1", "3"])["type"] == "fire_weapon"
     assert llm_agent.command_to_action("jump", ["5"]) == {"type": "jump", "beacon_index": 5}
     assert llm_agent.command_to_action("wait", []) is None      # pure advance, no action
+    assert llm_agent.command_to_action("giveup", []) == {"type": "give_up"}
 
 
 def test_command_to_action_unknown_verb_raises():

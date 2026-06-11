@@ -36,7 +36,7 @@ def score_observation(obs) -> dict[str, Any]:
 
 def score_trajectory(records: list[dict[str, Any]]) -> dict[str, Any]:
     """Aggregate metrics over a recorded run (list of trajectory records)."""
-    jumps = events = kills = 0
+    jumps = events = kills = gave_up = 0
     prev_alive = False
     final_obs: dict[str, Any] = {}
 
@@ -52,6 +52,8 @@ def score_trajectory(records: list[dict[str, Any]]) -> dict[str, Any]:
                 jumps += 1
             elif t == "choose_event":
                 events += 1
+            elif t == "give_up":
+                gave_up = 1
         enemy = obs.get("enemy_ship")
         ehull = enemy.get("hull", {}).get("current") if enemy else None
         alive = enemy is not None and (ehull or 0) > 0
@@ -71,6 +73,7 @@ def score_trajectory(records: list[dict[str, Any]]) -> dict[str, Any]:
         "final_scrap": (ps.get("resources") or {}).get("scrap"),
         "final_sector": (final_obs.get("map") or {}).get("sector"),
         "alive": (hull or 0) > 0 if final_obs.get("game_started") else None,
+        "gave_up": gave_up,
     }
 
 
@@ -79,7 +82,7 @@ def score_trajectory(records: list[dict[str, Any]]) -> dict[str, Any]:
 def achieved_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
     """Outcome metrics an agent's run achieved, read ONLY from recorded observations.
     These are the values scenario sub-objectives are scored against. No env access."""
-    jumps = sectors = events = kills = 0
+    jumps = sectors = events = kills = gave_up = 0
     max_sector = 0
     positions: set = set()
     prev_alive = False
@@ -111,6 +114,8 @@ def achieved_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
                 sectors += 1
             elif t == "choose_event":
                 events += 1
+            elif t == "give_up":
+                gave_up = 1
         enemy = obs.get("enemy_ship")
         ehull = (enemy or {}).get("hull", {}).get("current") if enemy else None
         alive = enemy is not None and (ehull or 0) > 0
@@ -135,6 +140,7 @@ def achieved_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
         "final_fuel": res.get("fuel") or 0,
         "crew_alive": crew_alive,
         "alive": 1 if final_hull > 0 else 0,
+        "gave_up": gave_up,
         "distinct_beacons": len(positions) if positions else (jumps + sectors),
         "oxygen_pct": ps.get("oxygen_pct"),
         "ftl_score": ftl_score,            # FTL's native run score (headline for full games)

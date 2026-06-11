@@ -40,6 +40,7 @@ drone / dronerecall              deploy or recall drones
 board <enemy_room> / recall      teleport boarders or recall them
 mindcontrol <enemy_room>         activate mind control
 doors <open|close> [room]        open or close doors
+giveup                           concede this benchmark instance as unsolved
 advance <frames>                 plan terminator: let time pass
 wait [frames]                    CLI-compatible wait command
 ```
@@ -81,6 +82,8 @@ wait [frames]                    CLI-compatible wait command
   warping out; firing will not help.
 - **Shot feedback is diagnostic.** Use `shots.missed` and
   `shots.shields_blocked` to tell evasion problems from shield problems.
+- **Give-up is terminal.** `giveup` records a concession and ends the benchmark
+  instance as unsolved with the current state and FTL score.
 
 See [Observation schema](/reference/observation/) for the state fields these
 commands depend on.

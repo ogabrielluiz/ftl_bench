@@ -147,6 +147,7 @@ def test_score_trajectory_empty_records():
     assert s["jumps"] == 0
     assert s["events"] == 0
     assert s["kills"] == 0
+    assert s["gave_up"] == 0
     assert s["final_hull"] is None
     assert s["final_scrap"] is None
     assert s["final_sector"] is None
@@ -164,6 +165,13 @@ def test_score_trajectory_counts_jumps_and_events_and_decisions():
     assert s["decisions"] == 3
     assert s["jumps"] == 2
     assert s["events"] == 1
+
+
+def test_score_trajectory_and_achieved_metrics_record_give_up():
+    records = [rec(obs=obs_dict(player_ship=player_ship()), actions=[{"type": "give_up"}])]
+
+    assert score_trajectory(records)["gave_up"] == 1
+    assert achieved_metrics(records)["gave_up"] == 1
 
 
 def test_score_trajectory_skips_meta_records():
@@ -244,6 +252,7 @@ def test_achieved_metrics_empty():
     assert a["final_fuel"] == 0
     assert a["crew_alive"] == 0
     assert a["alive"] == 0
+    assert a["gave_up"] == 0
     assert a["ftl_score"] == 0
     assert a["oxygen_pct"] is None
     # No positions recorded -> distinct_beacons falls back to jumps+sectors (0).

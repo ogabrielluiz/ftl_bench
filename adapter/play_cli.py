@@ -34,6 +34,7 @@ Special-system actions (each needs the system installed — buy at a store — a
   dronerecall             power the drone system down (recall space drones)
   board <enemy_room>      teleport organic boarders into an enemy room (id 9; -1 = random)
   recall [enemy_room]     bring boarders home (id 9; -1 auto-resolves the room they're in)
+  giveup                  concede this benchmark instance (records a terminal give-up action)
   screenshot [path]       capture the live FTL window to a PNG and print the path (vision aid)
 
 System ids: 0 shields, 1 engines, 2 oxygen, 3 weapons, 4 drones, 5 medbay, 6 piloting,
@@ -478,6 +479,8 @@ def apply_command(s: AgentSession, cmd: str, args: list[str]):
         return s.step([teleport_crew(1, int(args[0]) if args else -1)], advance_frames=120)
     elif cmd == "recall":       # recall [enemy_room_id]  (bring boarders home; -1 auto-resolves)
         return s.step([teleport_crew(2, int(args[0]) if args else -1)], advance_frames=120)
+    elif cmd in ("giveup", "give_up", "surrender"):
+        return s.step([{"type": "give_up"}], advance_frames=20)
     raise ValueError(f"unknown command {cmd!r}")
 
 
@@ -533,6 +536,8 @@ def command_to_action(cmd: str, args: list[str]) -> dict | None:
         return teleport_crew(1, int(args[0]) if args else -1)
     if cmd == "recall":
         return teleport_crew(2, int(args[0]) if args else -1)
+    if cmd in ("giveup", "give_up", "surrender"):
+        return {"type": "give_up"}
     raise ValueError(f"unknown command {cmd!r}")
 
 

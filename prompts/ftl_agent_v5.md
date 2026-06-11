@@ -80,6 +80,7 @@ crew <crew_id> <room>           move a crew member to a room
 buy <i> / sell <i> / upgrade <sys_id>   store transactions (upgrade raises a system's max power)
 cloak | battery | hack <enemy_sys> | drone | dronerecall
 board <enemy_room> | recall | mindcontrol <enemy_room> | doors <open|close> [room]
+giveup                          concede this benchmark instance as unsolved
 advance <frames>                end the plan; let the game run this long (a wait if alone)
 ```
 System ids: 0 shields, 1 engines, 2 oxygen, 3 weapons, 4 drones, 5 medbay, 6 piloting,
@@ -117,4 +118,8 @@ System ids: 0 shields, 1 engines, 2 oxygen, 3 weapons, 4 drones, 5 medbay, 6 pil
 - After firing, `shots` tells you whether your shots are landing, shield-blocked, or missing — read
   it instead of guessing from the enemy's hull alone.
 
-Reply with a brief reasoning, then an `ACTION:` block (one command per line, ending with `advance`).
+- `giveup` ends the current benchmark instance immediately. It records a concession and is scored
+  as unsolved with the state/FTL score reached so far.
+
+Reply with a brief reasoning, then an `ACTION:` block (one command per line, ending with `advance`;
+or `giveup` alone to concede).

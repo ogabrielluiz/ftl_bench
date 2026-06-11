@@ -52,7 +52,8 @@ def load_prompt(version: str = "v1") -> str:
 # verbs apply_command accepts from an agent (used to salvage a non-prefixed reply)
 KNOWN_VERBS = {"power", "fire", "beam", "jump", "event", "leave", "wait", "crew", "buy",
                "sell", "upgrade", "cloak", "doors", "mindcontrol", "battery", "hack",
-               "drone", "dronerecall", "board", "recall"}
+               "drone", "dronerecall", "board", "recall", "giveup", "give_up", "surrender"}
+GIVE_UP_VERBS = {"giveup", "give_up", "surrender"}
 TERMINAL = {"GAME_OVER", "DESTROYED", "FROZEN_KILLED", "ALIVE_BUT_UNRESPONSIVE"}
 
 
@@ -131,7 +132,8 @@ def build_turn_prompt(c: dict, history: list[str], step: int, jumps: int, budget
         f"commands as the situation needs — they run IN ORDER while paused (power systems, position "
         f"crew, target weapons, set doors) — then end with ONE `advance <frames>` saying how long to "
         f"let the game run before your next turn (a combat beat is ~150; a jump warps in ~260; use a "
-        f"long advance to let things play out, a short one to react soon). Reply with a brief reason, "
+        f"long advance to let things play out, a short one to react soon). If you choose `giveup`, "
+        f"put it alone; it ends the instance. Reply with a brief reason, "
         f"then an `ACTION:` block, one command per line. Example:\n"
         f"ACTION:\n  power 3 3\n  crew 0 8\n  doors close 9\n  fire 1 3\n  advance 150"
     )
@@ -578,6 +580,19 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
             else:
                 empty_plans = 0
             thought = _extract_thought(reply)
+            if any(vcmd in GIVE_UP_VERBS for vcmd, _ in commands):
+                sess.pending_thought = thought
+                try:
+                    o2 = sess.step([{"type": "give_up"}], advance_frames=20)
+                    c2 = compact(o2)
+                    history.append(f"step{step}: giveup -> sector {c2.get('sector')} "
+                                   f"hull {c2.get('hull')}")
+                    log(f"    [llm] step {step}: GIVE UP -> sector {c2.get('sector')} "
+                        f"hull {c2.get('hull')}"
+                        + (f"\n        [thought: {thought}]" if thought else ""))
+                except TimeoutError:
+                    log(f"    [llm] step {step}: GIVE UP ack timed out")
+                break
             # Build the env batch from the plan; skip `wait` (a pure advance) and report a bad
             # command individually instead of failing the whole turn.
             action_dicts: list[dict] = []
