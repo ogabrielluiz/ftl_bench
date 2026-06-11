@@ -59,7 +59,9 @@ def ftl_process_alive() -> bool:
             r = subprocess.run([tasklist, "/fi", "imagename eq FTLGame.exe"],
                                capture_output=True, text=True)
             return "FTLGame.exe" in r.stdout
-        r = subprocess.run(["pgrep", "-f", _MAC_FTL_PROC], capture_output=True, text=True)
+        # macOS runs the FTL.app bundle; native Linux runs FTL.amd64 (e.g. the headless container).
+        pat = _MAC_FTL_PROC if sys.platform == "darwin" else "FTL.amd64"
+        r = subprocess.run(["pgrep", "-f", pat], capture_output=True, text=True)
         return bool(r.stdout.strip())
     except Exception:  # noqa: BLE001
         return True  # can't tell -> don't declare a live game dead

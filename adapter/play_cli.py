@@ -558,8 +558,9 @@ def _ftl_alive() -> bool:
             return "FTLGame.exe" in r.stdout
         except Exception:  # noqa: BLE001
             return True  # can't tell -> don't cry freeze
-    r = subprocess.run(["pgrep", "-f", "FTL Faster Than Light/FTL.app/Contents/MacOS/FTL"],
-                       capture_output=True, text=True)
+    pat = ("FTL Faster Than Light/FTL.app/Contents/MacOS/FTL"
+           if sys.platform == "darwin" else "FTL.amd64")
+    r = subprocess.run(["pgrep", "-f", pat], capture_output=True, text=True)
     return bool(r.stdout.strip())
 
 

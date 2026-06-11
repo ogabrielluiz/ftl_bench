@@ -74,7 +74,9 @@ def game_alive() -> bool:
         r = subprocess.run([_TASKLIST, "/fi", "imagename eq FTLGame.exe"],
                            capture_output=True, text=True)
         return "FTLGame.exe" in r.stdout
-    r = subprocess.run(["pgrep", "-f", FTL_PROC], capture_output=True, text=True)
+    # macOS runs the FTL.app bundle; native Linux runs FTL.amd64 (e.g. the headless container).
+    pat = FTL_PROC if sys.platform == "darwin" else "FTL.amd64"
+    r = subprocess.run(["pgrep", "-f", pat], capture_output=True, text=True)
     return bool(r.stdout.strip())
 
 
