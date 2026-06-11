@@ -22,9 +22,9 @@ are omitted (for example, `enemy` is `null` out of combat; `store` appears only 
 
 ## Ship state
 
-- `systems`: each `{id, name, power: "cur/max", room, damage, needs_repair, ion, on_fire}`.
-  `damage > 0`, `needs_repair: true`, or `on_fire: true` means the system is broken and works
-  poorly until a crew member repairs it.
+- `systems`: each `{id, name, power: "cur/max", room, damage, needs_repair, ion, on_fire, broken,
+  repair_room}`. `broken` names why power alone will not fix it (`needs_repair`, `damaged`,
+  `on_fire`, or a `+` combination).
 - `crew`: each `{id, room, species, hp, busy, boarding}`.
 - `fires`: burning rooms, each `{room_id, fires}` where `fires` is the number of fire blobs in that
   room (sum them for the total active fires).

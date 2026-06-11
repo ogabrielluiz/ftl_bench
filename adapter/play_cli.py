@@ -89,6 +89,32 @@ def _event_choice(c, fallback_index: int) -> dict:
     return {"index": fallback_index, "text": str(c)}
 
 
+def _compact_system(s: dict, burning_rooms: set) -> dict:
+    room = s.get("room_id")
+    out = {
+        "id": s.get("id"),
+        "name": SYS_NAMES.get(s.get("id"), str(s.get("id"))),
+        "power": f"{s.get('power')}/{s.get('power_max')}",
+        **({"room": room} if room is not None else {}),
+        **({"damage": s.get("damage")} if s.get("damage") else {}),
+        **({"needs_repair": True} if s.get("needs_repair") else {}),
+        **({"on_fire": True} if room in burning_rooms else {}),
+        **({"ion": s.get("ion")} if s.get("ion") else {}),
+    }
+    broken = []
+    if s.get("needs_repair"):
+        broken.append("needs_repair")
+    if s.get("damage"):
+        broken.append("damaged")
+    if room in burning_rooms:
+        broken.append("on_fire")
+    if broken:
+        out["broken"] = "+".join(broken)
+        if room is not None:
+            out["repair_room"] = room
+    return out
+
+
 def compact(o) -> dict:
     """A token-lean but decision-complete snapshot of the game."""
     ps = o.player_ship or {}
@@ -157,6 +183,7 @@ def compact(o) -> dict:
          **({"ion": s.get("ion")} if s.get("ion") else {})}
         for s in ps.get("systems", []) if s.get("power_max")
     ]
+    st["systems"] = [_compact_system(s, _burning) for s in ps.get("systems", []) if s.get("power_max")]
     # Crew management: move a crew member with `crew <id> <room>` to REPAIR a damaged system
     # (send to its room), FIGHT an intruder (send to intruders[].room), or EXTINGUISH a fire.
     st["crew"] = [

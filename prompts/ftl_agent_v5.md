@@ -39,8 +39,9 @@ Top level: `hull` {current,max} (0 = destroyed), `oxygen_pct`, `fuel`, `missiles
 when an ion storm caps your reactor), `evasion` (your dodge %), `crew_count`,
 `game_status` (absent = alive; `DESTROYED`/`GAME_OVER` = run over), `interrupted_by` (why the last
 advance stopped early, if it did).
-- `systems`: each `{id, name, power: "cur/max", room, damage, needs_repair, ion}` (`damage>0`
-  or `needs_repair:true` = broken: usable power is reduced or blocked until repaired).
+- `systems`: each `{id, name, power: "cur/max", room, damage, needs_repair, on_fire, broken,
+  repair_room, ion}`. `broken` names why power alone will not fix it (`needs_repair`, `damaged`,
+  `on_fire`, or a `+` combination).
 - `crew`: each `{id, room, species, hp, busy, boarding}`. `intruders`: enemy crew aboard YOUR ship
   `{room, health, species}`. `fires`: burning rooms `{room_id, fires}`.
 - `rooms`: player ship rooms with available `{room_id, oxygen, fires, breaches/breached, rect}`.

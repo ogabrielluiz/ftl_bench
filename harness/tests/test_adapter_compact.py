@@ -70,6 +70,8 @@ def test_compact_preserves_needs_repair_when_damage_is_zero():
             "power": "0/1",
             "room": 13,
             "needs_repair": True,
+            "broken": "needs_repair",
+            "repair_room": 13,
         }
     ]
 
@@ -93,6 +95,40 @@ def test_batch_feedback_treats_needs_repair_as_broken_system():
     assert "oxygen NEEDS REPAIR" in feedback
     assert "powering does NOT fix it" in feedback
     assert "room 13" in feedback
+
+
+def test_compact_marks_damaged_sensors_as_broken_not_unpowered():
+    c = compact(
+        _obs(
+            {
+                "oxygen_pct": 100,
+                "systems": [
+                    {
+                        "id": 7,
+                        "room_id": 3,
+                        "power": 0,
+                        "power_max": 1,
+                        "damage": 0,
+                        "needs_repair": True,
+                    }
+                ],
+                "crew": [],
+                "weapons": [],
+            }
+        )
+    )
+
+    assert c["systems"] == [
+        {
+            "id": 7,
+            "name": "sensors",
+            "power": "0/1",
+            "room": 3,
+            "needs_repair": True,
+            "broken": "needs_repair",
+            "repair_room": 3,
+        }
+    ]
 
 
 def test_compact_preserves_special_system_readiness_and_enemy_crew_rooms():
