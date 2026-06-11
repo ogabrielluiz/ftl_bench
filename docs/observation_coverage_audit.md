@@ -18,7 +18,7 @@ can see in the game UI, plus exact command semantics, so the agent can apply its
 |---|---|---|
 | Own hull, oxygen, fuel, missiles, drone parts, scrap | Covered | Top-level compact fields. |
 | Reactor allocation and true storm-capped usable power | Covered | `reactor_free`, `reactor_total`, `reactor_usable_*`, `reactor_power_penalty`. |
-| Own systems: power, room, damage, ion, repair-needed state | Covered | `needs_repair` was previously lost when `damage == 0`; now preserved. |
+| Own systems: power, room, damage, ion, repair-needed state | Covered | `needs_repair` was previously lost when `damage == 0`; now preserved. Compact also emits `broken` and `repair_room` so damaged/repair-needed/fire-blocked modules are not mistaken for merely unpowered modules. |
 | Crew state for repair/fighting/manning | Mostly covered | Crew id, room, species, hp, busy, boarding are exposed. Detailed skills are still raw-only. |
 | Fires and intruders | Covered | `fires` and `intruders` identify crisis rooms. |
 | Door/vent execution | Improved | Compact now exposes player `rooms` with oxygen/fire/breach fields when bound, plus `doors` with room endpoints and open/locked/forced/hacked state. |
@@ -39,6 +39,7 @@ can see in the game UI, plus exact command semantics, so the agent can apply its
 | Blue/disabled event choice metadata | Best-effort covered | The bridge probes known scalar fields and compact preserves them. If Hyperspace does not bind a marker, no field is invented. |
 | Flagship phase-specific state | Best-effort improved | Current boss beacon is exposed through map-derived `flagship.present`; phase, super-shield, and power-surge fields are preserved when the bound objects expose scalar values. |
 | Sector-choice screen | Best-effort improved | Compact exposes `choosing_new_sector` and preserves `sector_choices` if `StarMap.sectors` exposes scalar choice fields. |
+| Terminal concession | Covered | `giveup` records an explicit unsolved concession with current state/FTL score; this prevents irrecoverable runs from turning into no-op loops without rewarding the concession. |
 
 ## Highest-priority non-strategy gaps
 

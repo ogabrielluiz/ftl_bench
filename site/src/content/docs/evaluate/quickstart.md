@@ -62,7 +62,8 @@ uv run python ../adapter/run_benchmark.py --agent llm --backend codex --model gp
 
 By default, the LLM track uses `--mode gameover` and `--prompt-version v5`: the
 agent plays until a real win, death, or stall, and replies with a paused
-multi-command action plan.
+multi-command action plan. If it sends `giveup`, the current instance ends as
+an unsolved concession and the trajectory records `gave_up`.
 
 ## 4. Report a full-game number
 

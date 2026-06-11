@@ -18,6 +18,9 @@ Verified capabilities:
 - scripted and random baselines through the same runner;
 - LLM track with Anthropic API, Claude CLI, and Codex CLI backends;
 - v5 paused multi-action plans with `advance`;
+- explicit terminal `giveup` action, recorded as unsolved `gave_up` telemetry;
+- compact observations with `broken` / `repair_room`, room oxygen/fire state,
+  door topology, richer enemy crew, and best-effort event/flagship metadata;
 - play-to-game-over mode with a stall guard;
 - trajectory JSONL, summary JSON, and reproducibility manifests.
 

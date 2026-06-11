@@ -42,7 +42,9 @@ The agent receives:
 - recent action history.
 
 The agent returns a brief reason plus an `ACTION:` block. In v5 the block may
-contain multiple paused commands and should end with `advance <frames>`:
+contain multiple paused commands and should end with `advance <frames>`.
+`giveup` is the one exception: it must be sent alone and concedes the instance
+as unsolved.
 
 ```text
 ACTION:
@@ -51,6 +53,12 @@ ACTION:
   fire 0 3
   advance 150
 ```
+
+The v5 observation surface is intended to avoid hidden-interface failures:
+systems include `broken` and `repair_room` when power alone cannot fix them,
+player `rooms` expose oxygen/fire/breach facts when available, `doors` expose
+room topology and open/locked/hacked state, and event choices preserve indices
+plus optional blue/disabled metadata when the bridge can read it.
 
 Changing the prompt manual changes the agent identity. Report the prompt
 version, model, backend, suite, mode, tier, and retry setting with every result.
@@ -73,6 +81,7 @@ should use `--tier semi_private`.
 | `Solve / win rate` | Fraction of instances that met the goal. For full-game runs, this means beating the flagship. |
 | `Efficiency` | Jumps or turns per instance. |
 | `Breakdowns` | Per-type and per-tier aggregates for diagnosing strengths and failures. |
+| `gave_up` | Diagnostic flag set when the agent explicitly used `giveup`. It does not make the instance solved or add score. |
 
 Every run writes a trajectory and manifest under `runs/benchmark/`.
 

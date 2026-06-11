@@ -20,7 +20,8 @@ def complete(system: str, user: str) -> str:
     """Return the model reply for one turn.
 
     The reply should include brief reasoning and an ACTION block. In v5, the
-    ACTION block may contain multiple commands and should end with advance N.
+    ACTION block may contain multiple commands and should end with advance N,
+    unless the model sends giveup alone to concede the instance.
     """
 ```
 
@@ -92,7 +93,8 @@ observation in, action out.
   for free.
 
 The CLI, LLM track, and runner share the same command semantics, so results stay
-comparable.
+comparable. `giveup` is a terminal command: it records a concession and scores
+the instance as unsolved with the state reached so far.
 
 ## Retry mode
 

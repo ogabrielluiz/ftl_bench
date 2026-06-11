@@ -23,6 +23,8 @@ A run in this mode ends when any of these happen:
 
 - **Natural game-over:** the ship is destroyed, the crew is lost, or the
   flagship is beaten.
+- **Concession:** the agent sends `giveup`. This is recorded as an unsolved
+  terminal result with the current FTL score and state.
 - **Stall:** the agent makes no forward progress for `--stall-limit`
   consecutive turns. Default is 10. This is declared a loss.
 - **Hard cap:** a high safety limit bounds pathological runs.

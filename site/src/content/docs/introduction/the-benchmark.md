@@ -49,6 +49,17 @@ This is the v5 interface. It is deliberately closer to human pause-play than a
 one-click loop: set up the ship, let the game run, then react to the next
 decision point.
 
+The v5 observation is also explicit about common failure modes. A damaged
+system is not just shown as unpowered: it can carry `broken` and `repair_room`
+so the agent can tell that crew repair or fire suppression is required. Player
+room oxygen/fire facts and door topology are exposed for venting and crisis
+recovery, and event choices preserve their visible indices and optional
+availability metadata when the bridge can read it.
+
+If the agent decides the instance is irrecoverable, it may return `giveup`
+alone. That is not a reset shortcut or a reward path; it records a terminal
+concession and scores the instance as unsolved with the progress reached so far.
+
 ## What the harness does not do
 
 The harness does not choose strategy. It does not decide whether to fight, flee,
@@ -61,6 +72,7 @@ The harness only:
 - serializes the current game state;
 - validates and applies the agent's commands;
 - advances and re-pauses the simulation;
+- records explicit concessions when the agent uses `giveup`;
 - records the trajectory and manifest;
 - scores the outcome.
 

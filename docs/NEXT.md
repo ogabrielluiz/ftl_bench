@@ -8,12 +8,12 @@ given to the agent. `scenarios/full_game.json` (seeds only, progress-scored); `b
 appends a constant "WIN THE GAME" objective, not `_goal_text(scenario)`. The T1–T5 typed suite
 (`suite_v1.json`) + its scripted-70.2/random-5.2 numbers are now LEGACY (they scored sub-goals).
 
-**Agent prompt = INTERFACE ONLY** (`prompts/ftl_agent_v3.md`): name the game + the controls + the
+**Agent prompt = INTERFACE ONLY** (`prompts/ftl_agent_v5.md`): name the game + the controls + the
 obs schema + the few quirks that differ from clicking the real game (commands are one-time SETS;
-power≠fire; broken `damage`/`on_fire` module needs crew repair not power; `leave` to cross sectors;
-the hybrid pause + `wait <N>`). ZERO strategy — the model already knows FTL from training; teaching
-strategy backfired (v2's "no time pressure/patch up" made it dawdle). v1=as-measured 35.7, v2=+repair
-coaching (bad), v3=lean interface (right design).
+power≠fire; broken systems need crew repair not power; `leave` crosses sectors; the hybrid pause
++ `advance <N>`; `giveup` concedes an unrecoverable instance without reward). ZERO strategy — the
+model already knows FTL from training; teaching strategy backfired (v2's "no time pressure/patch up"
+made it dawdle). v5 keeps the prompt lean while preserving decision-complete observations.
 
 **Interface VALIDATED — it discriminates by capability.** Opus 4.8 played the full game (seed 1)
 WELL through this interface (smart targeting/power/repair, no no-op loops, cleared sector 0 at 30/30,
@@ -199,8 +199,9 @@ into `FTL.app/Contents/MacOS/`, `codesign -f -s - --deep`, relaunch (Allow mic o
    `targeted` and the manual teaches the mechanic. `--prompt-version` selects the manual;
    `prompt_version` is recorded in the manifest + agent label (a different manual = a different,
    non-comparable agent). Remaining: a FULL public/suite pass for the first real GCS@1 row.
-7. **Richer observation** (mostly ✅): incoming projectiles, weapon charge/ETA, per-system
-   ion/hack, exit beacon + positions, rebel fleet, sector-choice flag are done. **Crew
+7. **Richer observation** (mostly ✅, v5 current): incoming projectiles, weapon charge/ETA,
+   per-system ion/hack/broken/repair-room state, room oxygen/fire/breach facts, door topology,
+   exit beacon + positions, rebel fleet, sector-choice flag are done. **Crew
    management (2026-06-05):** `move_crew(crew_id, room_id)` is the universal tasking action
    (repair a damaged system = send to its room; fight a fire/intruder = send to that room; man
    a station). Obs now exposes what that needs (pure Lua, all `%rename`-bound, no rebuild):
@@ -208,13 +209,16 @@ into `FTL.app/Contents/MacOS/`, `codesign -f -s - --deep`, relaunch (Allow mic o
    `species`/`skills`(0-5)/`repairing`/`fighting`/`on_enemy_ship`, `player_ship.intruders`
    (enemy boarders aboard our ship: room/health/species — "find invaders"), and
    `player_ship.fires` (burning rooms via `GetFireCount`). CLI `compact` surfaces `crew`,
-   system `room`, `intruders`, `fires`. **Shot-outcome feed (2026-06-05):** Hyperspace event
+   system `room`, `broken` / `repair_room`, `rooms`, `doors`, `intruders`, `fires`.
+   **Shot-outcome feed (2026-06-05):** Hyperspace event
    hooks (`PROJECTILE_FIRE`/`DAMAGE_AREA_HIT`/`SHIELD_COLLISION`, ourShots only) give the agent
    `player_ship.shots = {fired, hit, shields_blocked, missed, damage_dealt, recent[]}` so it can
    tell a whiff (evasion → target engines/flee) from a shield-block (→ drop shields/pierce) from
    a hit, instead of dumping ammo blindly. Verified live via `fight()`: fired=32/hit=8/blocked=17/
-   missed=7 (chain-event callbacks return nil so damage still applies). Remaining: reactor
-   breakdown detail, hull breaches, augments.
+   missed=7 (chain-event callbacks return nil so damage still applies). **Terminal concession
+   (2026-06-10):** `giveup` records the current state and native score as an unsolved concession,
+   preventing dead-end trajectories from turning into long no-op loops. Remaining: runtime-verify
+   optional flagship/event/sector-choice probes on the current build, plus augments.
 8. **Better baseline agent** (partly ✅): exit navigation, flee on O2/weapon/crew danger,
    event-choice escalation, stalemate-flee, and sector crossing are done. Remaining:
    active **crew repair** (move crew to a destroyed O2/weapons room instead of fleeing),

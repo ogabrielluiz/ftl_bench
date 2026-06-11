@@ -5,7 +5,9 @@ description: The intent-level commands an agent can issue through the paused FTL
 
 The agent controls FTL through intent-level text commands. In the current v5 LLM
 interface, a turn is one `ACTION:` block: several paused commands followed by
-`advance <frames>`. The lower-level CLI can also send one command at a time.
+`advance <frames>`. The exception is `giveup`, which is sent alone and ends the
+instance as an unsolved concession. The lower-level CLI can also send one
+command at a time.
 
 Example v5 turn:
 

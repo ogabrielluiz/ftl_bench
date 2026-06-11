@@ -9,7 +9,8 @@ The benchmark is built on [FTL-Hyperspace](https://github.com/FTL-Hyperspace/FTL
 The game stays paused while the agent reasons, the agent receives a structured
 JSON observation, and it returns a short action plan: power systems, move crew,
 target weapons, resolve events, jump, buy, sell, board, cloak, hack, and finally
-advance the clock.
+advance the clock. The interface also exposes terminal concession through
+`giveup`, which records an unsolved run without rewarding it.
 
 [Docs](https://ogabrielluiz.github.io/ftl_bench/) |
 [Benchmark protocol](https://ogabrielluiz.github.io/ftl_bench/introduction/protocol/) |
@@ -28,7 +29,7 @@ choose fights, spend scrap, and recover when the run goes sideways.
 | Benchmark property | What it means here |
 |---|---|
 | Real game dynamics | Runs use the actual FTL engine and seeded game state, not a toy simulator. |
-| Decision-complete observations | The agent sees structured ship, enemy, crew, system, weapon, event, store, and map state. |
+| Decision-complete observations | The agent sees structured ship, enemy, crew, room/door, system, weapon, event, store, and map state. |
 | Paused multi-action turns | The agent can issue a whole paused plan, then advance time, like a strong human player. |
 | Reportable scores | Headline metric is FTL's native run score, with solve/win rate and seed standard error. |
 | Anti-memorization split | Public seeds are for tuning; `semi_private` seeds are the reportable number. |
@@ -61,6 +62,13 @@ ACTION:
 
 The agent decides everything in game. The harness does not choose targets, flee,
 repair, navigate, spend scrap, or script strategy.
+
+The current v5 observation surface distinguishes a broken system from an
+unpowered one. Systems include `broken` / `repair_room` when power alone cannot
+restore them, and the compact view includes room oxygen/fire state plus door
+topology for venting decisions. A model may also return `giveup` by itself to
+concede the current benchmark instance; that ends the instance as unsolved with
+the current FTL score and trajectory.
 
 ## Benchmark protocol
 

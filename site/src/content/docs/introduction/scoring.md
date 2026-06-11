@@ -34,6 +34,14 @@ Efficiency is reported separately, usually as jumps or turns per instance. It is
 not the headline number, but it helps distinguish an agent that reaches the same
 goal cleanly from one that burns many turns in no-op loops or low-value detours.
 
+## Terminal concessions
+
+Agents may explicitly concede with `giveup`. This ends the benchmark instance
+immediately and records `gave_up: 1` in trajectory-derived metrics. It is always
+an unsolved terminal outcome; it does not add score or satisfy any objective.
+The native FTL score and final observed state are still preserved so conceded
+runs remain comparable in aggregate analysis.
+
 ## Instances and tiers
 
 An instance pins the run:

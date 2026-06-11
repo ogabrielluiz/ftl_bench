@@ -52,6 +52,10 @@ goal count. For full-game runs, a solve is a flagship win.
 With `--retries N`, output also includes the best-of-k learning curve:
 mean/median best FTL score and cumulative solve rate at each attempt budget.
 
+If an agent sends `giveup`, the per-instance result remains unsolved and the
+trajectory-derived metrics include `gave_up: 1`. The final state and native FTL
+score reached before the concession are still recorded.
+
 ## Files written
 
 Under `--out`:
