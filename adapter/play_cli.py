@@ -63,6 +63,10 @@ SYS_NAMES = {0: "shields", 1: "engines", 2: "oxygen", 3: "weapons", 4: "drones",
              10: "cloaking", 11: "artillery", 12: "battery", 13: "clonebay",
              14: "mind", 15: "hacking"}
 
+# Crew skill ids -> names. Each is a 0-5 mastery level FTL trains by task, so a high level means
+# aptitude: put your best `weapon` crew on weapons, `engine`/`repair` crew on engines, etc.
+SKILL_NAMES = {0: "pilot", 1: "engine", 2: "shield", 3: "weapon", 4: "repair", 5: "combat"}
+
 
 def _pair(d, a="current", b="max"):
     if not isinstance(d, dict):
@@ -114,6 +118,24 @@ def _compact_system(s: dict, burning_rooms: set) -> dict:
         if room is not None:
             out["repair_room"] = room
     return out
+
+
+def _skills_kv(c: dict) -> dict:
+    """{'skills': {named: level}} for a crew member (non-zero levels only), or {} if none.
+    The raw obs carries a {skill_id: level} map; this names them so the agent can assign crew by
+    aptitude. Each level is 0-5 mastery (pilot/engine/shield/weapon/repair/combat)."""
+    sk = c.get("skills")
+    if not isinstance(sk, dict):
+        return {}
+    named = {}
+    for k, v in sk.items():
+        try:
+            name = SKILL_NAMES.get(int(k))
+        except (TypeError, ValueError):
+            name = None
+        if name and v:
+            named[name] = v
+    return {"skills": named} if named else {}
 
 
 def compact(o) -> dict:
@@ -187,12 +209,17 @@ def compact(o) -> dict:
     st["systems"] = [_compact_system(s, _burning) for s in ps.get("systems", []) if s.get("power_max")]
     # Crew management: move a crew member with `crew <id> <room>` to REPAIR a damaged system
     # (send to its room), FIGHT an intruder (send to intruders[].room), or EXTINGUISH a fire.
+    # species = RACE (human/engi/mantis/rockman/zoltan/slug/crystal/lanius — each with traits, e.g.
+    # engi repair fast, mantis fight well, rockman are fire-immune); skills = per-task mastery (0-5);
+    # mind_controlled = temporarily turned against you.
     st["crew"] = [
         {"id": c.get("id"), "room": c.get("room"), "species": c.get("species"),
          "hp": f"{c.get('health_current')}/{c.get('health_max')}",
          **({"busy": "repair"} if c.get("repairing") else {}),
          **({"busy": "fight"} if c.get("fighting") else {}),
-         **({"boarding": True} if c.get("on_enemy_ship") else {})}
+         **({"boarding": True} if c.get("on_enemy_ship") else {}),
+         **({"mind_controlled": True} if c.get("mind_controlled") else {}),
+         **_skills_kv(c)}
         for c in ps.get("crew", []) if not c.get("dead")
     ]
     # Special-system state. These actions are first-class commands, so their readiness/cooldown
@@ -548,6 +575,8 @@ def _ftl_alive() -> bool:
     (it can't see a Windows process), mislabeling a perfectly live game."""
     import os
     import subprocess
+    if os.environ.get("FTL_BENCH_ASSUME_ALIVE") == "1":
+        return True  # headless attach mode: FTL is in a separate container (see session.ftl_process_alive)
     native_win = os.name == "nt"
     wsl_win = os.environ.get("FTL_SAVE_DIR", "").startswith("/mnt/")
     if native_win or wsl_win:

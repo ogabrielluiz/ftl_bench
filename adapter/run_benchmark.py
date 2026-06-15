@@ -70,6 +70,10 @@ else:  # WSL reaches the Windows tools by absolute /mnt/c path
 def game_alive() -> bool:
     """Is the FTL game process running? (The freeze watchdog SIGKILLs a spinning game,
     so 'process gone' is our fast, reliable signal that an episode froze and died.)"""
+    # Headless "attach" mode: FTL runs in a separate container (different PID namespace), managed
+    # by the container — a host pgrep/tasklist can't see it, so assume alive and skip restart_ftl.
+    if os.environ.get("FTL_BENCH_ASSUME_ALIVE") == "1":
+        return True
     if _WINDOWS:
         r = subprocess.run([_TASKLIST, "/fi", "imagename eq FTLGame.exe"],
                            capture_output=True, text=True)

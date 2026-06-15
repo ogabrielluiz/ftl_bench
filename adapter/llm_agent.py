@@ -411,11 +411,24 @@ def codex_complete(system: str, user: str, model: str | None) -> str:
     prompt = (f"{system}\n\n{user}\n\n"
               f"(Respond with a brief reasoning then the `ACTION:` block exactly as instructed. "
               f"Do NOT run any commands, use tools, or read files — answer ONLY from the text above.)")
-    fd, out_path = tempfile.mkstemp(prefix="codex_msg_", suffix=".txt")
+    codex_bin = _codex_bin()
+    # WSL driving a Windows codex.exe (headless host mode): codex's -o output path must be a Windows
+    # path on a Windows-visible filesystem. Put the temp file under $CODEX_TMPDIR (a /mnt/c dir) and
+    # pass codex its Windows form (wslpath -w). Native runs (Linux codex / Windows Python) unchanged.
+    win_codex = codex_bin.lower().endswith(".exe") and os.name != "nt"
+    tmpdir = os.environ.get("CODEX_TMPDIR") if win_codex else None
+    fd, out_path = tempfile.mkstemp(prefix="codex_msg_", suffix=".txt", dir=tmpdir)
     os.close(fd)
+    out_arg = out_path
+    if win_codex:
+        try:
+            out_arg = subprocess.run(["wslpath", "-w", out_path], capture_output=True,
+                                     text=True).stdout.strip() or out_path
+        except Exception:  # noqa: BLE001
+            pass
     try:
-        cmd = [_codex_bin(), "exec", "--skip-git-repo-check", "--ephemeral",
-               "--ignore-user-config", "-s", "read-only", "--color", "never", "-o", out_path]
+        cmd = [codex_bin, "exec", "--skip-git-repo-check", "--ephemeral",
+               "--ignore-user-config", "-s", "read-only", "--color", "never", "-o", out_arg]
         # Reasoning effort: codex 0.138's gpt-5.5 DEFAULTS to "none" (no deliberation) and
         # --ignore-user-config strips config.toml, so without this the agent thinks at zero effort.
         # Drive it via env (CODEX_REASONING_EFFORT=xhigh|high|...); unset = codex's default ("none").

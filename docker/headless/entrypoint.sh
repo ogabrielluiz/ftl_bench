@@ -94,6 +94,14 @@ for i in $(seq 1 600); do
 done
 [ -f "$OBS" ] || { log "timeout; last 60 FTL log lines:"; tail -60 /tmp/ftl.log 2>/dev/null; die "no observation after 600s"; }
 
+if [ "$MODE" = "serve" ]; then
+  # FTL-only mode: keep the game running and let an EXTERNAL harness drive it through the bridge
+  # files in $FTL_SAVE_DIR (bind-mount that dir to the host). Used for the host-harness/codex flow.
+  log "FTL is serving headless. Bridge dir: ${FTL_SAVE_DIR} (share it with the host harness)."
+  wait "$FTL_PID"
+  exit $?
+fi
+
 if [ "$MODE" = "diag" ]; then
   log "raw observation at startup:"; cat "$OBS"; echo
   log "menu/dialog state:"

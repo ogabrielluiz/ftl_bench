@@ -51,6 +51,10 @@ _MAC_FTL_PROC = "FTL Faster Than Light/FTL.app/Contents/MacOS/FTL"
 
 
 def ftl_process_alive() -> bool:
+    # Headless "attach" mode: FTL runs in a separate container, so a host-side pgrep can't see it
+    # (different PID namespace). The container manages the game's lifecycle, so assume it's alive.
+    if os.environ.get("FTL_BENCH_ASSUME_ALIVE") == "1":
+        return True
     native_win = os.name == "nt"
     wsl_win = os.environ.get("FTL_SAVE_DIR", "").startswith("/mnt/")
     try:
