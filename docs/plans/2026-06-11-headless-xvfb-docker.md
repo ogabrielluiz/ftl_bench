@@ -98,16 +98,21 @@ Design choices:
   `ftl_agent_observation.json` in ~4s with no display; `ftlbench play obs` returns it. FTL runs
   fine despite non-fatal Steam-API (`steamclient.so` absent, mitigated by `steam_appid.txt`) and
   ALSA (no sound card, `SDL_AUDIODRIVER=dummy`) warnings.
-- **M3 — scripted-baseline scored run** headless. IN PROGRESS — pipeline runs end-to-end (boot →
-  patch → bridge → runner → `summary_scripted.json`) and the Linux liveness fix landed
-  (`pgrep -f FTL.amd64`). BLOCKER: `reset_episode`'s new-game menu nav doesn't start a game
-  headless on the fresh Linux **1.6.13** build (works on the established Windows **1.6.9**). The
-  Lua flow is correct (calls `benchmark_advance_menu` every 25 ticks); the C++ `advance_menu`
-  no-ops unless the title `MainMenu` is open and only handles New Game → CONFIRM → hangar Start.
-  Seeding the Windows `.sav` profile loaded but didn't help. Next: instrument `advance_menu`
-  (log `menu.bOpen` / `confirmNewGame.bOpen` / `shipBuilder.bOpen` + the post-New-Game
-  "Enable Advanced Edition?" dialog) via an HS rebuild, or extend it to dismiss that dialog.
-- **M4 — parallel/CI** harness (N containers) + the steamcmd hermetic image story.
+- **M3 — scripted-baseline scored run** headless. DONE. The scripted baseline plays a full scored
+  game headless (T1-survive8-s1, seed 1: **solved**, ftl_score 50; 8 jumps + 6 combats + 1 kill).
+  Root cause of the earlier stall: headless (no display/input) FTL never reached the title menu —
+  its first-run **LanguageChooser** (no settings file) blocked it, and the fresh-profile hangar
+  **intro tutorial** ate the Start click. Fixed in HS `hs_benchmark_advance_menu`
+  (FTL-Hyperspace `bench` @ d85d6df9): hover+click the first language via real `CApp` input
+  events (`OnMouseMove`+`OnLButtonDown/Up`) and `ShipBuilder::introScreen.Close()`. The Linux
+  liveness fix (`pgrep -f FTL.amd64`) also landed. After pulling the HS fix, rebuild the Linux
+  `.so` (`buildscripts/linux-1.6.13/build-releaseonly-from-docker.sh`); `run.sh` re-stages it.
+- **M4 — codex / LLM agents headless + parallel/CI.** NEXT. The codex backend shells out to the
+  local OpenAI `codex` CLI using cached Codex/ChatGPT auth — both live on **Windows** here, not in
+  the container. So a headless codex run needs the **harness on the host** (invoking Windows
+  `codex.exe` via WSL interop) driving the **container's FTL via a shared save-dir volume** — i.e.
+  split the current all-in-one container into FTL-only + host-side harness. Then fan out N
+  containers for parallel hermetic evals (the whole point of headless).
 
 ## Reproduce so far (from WSL)
 
