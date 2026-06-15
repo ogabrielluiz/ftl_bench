@@ -26,8 +26,12 @@ PROFILE_DIR="${FTL_PROFILE_DIR-/mnt/c/Users/Pichau/Documents/My Games/FasterThan
 PROFILE_ARGS=()
 [ -n "$PROFILE_DIR" ] && [ -d "$PROFILE_DIR" ] && PROFILE_ARGS=(-v "$PROFILE_DIR:/profile:ro")
 
-echo "== ensuring image is built =="
-bash "$HERE/run.sh" build
+if [ "${SKIP_BUILD:-0}" = "1" ]; then
+  echo "== skipping image build (SKIP_BUILD=1) =="
+else
+  echo "== ensuring image is built =="
+  bash "$HERE/run.sh" build
+fi
 
 echo "== resetting shared save dir: $SAVE_DIR =="
 rm -rf "$SAVE_DIR"; mkdir -p "$SAVE_DIR" "$CODEX_TMPDIR"
