@@ -1660,6 +1660,7 @@ local function write_observation()
     local obs = _G.ftl_bench.build_observation(S.frame_counter)
     obs.schema_version  = 3
     obs.last_action_seq = S.last_applied_seq
+    obs.reset_done_seq  = S.reset_done_seq   -- seq of the reset whose NEW seeded game has loaded
     local gui = Hyperspace.App and Hyperspace.App.gui
     obs.paused = (gui ~= nil and gui.bPaused) or false
     -- game_over: the run has ended (all crew dead / ship lost). NOT a crash and NOT hull<=0
@@ -1810,6 +1811,12 @@ _G.ftl_bench_tick = function()
     write_observation()
     return
   end
+  if S.starting_new and S.reset_pending_seq then
+    -- the NEW seeded game from a reset_episode has just loaded: stamp a marker the harness can wait
+    -- on, robust to a laggy/bind-mounted obs that misses the brief game_started false->true window.
+    S.reset_done_seq = S.reset_pending_seq
+    S.reset_pending_seq = nil
+  end
   S.starting_new = false   -- in a run now; stop driving the menu
 
   -- reset_episode: abandon this run back to the main menu (the menu-guard above
@@ -1874,6 +1881,7 @@ _G.ftl_bench_tick = function()
           S.resetting = true
           S.reset_throttle = 0
           S.reset_seed = act.seed
+          S.reset_pending_seq = action.seq   -- mark THIS reset so we can confirm its new game loaded
         end
       end
       S.last_applied_seq = action.seq

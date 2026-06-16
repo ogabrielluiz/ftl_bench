@@ -80,6 +80,8 @@ case "$CMD" in
           build; echo "== docker run verify =="; docker run --rm "${PROFILE_ARGS[@]}" -v "$FTL_DIR:/ftl:ro" "$IMAGE" verify ;;
   diag)   [ -n "${FTL_DIR:-}" ] || { echo "set FTL_DIR=/path/to/linux/FTL"; exit 1; }
           build; echo "== docker run diag =="; docker run --rm "${PROFILE_ARGS[@]}" -v "$FTL_DIR:/ftl:ro" "$IMAGE" diag ;;
+  resettest) [ -n "${FTL_DIR:-}" ] || { echo "set FTL_DIR=/path/to/linux/FTL"; exit 1; }
+          build; echo "== docker run resettest =="; docker run --rm "${PROFILE_ARGS[@]}" -v "$FTL_DIR:/ftl:ro" "$IMAGE" resettest ;;
   run)    [ -n "${FTL_DIR:-}" ] || { echo "set FTL_DIR=/path/to/linux/FTL"; exit 1; }
           build; echo "== docker run run $* =="; docker run --rm "${PROFILE_ARGS[@]}" -v "$FTL_DIR:/ftl:ro" "$IMAGE" run "$@" ;;
   *) echo "usage: run.sh [stage|build|probe|verify|run …]  (FTL_DIR=… required for verify/run)"; exit 1 ;;

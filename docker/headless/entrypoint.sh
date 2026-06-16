@@ -102,6 +102,30 @@ if [ "$MODE" = "serve" ]; then
   exit $?
 fi
 
+if [ "$MODE" = "resettest" ]; then
+  log "RESET TEST: start seed 1, then reset to seed 2 (the between-instance reset path)"
+  ftlbench play start 1 >/tmp/r1.json 2>&1 || true
+  sleep 6
+  python3 -c "import json; d=json.load(open('$OBS')); print('[resettest] after start(1): game_started=%s seed=%s' % (d.get('game_started'), d.get('seed')))" || true
+  log "playing game 1 (3 jumps + waits) to reach a 'played' state ..."
+  for j in 1 2 3; do
+    ftlbench play jump 0 >/dev/null 2>&1 || true; sleep 8
+    ftlbench play wait 400 >/dev/null 2>&1 || true; sleep 4
+  done
+  log "state right before reset:"
+  ftlbench play obs 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print('[resettest] pre-reset: game_started=%s game_status=%s enemy=%s event=%s intruders=%s sector=%s' % (d.get('game_started'), d.get('game_status'), bool(d.get('enemy')), bool(d.get('event')), bool(d.get('intruders')), d.get('sector')))" || true
+  log "issuing reset to seed 2 (background) and sampling for 60s ..."
+  ( ftlbench play reset 2 >/tmp/r2.json 2>&1 || true ) &
+  for i in $(seq 1 30); do
+    sleep 2
+    python3 -c "import json; d=json.load(open('$OBS')); print('[resettest] t~%ds: game_started=%s game_over=%s seed=%s' % (${i}*2, d.get('game_started'), d.get('game_over'), d.get('seed')))" || true
+  done
+  log "reset/menu lines from FTL/HS log:"
+  grep -iE "BENCH_RESET|BENCH_MENU|return.?to.?menu|confirm|main menu|gameover" /tmp/ftl.log 2>/dev/null | grep -viE "Doubly defined" | tail -50
+  log "ftl.log tail:"; tail -20 /tmp/ftl.log 2>/dev/null
+  exit 0
+fi
+
 if [ "$MODE" = "diag" ]; then
   log "raw observation at startup:"; cat "$OBS"; echo
   log "menu/dialog state:"
