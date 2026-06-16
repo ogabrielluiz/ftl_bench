@@ -34,6 +34,25 @@ manifest are written under `runs/benchmark/`.
 The harness runs on native Windows, WSL, or macOS and launches FTL for you (via Steam on
 Windows). It reads/writes the FTL user folder, resolved per OS or overridden with `FTL_SAVE_DIR`.
 
+## Headless (Linux + Docker)
+
+`docker/headless/` runs the real FTL + the bench Hyperspace mod under Xvfb in Docker on Linux — no
+display, no GPU, no Steam client — so the suite is hermetic and parallelizable. Build the image once
+(`run.sh`), bind-mount a Linux FTL install, and drive it through the same JSON bridge:
+
+```sh
+cd docker/headless
+FTL_DIR=~/ftl-linux bash run.sh verify                      # boot FTL headless + an observation
+FTL_DIR=~/ftl-linux bash run.sh run --agent scripted --max-instances 2   # scored runs
+
+# parallel: one FTL container per scenario, K at a time, one live dashboard + aggregate
+FTL_DIR=~/ftl-linux bash run_parallel.sh --tier public --conc 3 --dashboard -- --agent scripted
+```
+
+The LLM `codex` backend runs the harness on the host (driving an FTL-only container via a shared
+save dir) so it can reach the Windows `codex` CLI/auth. See
+`docs/plans/2026-06-11-headless-xvfb-docker.md` for the full design.
+
 ## More
 
 Full design, architecture, and the in-game bridge live in the project repository:

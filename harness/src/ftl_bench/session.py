@@ -51,6 +51,10 @@ _MAC_FTL_PROC = "FTL Faster Than Light/FTL.app/Contents/MacOS/FTL"
 
 
 def ftl_process_alive() -> bool:
+    # Headless "attach" mode: FTL runs in a separate container, so a host-side pgrep can't see it
+    # (different PID namespace). The container manages the game's lifecycle, so assume it's alive.
+    if os.environ.get("FTL_BENCH_ASSUME_ALIVE") == "1":
+        return True
     native_win = os.name == "nt"
     wsl_win = os.environ.get("FTL_SAVE_DIR", "").startswith("/mnt/")
     try:
@@ -59,7 +63,9 @@ def ftl_process_alive() -> bool:
             r = subprocess.run([tasklist, "/fi", "imagename eq FTLGame.exe"],
                                capture_output=True, text=True)
             return "FTLGame.exe" in r.stdout
-        r = subprocess.run(["pgrep", "-f", _MAC_FTL_PROC], capture_output=True, text=True)
+        # macOS runs the FTL.app bundle; native Linux runs FTL.amd64 (e.g. the headless container).
+        pat = _MAC_FTL_PROC if sys.platform == "darwin" else "FTL.amd64"
+        r = subprocess.run(["pgrep", "-f", pat], capture_output=True, text=True)
         return bool(r.stdout.strip())
     except Exception:  # noqa: BLE001
         return True  # can't tell -> don't declare a live game dead
@@ -332,13 +338,25 @@ class AgentSession:
         act: dict[str, Any] = {"type": "reset_episode"}
         if seed is not None:
             act["seed"] = int(seed)
+        reset_seq = self.action_seq
         self._write_action_atomic(
-            {"seq": self.action_seq, "advance_frames": 0, "actions": [act]})
+            {"seq": reset_seq, "advance_frames": 0, "actions": [act]})
         deadline = time.monotonic() + timeout
-        self._wait_for(lambda o: not o.game_started,           # reached the menu
-                       timeout=max(2.0, deadline - time.monotonic()))
-        obs = self._wait_for(lambda o: o.game_started,         # new run loaded
-                             timeout=max(2.0, deadline - time.monotonic()))
+        # Wait until the reset's NEW seeded game has loaded. Prefer the bridge's reset_done_seq
+        # marker (robust when a laggy/bind-mounted obs misses the brief game_started false->true
+        # menu window between games); fall back to the classic menu->new toggle for an older bridge
+        # that doesn't stamp the marker (then seeing the menu at least once + game_started=true).
+        seen_menu = {"v": False}
+
+        def _reset_done(o: Observation) -> bool:
+            if not o.game_started:
+                seen_menu["v"] = True
+                return False
+            if (o.raw or {}).get("reset_done_seq") == reset_seq:
+                return True
+            return seen_menu["v"]
+
+        obs = self._wait_for(_reset_done, timeout=max(2.0, deadline - time.monotonic()))
         if self.recorder is not None:
             self.recorder.record("reset_episode", [act], obs)
         return obs
