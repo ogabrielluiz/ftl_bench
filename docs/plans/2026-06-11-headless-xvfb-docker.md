@@ -107,22 +107,48 @@ Design choices:
   events (`OnMouseMove`+`OnLButtonDown/Up`) and `ShipBuilder::introScreen.Close()`. The Linux
   liveness fix (`pgrep -f FTL.amd64`) also landed. After pulling the HS fix, rebuild the Linux
   `.so` (`buildscripts/linux-1.6.13/build-releaseonly-from-docker.sh`); `run.sh` re-stages it.
-- **M4 — codex / LLM agents headless + parallel/CI.** NEXT. The codex backend shells out to the
-  local OpenAI `codex` CLI using cached Codex/ChatGPT auth — both live on **Windows** here, not in
-  the container. So a headless codex run needs the **harness on the host** (invoking Windows
-  `codex.exe` via WSL interop) driving the **container's FTL via a shared save-dir volume** — i.e.
-  split the current all-in-one container into FTL-only + host-side harness. Then fan out N
-  containers for parallel hermetic evals (the whole point of headless).
+- **M4 — codex / LLM agents headless + parallel.** DONE. The codex backend shells out to the local
+  OpenAI `codex` CLI (Windows-only auth here), so a headless codex run runs the **harness on the
+  host** (WSL invokes Windows `codex.exe`, with `-o` output paths via `wslpath -w`) driving an
+  **FTL-only container** through a shared save-dir volume (`run_host.sh`; `FTL_BENCH_ASSUME_ALIVE=1`
+  skips the cross-container liveness/restart). Validated: gpt-5.5 plays scored games headless.
+  **Parallel (`run_parallel.sh`):** one FTL container per scenario, K at a time, all feeding one
+  shared dashboard + a re-scored aggregate (`split_suite.py` + `aggregate_parallel.py`). This also
+  sidesteps the between-instance reset and is the real throughput win — a 6-public-scenario codex
+  run completed all 6 in parallel (mean FTL 243.5, Solve 1/6 — agent quality, not infra).
+- **Between-instance reset (host-harness):** FIXED. `reset_episode` worked in all-in-one mode (local
+  obs) but timed out in host-harness mode, where a bind-mounted obs can miss the brief
+  `game_started` false->true menu window between games. The bridge now stamps `reset_done_seq` once
+  a reset's new seeded game loads, and the harness waits on that marker (robust even when consecutive
+  instances share a seed, e.g. T1-s1 / T2-sector1-s1 are both seed 1). Host-harness sequential is now
+  2/2 (was reset-fail).
+- **Obs enrichment:** crew now carries `species` (race), per-task `skills` (0-5 mastery, non-zero),
+  and `mind_controlled`.
 
-## Reproduce so far (from WSL)
+## Live dashboard
+
+`adapter/ftl_live.py` serves the React dashboard on `:8765` (needs `uvicorn`/`fastapi` + the built
+`dashboard/dist`, both in the Windows `harness/.venv`). `run_host.sh --dashboard` /
+`run_parallel.sh --dashboard` auto-launch it: WSL runs the Windows venv python via interop, the
+script path translated with `wslpath -w` and `FTL_BENCH_DIR` passed via `WSLENV=FTL_BENCH_DIR/p`.
+
+## Reproduce (from WSL)
 
 ```sh
 cd <repo>/docker/headless
-WHEEL=<repo>/dist/ftl_bench-*.whl HS_DIR=~/projects/FTL-Hyperspace FTL_DIR=~/ftl-linux \
-  bash run.sh verify   # M2: headless boot + observation (works)
-#   …same with `diag` (menu/log dump) or `run --agent scripted --max-instances 1` (M3, stalls at reset)
+export WHEEL=<repo>/dist/ftl_bench-*.whl HS_DIR=~/projects/FTL-Hyperspace FTL_DIR=~/ftl-linux
+
+bash run.sh verify                                   # boot FTL headless + observation
+bash run.sh run --agent scripted --max-instances 2   # all-in-one: scored run(s)
+
+# host-harness (codex): FTL-only container + host harness over a shared save dir
+bash run_host.sh --dashboard --agent llm --backend codex --model gpt-5.5 --max-instances 4
+
+# parallel: one container per scenario, K at a time, one dashboard + aggregate
+bash run_parallel.sh --tier public --conc 3 --dashboard -- --agent llm --backend codex --model gpt-5.5
 ```
 
-FTL Linux was installed via `steamcmd +force_install_dir ~/ftl-linux +login <user> +app_update 212680
-validate` (the game lands under `~/ftl-linux/data/`). `run.sh` auto-mounts the Windows save dir at
-`/profile` to seed `.sav` files.
+FTL Linux installed via `steamcmd +@sSteamCmdForcePlatformType linux +force_install_dir ~/ftl-linux
++login <user> +app_update 212680 validate` (game lands under `~/ftl-linux/data/`). `run.sh`
+auto-mounts the Windows save dir at `/profile` to seed `.sav` files. The codex backend needs the
+Windows `codex` CLI + `~/.codex` auth; `CODEX_BIN`/`CODEX_TMPDIR` default to the Windows install.
