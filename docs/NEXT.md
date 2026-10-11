@@ -1,9 +1,9 @@
 # Current validation and next work
 
-**WIP / alpha. Snapshot: 2026-10-11 03:24 UTC (00:24 in São Paulo).**
+**WIP / alpha. Snapshot: 2026-10-11 03:40 UTC (00:40 in São Paulo).**
 The visual benchmark is implemented and partially validated. Nine of 36 challenge
-cells are finished; the sector pilot ended in native defeat and four full-game
-cells are unstarted. The goal has resumed. The pilot ran in the original unchanged
+cells are finished; the sector pilot ended in native defeat, Sol/image full-game
+is running, and three full-game cells remain planned. The pilot ran in the original unchanged
 `visual-benchmark-progress` checkout; development continues separately on `main`.
 
 ## Implemented and verified scope
@@ -15,7 +15,7 @@ cells are unstarted. The goal has resumed. The pilot ran in the original unchang
 | Repeatable setup | Nine no-model fixture-6 probes passed measured starting-state and step equality across three wall delays. This covers the tested inputs, not every hidden RNG stream or full-game determinism. |
 | Protected lifecycle | Save backups, exact restoration, runtime identities and terminal evidence are recorded. Cooperative-stop probes passed before the actor and during one real CLI request; the returned cancelled response was retained and its actions discarded. |
 | Challenges | Frozen 36-cell controller, versioned public tasks, outcome audits, retained failures and exact replays. Nine Sol/image cells are complete; results are below. |
-| Full-game support | Fixture-free startup and the five-cell controller are implemented. Startup preserves the opening choice. The Sol/image pilot ended in audited native defeat after 78 decisions; no full-game cell has started. |
+| Full-game support | Fixture-free startup and the five-cell controller are implemented. Startup preserves the opening choice. The pilot ended in audited native defeat after 78 decisions; the Sol/image full-game attempt is running. |
 | Dashboard | Saved challenge/full-game overviews, exact screenshots and inputs, outcome reasons, task identities and saved cleanup receipts. The dashboard is read-only. |
 
 The visual track is `visual-v1`; historical structured runs retain runner/ruleset
@@ -76,7 +76,7 @@ Protocol SHA-256:
 All 78 source/runtime pins matched at the 03:23 UTC terminal audit. The declared cells are:
 
 1. Sol/image sector-one pilot, native defeat at 03:21 UTC.
-2. Sol/image full game.
+2. Sol/image full game, running since 03:40 UTC.
 3. Sol/hybrid full game.
 4. Luna/image full game.
 5. Luna/hybrid full game.
@@ -88,6 +88,11 @@ audit checked 79 unique PNGs with no integrity issues, verified all seven
 original saves and all 15 baseline paths, and confirmed the recorded child and
 FTL had exited. This is an audited pilot defeat; it contributes zero completed
 full games. The failed outcome and all model responses remain preserved.
+
+The controller rechecked pilot cleanup at 03:40:11 UTC before launching the
+first full-game cell. The resumed invocation is limited to the two Sol
+conditions, sequentially, with another audit gate before hybrid starts. A
+running cell remains provisional; no full-game completion is claimed yet.
 
 The declared settings are seed 1, medium reasoning, 300 decisions, 14,400 seconds
 and eight idle decisions. Only audited native victory or defeat completes a
@@ -129,8 +134,18 @@ The new [portable evidence workflow](native-acceptance.md) supplies protected
 no-model startup and varied-delay timing producers, plus a file-only verifier.
 It binds source bytes, native build identity, the deployed bridge, PNGs, raw
 input packets and trial-specific cleanup receipts. Its finite probe result
-does not grant controller admission or production acceptance. Fresh collection
-on merged `main` and controller integration remain prospective.
+does not grant controller admission or production acceptance. The first fresh
+collection on merged `main` passed startup and all nine timing probes, followed
+by independent cleanup verification at 03:39:23 UTC. Its local evidence is
+`harness/runs/validation/visual-v1/main-native-20261011-0330/` in the integration
+checkout. The verifier joins 516 evidence files and 73 source pins and reports
+`validated_scoped`; `production_accepted` and `controller_admission` remain false.
+The verification receipt SHA-256 is
+`bae852ffd816b7a3e6ff789ad710ae891ceab651d4a5944d315dce0fe16dc3a3`.
+The independent check also matched all seven live saves, all 15 baseline paths
+and the six runtime assets shared by all ten diagnostics, with no game left
+running. These finite measured paths do not establish full-game determinism.
+Controller integration and broader acceptance remain WIP.
 
 ## Main integration
 
@@ -146,7 +161,7 @@ original `visual-benchmark-progress` checkout and raw evidence. Merged source
 bytes differ from those pins: experiments on merged `main` require fresh
 acceptance and a new frozen cohort, not reuse of the old cohort under new code.
 
-Offline merge validation passes 1,853 harness tests with ten platform skips on
+Initial merge validation at `5a20e79` passed 1,853 harness tests with ten platform skips on
 Python 3.13.5, and the same suite from the extracted source release on Python
 3.14.8. The installed-wheel smoke, 17 dashboard tests, dashboard build and
 documentation-site build pass. The standalone economy, routing and fresh-start
@@ -170,11 +185,22 @@ also checks the actual original save inventory instead of requiring the seven
 files present on the development machine; an explicitly empty profile is valid,
 but missing receipts, changed bytes and unexpected live saves still fail.
 
+[CI at `b862afd`](https://github.com/ogabrielluiz/ftl_bench/actions/runs/38108757217)
+passes Python 3.11 and 3.13 on both platforms: 2,004 harness tests with two skips
+on Windows, 2,001 with five skips on Linux, plus 25 headless checks in each job.
+The package job passes its installed-wheel smoke, dashboard/docs builds and
+1,954 extracted-source tests with 52 skips. Of those, 47 explicitly require a
+source checkout for native evidence verification; bundled packages instead test
+that this guard refuses admission. The remaining skips are platform checks.
+Separate local package evidence is preserved under
+`dist/package-native-evidence-20261011T033059Z/`. These packages precede this
+documentation snapshot, and no new release is published.
+
 ## Remaining work
 
-1. Collect and audit fresh startup/timing evidence for merged `main` after the
-   successful pilot cleanup. Changes require a newly declared evidence set.
-2. Execute the remaining 27 challenge cells and four
+1. Integrate portable evidence with prospective controller admission and retain
+   the broader runtime checks. Source changes require a new evidence collection.
+2. Finish the active Sol/image game and execute the remaining 27 challenge cells and three
    fixture-free full-game conditions sequentially. Preserve every attempted
    outcome and stop for technical failures or ambiguous cleanup.
 3. Report matched conditions with denominators, exclusions, outcome reasons,

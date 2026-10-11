@@ -7,18 +7,20 @@ An agent benchmark that drives the real **FTL: Faster Than Light** engine throug
 ## Status: work in progress
 
 The visual benchmark is an **alpha implementation with partial live validation**.
-At the 2026-10-11 03:24 UTC snapshot, nine of the 36 planned challenge trials were
+At the 2026-10-11 03:40 UTC snapshot, nine of the 36 planned challenge trials were
 finished, all with Sol in image mode: combat 1/3, fire/crew recovery 3/3 and
 repair/charge/escape 2/3 task successes. The sector pilot ended in an audited
 native defeat after 78 decisions, with exact save restoration. The remaining
-27 challenge trials and four full-game conditions are unstarted. The pilot is
-excluded from full-game totals.
+27 challenge trials are unstarted. Sol's image-only full-game attempt is running;
+the other three full-game conditions are planned. The pilot is excluded from
+full-game totals.
 
 Screenshot play, conservative image-derived HUD summaries, protected saves,
 frozen experiment controllers and dashboard replays are implemented. A complete
 model/observation comparison and fixture-free native-ending full games remain
-unproven. The accepted package snapshot passed 1,849 tests with ten skips;
-that is software validation, not completion of the benchmark plan.
+unproven. CI passes on Windows and Linux with Python 3.11 and 3.13. The merged
+bridge also passed protected startup and nine measured timing probes. These
+checks establish their documented scopes, not completion of the benchmark plan.
 
 Read [current results, evidence and remaining work](docs/NEXT.md), the
 [experiment protocol](docs/visual-experiment-protocol.md), and

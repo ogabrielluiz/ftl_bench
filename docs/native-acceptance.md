@@ -65,3 +65,15 @@ the live save/process state, prove every RNG stream, establish full-game
 determinism or complete a model comparison. Cleanup is a saved point-in-time
 attestation. Controller promotion and any broader native acceptance checks
 remain separate; historical frozen protocols are unchanged.
+
+## Measured main-checkout example
+
+The 2026-10-11 collection `main-native-20261011-0330` used these tracked producers
+at `b862afd`, the unchanged native DLL beginning `a33b9984`, and the prospective
+merged bridge beginning `d9a1ed59`. Startup and all nine probes passed; the
+file-only receipt reports `validated_scoped` across 516 pinned evidence files
+and 73 source files. Independent cleanup at 03:39:23 UTC matched seven saves,
+15 baseline paths and the shared runtime assets with no FTL process remaining.
+The [current validation record](NEXT.md) gives the local evidence path and full
+receipt hash. Raw evidence and native binaries remain local. This example does
+not grant controller admission or certify another machine's runtime.
