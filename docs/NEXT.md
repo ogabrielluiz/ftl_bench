@@ -1,6 +1,6 @@
 # Current validation and next work
 
-**WIP / alpha. Challenge snapshot: 2026-10-11 13:07:21 UTC; stop review: 13:10 UTC; full-game milestone: 14:24 UTC.**
+**WIP / alpha. Current status: 2026-10-11 16:18 UTC; challenge snapshot: 13:07:21 UTC; saved Sol full-game checkpoint: 16:02:58 UTC.**
 
 ## Prospective configurable full-game budgets
 
@@ -11,13 +11,31 @@ Runtime overrides and malformed or unrepresentable values are rejected.
 The focused controller suite passes 169 tests, covering custom/default freezes,
 all five child commands, validation before side effects and tamper rejection.
 
-This executable change is not yet admitted for model measurements. The active
-`d1c18b8` trial and its source checkout remain unchanged. If a larger budget is
-needed, collect fresh startup/timing evidence and independent admission, then
-freeze a new complete four-condition cohort. A prospective 1,500 / 86,400 / 8
-example is documented in the [protocol](visual-experiment-protocol.md); it has
-not been launched and does not guarantee native endings. Preserve all prior
-attempts and report cohorts separately, with all Sol calls before Luna.
+Main `bb6014b146c8105ab917c4b65308f2c36e8a2058` passed all five CI jobs
+in run `38151646134`, but is not yet admitted for model measurements. Collection
+`main-admission-bb6014b-20261011T153250Z` passed eight startup checks and four of
+nine timing probes. Fire repeat 02 then retained `protected_launch_error` before
+game launch, with zero model calls and all seven saves restored. Independent
+cleanup at 16:15:38 UTC verified the originals, bridge, six runtime files and no
+FTL; receipt `bb6014b-failed-timing-current-cleanup-review.json` SHA-256
+`1a63b78270656a68b4183fb4b173bb7652b2cb059207dd2a75aa44f1c59d5462`.
+
+Steam reported cloud-sync failure and `login=false` at 16:07:33 UTC (13:07:33
+local). The operator has been asked to refresh sign-in, cancel the pending FTL
+launch and leave FTL closed; confirmation is still pending. The protected
+lifecycle currently checks running FTL processes but cannot cancel a queued
+Steam launch. Verified save restoration and no running process therefore do not
+prove cancellation; further game runs remain stopped. Bounded, redacted Steam
+log excerpts are retained at
+`dist/store-warp-diagnosis-20261011/steam-launch-failure-20261011T160733Z/`;
+receipt SHA-256
+`cac012d57dd2bb6b0122530d0f4b3326ff6b6e86c6b32183fe1ae65062b738de`.
+This partial collection has no controller admission or new cohort. After Steam is resolved, collect new exclusive startup
+and all nine timing probes, obtain independent review, then admit and freeze a
+new complete four-condition cohort at 1,500 / 86,400 / 8. This prospective budget
+does not guarantee native endings. Preserve the failed collection and all old
+attempts without retries or pooling; all new Sol conditions precede Luna. The
+original d1 challenge checkout remains pinned for its 18 unstarted Luna cells.
 
 ## Current admitted cohorts (`d1c18b8`)
 
@@ -35,7 +53,7 @@ Both new cohorts are under `harness/runs/validation/visual-v1/`:
 | Cohort | Embedded protocol SHA-256 | Protocol file SHA-256 | Snapshot |
 | --- | --- | --- | --- |
 | `matrix-main-d1c18b8-20261011` | `ccbbb3379639b39af98eb4941139ec3bdb25c312db90641b03e62c1b54680010` | `1d8b42799d7cdf4171a86f6070197d9b3662f84d80b7eee6f234eaa24f922e8f` | 18 Sol finished; 18 Luna planned |
-| `fullgame-main-d1c18b8-20261011` | `7bcba8d7391bb42db40012888c6153425e2afb9ffe12700560e03b84143df9ec` | `9129cfc04d9173b77acfced1a35fcab5053384767b6ddb4ce04f6a7758e708b6` | Pilot defeat excluded; Sol/image verified defeat; Sol/hybrid running; two Luna planned |
+| `fullgame-main-d1c18b8-20261011` | `7bcba8d7391bb42db40012888c6153425e2afb9ffe12700560e03b84143df9ec` | `9129cfc04d9173b77acfced1a35fcab5053384767b6ddb4ce04f6a7758e708b6` | Pilot defeat excluded; Sol/image verified defeat; Sol/hybrid budget; two Luna planned |
 
 All 18 Sol challenge trials are finished and independently reviewed: image 5/9,
 hybrid 6/9 task successes, all 18 eligible, zero exclusions and seven preserved
@@ -137,6 +155,29 @@ scrap 30, missiles 8 and drone parts 2; provenance and public prompt match, with
 no native fallback and hull omitted. `paused=true` is a separate control invariant.
 That earlier receipt covers one request; the 18-Sol checkpoint above now binds
 the nine completed hybrid trials, without qualifying the full comparison.
+
+### Closed Sol full-game checkpoint (2026-10-11 16:02:58 UTC)
+
+Both main Sol attempts are finished and independently audited: image has native
+crew-loss defeat (78 calls / 79 PNGs); hybrid has `decision_budget` (300 / 301),
+with two living human crew, sector index 2, hull 21 and oxygen about 3%. Hybrid
+has no native ending. The pilot remains separate and excluded; completion is
+still **1/4 native endings**, with two Luna full games and 18 Luna challenges
+untouched and planned. Main Sol totals are 378 calls / 380 PNGs, 6,418.143 seconds,
+input 7,111,345 (cached subset 4,888,832; cache-write 0), output 88,032 (reasoning
+subset 24,676), with all calls reporting usage and zero reconnects. No model
+ranking or general determinism follows from these two attempts.
+
+Exclusive saved checkpoint `d1c18b8-sol-fullgames-checkpoint-20261011T160258Z/`
+binds exact comparison/ledger/protocol bytes, the pilot, both final reviews and
+the image native-fields addendum. Summary SHA-256:
+`02c65eb85d7a935c5f598cc5e54f844147f973d0a1cacf5507402aa1ad422258`.
+Hybrid final review SHA-256:
+`782342f49c24d2a1df98408e02b33c0d94400a462ceb00dc0d0337cb47cbf61f`;
+independent cleanup SHA-256:
+`0a32963671e0c43802ba91442c3dd1233f785ad9f950a23784e14ece3240f2b8`.
+Final UI also passed. These dated saved/cleanup findings are not a current
+live-state claim. The earlier milestone below is preserved as historical.
 
 ### Full-game milestone (2026-10-11 14:24 UTC)
 

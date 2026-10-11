@@ -10,8 +10,19 @@ The visual benchmark is an **alpha implementation with partial live validation**
 Future full-game cohorts can declare matched decision, wall-time and idle budgets
 at freeze time; defaults remain 300 / 14,400 seconds / 8. See the
 [full-game protocol](docs/visual-experiment-protocol.md#full-game-progression).
-This controller change has offline coverage but no fresh live admission yet;
-existing measured cohorts keep their original executable and limits.
+Main `bb6014b` passed all five CI jobs in run `38151646134`, but has no fresh
+live admission yet; measured cohorts keep their original executable and limits.
+At the 2026-10-11 16:18 UTC snapshot, its new diagnostic collection passed eight
+startup checks and four of nine timing probes, then fire repeat 02 failed with
+`protected_launch_error` before game launch. It made zero model calls; seven
+saves were restored and independent current cleanup passed. Steam reported
+cloud-sync failure and `login=false` at 16:07:33 UTC (13:07:33 local). Sign-in
+refresh and cancellation of the queued launch are awaiting the operator. Further
+game runs are stopped: no running FTL process does not prove queue cancellation.
+No new controller admission or cohort exists. After Steam is resolved, a new
+exclusive startup/all-nine-timing collection and independent review must precede
+admission and a matched 1,500 / 86,400 / 8 full-game freeze. All new Sol conditions
+will run before Luna; original failures and cohorts remain separate.
 
 At the 2026-10-11 13:07:21 UTC snapshot, executable commit `d1c18b8` has
 completed all 18 Sol challenges in `matrix-main-d1c18b8-20261011`: image 5/9 and
@@ -20,13 +31,14 @@ budget failures remain recorded. The audits cover 259 calls and 295 PNGs, with
 4,499.937 seconds of reported latency and no reconnects. Reported input is
 4,869,278 tokens (cached subset 3,149,440), output 67,474 (reasoning subset 23,739).
 These finite results establish no population or model ranking. Luna's 18 challenge
-cells remain planned. At the 14:24 UTC full-game snapshot, the main pilot ended
-in native defeat after 62 calls (excluded from full-game totals), and Sol/image
-completed an audited crew-loss defeat after 78 calls and 79 PNGs: hull 26, oxygen
-0 and native score 81. Seven saves were restored; independent cleanup and rendered
-UI checks passed. Native-ending completion is **1/4**. Sol/hybrid is running and
-two Luna full games remain planned; its reviewed startup matches image gameplay,
-with different PNG bytes and exact-pixel HUD extraction.
+cells remain planned. At the 16:02:58 UTC saved full-game checkpoint, Sol/image
+ended in audited native crew-loss defeat after 78 calls / 79 PNGs, while
+Sol/hybrid exhausted its 300-decision budget after 300 calls / 301 PNGs with two
+human crew, sector index 2, hull 21 and oxygen about 3%. Hybrid has no native
+ending. The two main Sol attempts total 378 calls / 380 PNGs; native-ending
+completion remains **1/4** and both Luna full games remain planned. The native
+pilot defeat after 62 calls stays excluded. Independent saved, cleanup and UI
+reviews passed; this dated checkpoint is not a current live-cleanup claim.
 
 Fresh admission passed eight startup checks, nine timing equality probes,
 protected cleanup and eight executed independent negative probes, binding

@@ -153,6 +153,13 @@ from the protected lifecycle receipts, and distinguish their recorded time
 from a current live audit. Credentials must remain outside Git and logs;
 environment files are selected explicitly, never discovered automatically.
 
+A Steam cloud/sign-in prompt can retain an FTL launch request after the protected
+launch timeout. An empty FTL process list and verified save restoration do not
+prove that request was cancelled. After such a failure, keep further game runs
+stopped until the operator cancels the pending request and leaves FTL closed;
+never approve a delayed launch outside the protected lifecycle. Preserve the
+failed collection and use a new output directory for fresh diagnostics.
+
 ## Git scope
 
 Tracked files retain their exact committed bytes through `.gitattributes`.
