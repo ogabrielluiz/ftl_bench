@@ -493,13 +493,24 @@ def actor_audit(rows):
             ((r.get("visual") or {}).get("before") or {}).get("sha256") for r in steps)
 
 
-def verify_experiment_runtime(experiment, fingerprint, cli_identity, production_hash, fixture_hash):
+def verify_experiment_runtime(experiment, fingerprint, cli_identity, production_hash, fixture_hash,
+                              *, experiment_directory=None, output=None, configuration=None):
     """Refuse quota spending when a direct child differs from its frozen protocol."""
     if not experiment:
         return
     sys.path.insert(0, str(ROOT / "scripts"))
     from run_visual_experiment import verify_protocol
-    verify_protocol(experiment)
+    from ftl_bench.experiment_admission import PORTABLE_CONTRACTS
+    if experiment.get("contract") in PORTABLE_CONTRACTS:
+        from ftl_bench.visual_admission import admit_trial
+        if experiment_directory is None or output is None:
+            raise RuntimeError("Portable child requires its experiment directory and trial output")
+        admit_trial(experiment_file=Path(experiment_directory) / "protocol.json", output=output,
+                    source_root=ROOT, fingerprint=fingerprint, cli_identity=cli_identity,
+                    production_hash=production_hash, deployed_hash=fixture_hash,
+                    verify_protocol=verify_protocol, experiment=experiment, configuration=configuration)
+    else:
+        verify_protocol(experiment)
     accepted = (experiment.get("native_acceptance") or {}).get("runtime") or {}
     fresh_contract = {"fresh_start_seed": True, "fresh_seed_contract_version": 3,
         "fresh_seed_contract": "fresh-start-seed-v3"}
@@ -608,9 +619,17 @@ def run_trial(args, challenge, repetition, output, cli_identity, experiment, *, 
             fingerprint = runtime_fingerprint(ROOT)
             fingerprint["codex_cli"] = cli_identity
             write_json(output / "runtime-fingerprint.json", fingerprint)
+            experiment_file = getattr(args, "experiment_file", None)
+            from ftl_bench.visual_admission import trial_configuration
+            try:
+                verify_experiment_runtime(experiment, fingerprint, cli_identity, source_hash, meta["fixture_bridge_sha256"],
+                    experiment_directory=Path(experiment_file).parent if experiment_file else None, output=output,
+                    configuration=trial_configuration(args, challenge=challenge, repetition=repetition))
+            finally:
+                if (output / "controller-admission.json").is_file():
+                    manifest(controller_admission_sha256=digest((output / "controller-admission.json").read_bytes()))
             if not (fingerprint.get("native_build") or {}).get("matches_installed_dll"):
                 raise RuntimeError("Installed native DLL provenance mismatch")
-            verify_experiment_runtime(experiment, fingerprint, cli_identity, source_hash, meta["fixture_bridge_sha256"])
             stage = "challenge_setup"
             session = AgentSession(step_timeout=30)
             session.setup_delay_seconds = getattr(args, "probe_delay_seconds", 0.0)

@@ -107,6 +107,13 @@ first full-game cell. The resumed invocation is limited to the two Sol
 conditions, sequentially, with another audit gate before hybrid starts. A
 running cell remains provisional; no full-game completion is claimed yet.
 
+A provisional artifact check at 04:37 UTC found 219 completed decisions, sector
+index 1, hull 22/30, oxygen 100%, four crew and native score 354. All 78 source
+pins matched, with no reported artifact-integrity issues. The game was still
+running without a native ending. The retained receipt is
+`provisional-audits/sol-image-active-20261011T043732076403Z.json`; it does not
+claim terminal cleanup or inspect current live saves.
+
 The declared settings are seed 1, medium reasoning, 300 decisions, 14,400 seconds
 and eight idle decisions. Only audited native victory or defeat completes a
 fixture-free full game. Pilot results, budget exhaustion, interrupted attempts
@@ -158,7 +165,8 @@ The verification receipt SHA-256 is
 The independent check also matched all seven live saves, all 15 baseline paths
 and the six runtime assets shared by all ten diagnostics, with no game left
 running. These finite measured paths do not establish full-game determinism.
-Controller integration and broader acceptance remain WIP.
+The later controller integration described below is implemented offline; fresh
+live admission and broader acceptance remain WIP.
 
 Subsequent verifier hardening requires a common six-file runtime across all ten
 diagnostics and supports authenticated reconstruction of the complete native
@@ -173,6 +181,42 @@ the earlier main collection remains evidence for its original pinned sources.
 The local harness suite after this hardening passed 2,017 tests with ten
 platform/compiler skips. These offline checks do not replace fresh diagnostics
 or the remaining model trials.
+
+Portable v2 challenge/full-game controllers now accept an explicit admission
+specification and evidence root. They recompute the scoped raw verifier, join
+all reconstructed native source bytes to original fresh or historical build
+records, and require a hash-bound independent review with eight negative-probe
+records. The build records and reviewer independence declaration are explicit
+trust inputs; this is not a build-execution or cryptographic identity attestation.
+The scoped verifier still reports `production_accepted: false`.
+
+Freezing exclusively archives all consumed evidence and executable sources.
+Controllers reject missing, changed, additional or unreadable archive content.
+Inside protected children, six installed asset hashes, deployed Lua and actual
+model/mode/seed/reasoning/budgets/cell output must match before model calls.
+Accepted and rejected gates are retained in `controller-admission.json`; rejected
+gates use normal protected cleanup. Saved-result audits require the bound child
+gate, and the dashboard exposes stored evidence identities with their limited
+scope. The legacy v1 cohorts keep their original behavior.
+
+This implementation has no fresh live v2 acceptance receipt yet. Source changes
+invalidate the earlier main collection for prospective admission. After the
+active frozen controller finishes and cleanup is verified, collect a new
+fixture-free startup plus nine timing probes on settled main sources, retain
+original build-source evidence, and independently review that exact collection
+before freezing a portable cohort. The [workflow](native-acceptance.md) gives the
+schemas and commands. This does not replace the remaining 27 challenge cells or
+the four native-ending full-game conditions in the benchmark goal.
+
+The final local controller-admission suite passed **2,247 tests with 12 explicit
+skips**: eight unavailable host C++ checks, three Windows symlink checks and one
+opt-in authenticated-source flow. That last flow passed separately with the
+retained Git-object proof: real raw validation, admission, freezing and relocated
+archive verification, using clearly synthetic build/review records. It proves
+offline integration, not live acceptance. All 18 dashboard tests and its build
+passed, as did the documentation build, isolated installed-wheel CLI/dashboard
+smoke and extracted source-release checks (2,194 passed, 65 checkout/platform
+skips). No game, model call or runtime installation was part of these checks.
 
 ## Main integration
 

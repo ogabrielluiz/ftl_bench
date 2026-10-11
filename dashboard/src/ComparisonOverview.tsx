@@ -17,6 +17,10 @@ type Condition = { scenario: string; model: string; mode: string; attempts: numb
   excluded_trials: number; outcomes: Record<string, number>; model_calls_all_attempts?: Calls;
   matched_pair_trials: number; paired_task_success_rate?: number | null };
 export type Comparison = { key: string; name: string; protocol_sha256: string; partial: boolean;
+  contract?: string;
+  stored_admission?: { source: string; spec: Record<string, unknown>; candidate: Record<string, unknown>;
+    build_origin: Record<string, unknown>; review: Record<string, unknown>; reviewer: Record<string, unknown>;
+    runtime: Record<string, unknown>; runtime_files: Record<string, unknown>; evidence_files: Record<string, unknown> } | null;
   experiment_kind?: "challenge" | "full_game";
   fullgame_summary?: { fullgame_attempts: number; verified_fullgame_completions: number;
     victories: number; defeats: number; incomplete_fullgames: number } | null;
@@ -115,9 +119,15 @@ export function ComparisonView({ value, onSelect }: { value: Comparison; onSelec
     </details>
     <details className="muted"><summary>Scope and report identity</summary>
       <p>{value.source}</p><p>Protocol: <code>{value.protocol_sha256}</code></p>
+      {value.contract ? <p>Contract: <code>{value.contract}</code></p> : null}
       {value.artifact_sha256 ? <ul>{Object.entries(value.artifact_sha256).map(([name, hash]) => <li key={name}>{name}: <code>{hash || "unavailable"}</code></li>)}</ul> : null}
       <ul>{value.limitations.map(item => <li key={item}>{item}</li>)}</ul>
     </details>
+    {value.stored_admission ? <details className="muted"><summary>Stored portable admission provenance</summary>
+      <p>{value.stored_admission.source}</p>
+      {(["spec", "candidate", "build_origin", "review", "reviewer", "runtime", "runtime_files", "evidence_files"] as const).map(name =>
+        <details key={name}><summary>{words(name)}</summary><pre><code>{JSON.stringify(value.stored_admission![name], null, 2)}</code></pre></details>)}
+    </details> : null}
   </div>;
 }
 

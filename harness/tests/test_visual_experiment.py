@@ -5,6 +5,7 @@ import hashlib
 from pathlib import Path
 
 import pytest
+import run_visual
 
 ROOT = Path(__file__).resolve().parents[2]
 if not (ROOT / "scripts").is_dir():
@@ -12,6 +13,180 @@ if not (ROOT / "scripts").is_dir():
 spec = importlib.util.spec_from_file_location("visual_experiment", ROOT / "scripts/run_visual_experiment.py")
 experiment = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(experiment)
+
+
+@pytest.mark.parametrize("operation,flags", [
+    ("freeze", ["--native-evidence", "spec.json"]),
+    ("freeze", ["--evidence-root", "evidence"]),
+    *[(op, ["--native-evidence", "spec.json", "--evidence-root", "evidence"])
+      for op in ("run", "report", "stop")],
+])
+def test_portable_options_are_paired_and_freeze_only(tmp_path, operation, flags):
+    with pytest.raises(SystemExit) as error:
+        experiment.main([operation, "--output", str(tmp_path / "new"), *flags])
+    assert error.value.code == 2
+    assert not (tmp_path / "new").exists()
+
+
+def test_portable_matrix_freeze_verifies_archive_and_runtime(tmp_path, monkeypatch):
+    import validate_visual_challenges as challenges
+    sources = {"adapter/run_visual.py": "a" * 64}
+    runtime = {"dll_sha256": "b" * 64}
+    admission = {"source_files": sources, "runtime": runtime}
+    selector = {"source_files": sources, "admission": admission}
+    calls = []
+    def archive(directory, spec, **kwargs):
+        assert directory.is_dir()
+        calls.append((directory, spec, kwargs))
+        return selector
+    monkeypatch.setattr(experiment.portable, "freeze_admission", archive)
+    monkeypatch.setattr(experiment.portable, "verify_admission", lambda directory, selected, **kwargs:
+                        admission if selected == selector else pytest.fail("wrong selector"))
+    monkeypatch.setattr(experiment.portable, "installed_runtime", lambda root: {"six": True})
+    monkeypatch.setattr(experiment.portable, "require_installed", lambda a, i: calls.append((a, i)))
+    monkeypatch.setattr(experiment, "source_identity", lambda *a: pytest.fail("legacy source lookup"))
+    monkeypatch.setattr(run_visual, "codex_runtime_identity", lambda: {"cli": "pinned"})
+    monkeypatch.setattr(challenges, "task_identity", lambda challenge: {"task": challenge})
+    directory = tmp_path / "cohort"
+    protocol = experiment.freeze(directory, native_evidence=tmp_path / "spec.json", evidence_root=tmp_path)
+    assert protocol["contract"] == experiment.portable.MATRIX_CONTRACT
+    assert protocol["admission_selector"] == selector
+    assert protocol["native_acceptance"] == {"receipts": {}, "runtime": runtime}
+    with pytest.raises(RuntimeError, match="cohort directory"):
+        experiment.verify_protocol(protocol)
+    experiment.verify_protocol(protocol, directory=directory)
+    assert len(calls) == 3
+    monkeypatch.setattr(experiment.portable, "installed_runtime", lambda root: pytest.fail("installed check"))
+    experiment.verify_protocol(protocol, directory=directory, verify_installed=False)
+
+
+def test_portable_archive_rejection_never_falls_back(tmp_path, monkeypatch):
+    protocol = {**experiment.declared_conditions(), "contract": experiment.portable.MATRIX_CONTRACT}
+    protocol["protocol_sha256"] = experiment.digest(protocol)
+    monkeypatch.setattr(experiment.portable, "verify_admission", lambda *a, **kw:
+                        (_ for _ in ()).throw(ValueError("archive changed")))
+    monkeypatch.setattr(experiment, "source_identity", lambda *a: pytest.fail("legacy fallback"))
+    with pytest.raises(ValueError, match="archive changed"):
+        experiment.verify_protocol(protocol, directory=tmp_path)
+
+
+def test_portable_rejection_blocks_child_creation(tmp_path, monkeypatch):
+    protocol = {**experiment.declared_conditions(), "contract": experiment.portable.MATRIX_CONTRACT}
+    protocol["protocol_sha256"] = experiment.digest(protocol)
+    experiment.write_json(tmp_path / "protocol.json", protocol)
+    monkeypatch.setattr(experiment.portable, "verify_admission", lambda *a, **kw:
+                        (_ for _ in ()).throw(ValueError("runtime substituted")))
+    monkeypatch.setattr(experiment.subprocess, "Popen", lambda *a, **kw: pytest.fail("child launched"))
+    with pytest.raises(ValueError, match="runtime substituted"):
+        experiment.run(tmp_path, 1)
+
+
+def test_portable_summary_passes_saved_rejection_into_rollup(tmp_path, monkeypatch):
+    import visual_reporting
+    protocol = {"contract": experiment.portable.MATRIX_CONTRACT, "protocol_sha256": "test"}
+    experiment.write_json(tmp_path / "protocol.json", protocol)
+    ledger = {"protocol_sha256": "test", "cells": experiment.plan_cells()}
+    trial = experiment.saved_trial(tmp_path, ledger["cells"][0])
+    trial.mkdir(parents=True)
+    (trial / "trajectory.jsonl").write_text("{}\n")
+    experiment.write_json(trial / "controller-admission.json", {"accepted": False})
+    def aggregate(paths, *, protocol, admission_issues):
+        assert paths == [trial]
+        assert len(admission_issues[str(trial)]) == 1
+        assert admission_issues[str(trial)][0].startswith("Controller admission:")
+        return {"qualified_scoped_comparison": False, "trials": [
+            {"eligible": False, "exclusions": admission_issues[str(trial)]}],
+            "conditions": [{"eligible_trials": 0, "excluded_trials": 1}]}
+    monkeypatch.setattr(visual_reporting, "aggregate_visual_runs", aggregate)
+    experiment.refresh_summary(tmp_path, ledger)
+    report = experiment.read_json(tmp_path / "comparison.json")
+    assert report["contract"] == protocol["contract"]
+    assert not report["trials"][0]["eligible"]
+    assert report["conditions"][0]["excluded_trials"] == 1
+
+
+def test_legacy_summary_does_not_add_portable_audit(tmp_path, monkeypatch):
+    import visual_reporting
+    protocol = {"contract": experiment.CONTRACT, "protocol_sha256": "test"}
+    experiment.write_json(tmp_path / "protocol.json", protocol)
+    ledger = {"protocol_sha256": "test", "cells": experiment.plan_cells()}
+    monkeypatch.setattr(experiment, "audit_trial_admission", lambda *a, **kw: pytest.fail("portable legacy audit"))
+    monkeypatch.setattr(visual_reporting, "aggregate_visual_runs", lambda paths, *, protocol: {"trials": []})
+    experiment.refresh_summary(tmp_path, ledger)
+    assert experiment.read_json(tmp_path / "comparison.json") == {"trials": []}
+
+
+def test_admission_exclusion_recomputes_matrix_pairs_and_success_rates(tmp_path):
+    import visual_reporting
+    from test_visual_reporting import saved_run, protocol
+    frozen = protocol()
+    paths = []
+    for model in frozen["models"]:
+        for mode in frozen["modes"]:
+            path = tmp_path / model / mode
+            saved_run(path, model=model, mode=mode)
+            paths.append(path)
+    assert visual_reporting.aggregate_visual_runs(paths, frozen)["qualified_scoped_comparison"]
+    result = visual_reporting.aggregate_visual_runs(paths, frozen, admission_issues={
+        str(paths[0]): ["Controller admission: saved gate rejected"]})
+    assert not result["qualified_scoped_comparison"]
+    assert not result["trials"][0]["eligible"]
+    assert "ineligible_trial" in result["pairs"][0]["exclusions"]
+    rejected = next(row for row in result["conditions"] if row["model"] == frozen["models"][0]
+                    and row["mode"] == frozen["modes"][0])
+    assert rejected["eligible_trials"] == 0 and rejected["excluded_trials"] == 1
+    assert rejected["outcomes"] == {} and rejected["task_success_rate"] is None
+    assert all(row["matched_pair_trials"] == 0 and row["paired_task_success_rate"] is None
+               for row in result["conditions"])
+
+
+@pytest.mark.parametrize("field,value", [
+    ("seed", 2), ("seed", True), ("ship", "OTHER_SHIP"), ("difficulty", 1),
+    ("models", list(reversed(experiment.MODELS))), ("modes", list(reversed(experiment.MODES))),
+    ("challenges", list(reversed(experiment.CHALLENGES))), ("repetitions", 4),
+    ("reasoning_effort", "high"),
+    ("budgets", {"decisions": 61, "wall_seconds": 1800, "idle_decisions": 8}),
+    ("budgets", {"decisions": 60, "wall_seconds": 1801, "idle_decisions": 8}),
+    ("budgets", {"decisions": 60, "wall_seconds": 1800, "idle_decisions": 9}),
+    ("action_contract", "other-contract"), ("max_actions", 999), ("max_advance_frames", 999),
+    ("history_length", 999), ("memory_chars", 999),
+    ("time_contract", {"visual_clock_version": 1, "fixed_step_numerator": 1, "fixed_step_denominator": 60}),
+    ("time_contract", {"visual_clock_version": 2, "fixed_step_numerator": 2, "fixed_step_denominator": 60}),
+    ("time_contract", {"visual_clock_version": 2, "fixed_step_numerator": 1, "fixed_step_denominator": 30}),
+    ("execution_order", "Luna before Sol"), ("hud_extractor_identity", {}),
+])
+def test_rehashed_portable_matrix_rejects_changed_declared_boundaries(tmp_path, monkeypatch, field, value):
+    import validate_visual_challenges as challenges
+    sources = {"adapter/visible_hud.py": "a" * 64}
+    admission = {"source_files": sources, "runtime": {}}
+    protocol = {**experiment.declared_conditions(), "contract": experiment.portable.MATRIX_CONTRACT,
+                "source_files": sources, "source_sha256": experiment.digest(sources),
+                "native_acceptance": {"receipts": {}, "runtime": {}},
+                "hud_extractor_identity": dict(sources), "task_versions": challenges.TASK_VERSIONS,
+                "tasks": {name: {"task": name} for name in experiment.CHALLENGES}, "codex_cli": {}}
+    monkeypatch.setattr(experiment.portable, "verify_admission", lambda *a, **kw: admission)
+    monkeypatch.setattr(run_visual, "codex_runtime_identity", lambda: {})
+    monkeypatch.setattr(challenges, "task_identity", lambda name: {"task": name})
+    protocol["protocol_sha256"] = experiment.digest(protocol)
+    experiment.verify_protocol(protocol, directory=tmp_path, verify_installed=False)
+    protocol[field] = value
+    unsigned = {key: item for key, item in protocol.items() if key != "protocol_sha256"}
+    protocol["protocol_sha256"] = experiment.digest(unsigned)
+    with pytest.raises(RuntimeError, match="conditions changed|HUD extractor identity"):
+        experiment.verify_protocol(protocol, directory=tmp_path, verify_installed=False)
+
+
+def test_legacy_matrix_keeps_existing_condition_verification(tmp_path, monkeypatch):
+    import validate_visual_challenges as challenges
+    sources = {"adapter/run_visual.py": "a" * 64}
+    protocol = {"contract": experiment.CONTRACT, "seed": 2, "source_files": sources,
+                "task_versions": challenges.TASK_VERSIONS,
+                "tasks": {name: {"task": name} for name in experiment.CHALLENGES}, "codex_cli": {}}
+    protocol["protocol_sha256"] = experiment.digest(protocol)
+    monkeypatch.setattr(experiment, "source_identity", lambda root: sources)
+    monkeypatch.setattr(run_visual, "codex_runtime_identity", lambda: {})
+    monkeypatch.setattr(challenges, "task_identity", lambda name: {"task": name})
+    experiment.verify_protocol(protocol, directory=tmp_path, verify_installed=False)
 
 
 def test_declared_matrix_has_all_matched_repetitions():
@@ -297,7 +472,7 @@ def test_stop_request_prevents_controller_launch(tmp_path, monkeypatch):
     experiment.write_json(tmp_path / "protocol.json", protocol)
     experiment.write_json(tmp_path / "ledger.json", {"protocol_sha256": "test", "cells": experiment.plan_cells()})
     request_stop(tmp_path / "stop-request.json", str(tmp_path.resolve()), "assistant:test")
-    monkeypatch.setattr(experiment, "verify_protocol", lambda protocol: None)
+    monkeypatch.setattr(experiment, "verify_protocol", lambda protocol, **kwargs: None)
     monkeypatch.setattr(experiment, "controller_lock", lambda directory: nullcontext())
     monkeypatch.setattr(experiment.subprocess, "Popen", lambda *a, **kw: pytest.fail("stopped controller launched child"))
     experiment.run(tmp_path, 36)
@@ -311,7 +486,7 @@ def test_stop_during_protocol_verification_preserves_planned_cell(tmp_path, monk
     experiment.write_json(tmp_path / "protocol.json", {"protocol_sha256": "test"})
     experiment.write_json(tmp_path / "ledger.json", {"protocol_sha256": "test", "cells": experiment.plan_cells()})
     checks = []
-    def verify(protocol):
+    def verify(protocol, **kwargs):
         checks.append(True)
         if len(checks) == 2:
             request_stop(tmp_path / "stop-request.json", str(tmp_path.resolve()), "assistant:test")

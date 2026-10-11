@@ -58,7 +58,8 @@ def main():
             if bundled != (repo / relative).read_bytes():
                 raise RuntimeError(f"Wheel is stale or incomplete: {relative}")
         for relative in ("observation.py", "protected_game.py", "visual_session.py",
-                         "fullgame_setup.py", "challenge_setup.py"):
+                         "fullgame_setup.py", "challenge_setup.py", "controller_admission.py",
+                         "experiment_admission.py", "visual_admission.py"):
             if archive.read("ftl_bench/" + relative) != (repo / "harness/src/ftl_bench" / relative).read_bytes():
                 raise RuntimeError(f"Wheel runtime module is stale: {relative}")
         for asset in (repo / "dashboard/dist/assets").iterdir():

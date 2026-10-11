@@ -18,6 +18,20 @@ const base = { key: "matrix", name: "matrix", protocol_sha256: "hash", partial: 
   requested_models: ["gpt-6.1-sol", "gpt-6-luna"], conditions: [], trials: [], limitations: [], issues: [], source: "Saved report" };
 const render = value => renderToStaticMarkup(createElement(ComparisonView, { value, onSelect: () => {} }));
 
+test("portable admission identities remain explicitly stored metadata", () => {
+  const html = render({ ...base, contract: "ftl-visual-challenge-matrix-v2", stored_admission: {
+    source: "Stored protocol admission metadata only; the dashboard does not rerun admission or a live runtime audit.",
+    spec: { path: "admission.json", sha256: "spechash" }, candidate: { sha256: "candidatehash" },
+    reviewer: { id: "explicit-reviewer", independent_of_producer: true }, build_origin: { sha256: "originhash" },
+    review: { sha256: "reviewhash" }, runtime: { dll_sha256: "dllhash" },
+    runtime_files: { "Hyperspace.dll": "dllhash" }, evidence_files: { "admission.json": "spechash" } } });
+  assert.match(html, /Stored portable admission provenance/);
+  assert.match(html, /does not rerun admission or a live runtime audit/);
+  for (const identity of ["spechash", "candidatehash", "originhash", "reviewhash", "explicit-reviewer", "dllhash"])
+    assert.ok(html.includes(identity));
+  assert.match(html, /Matched comparison not yet qualified/);
+});
+
 test("partial experiments show progress and explicitly avoid ranking claims", () => {
   const html = render(base);
   assert.match(html, /Partial experiment/);

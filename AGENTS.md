@@ -67,6 +67,18 @@ invocation. Runtime equality across diagnostics and build-source reconstruction
 are separate checks. Keep historical evidence pinned to its original verifier
 and source bytes when either implementation changes.
 
+Portable v2 controllers additionally require original build-source evidence and
+an independent review bound to the exact candidate, verifier and eight retained
+negative probes. See `docs/native-acceptance.md` for the schemas. A review is an
+explicit provenance attestation, not cryptographic proof; never manufacture one
+from a successful baseline check. Preserve the file-only verifier's
+`production_accepted: false` and its separate scoped result. Controller admission
+is local and explicit. Keep all source/evidence archives immutable, reject
+unreadable or extra archive content, and check the installed runtime, deployed
+bridge and actual cell settings inside protected children before model calls.
+Saved child admission is required for v2 result eligibility; it does not replace
+native outcome or protected-cleanup verification.
+
 Visual startup requires native protocol 5, clock 2 with fixed step 1/60, and
 `fresh-start-seed-v3`; protocol 5 alone is insufficient. Preserve the structured
 runner's separate contracts. Native DLLs, local acceptance receipts, `dist/`,

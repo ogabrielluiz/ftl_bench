@@ -20,6 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "adapter"))
 
 from visual_cancellation import StopControl, request_stop, wait_for_protected_child
+from ftl_bench import experiment_admission as portable
+from ftl_bench.visual_admission import audit_trial_admission
 
 MODELS = ("gpt-6.1-sol", "gpt-6-luna")
 MODES = ("image", "hybrid")
@@ -212,26 +214,40 @@ def accepted_native_runtime(source, root=ROOT):
             "production_bridge_sha256": expected["lua_sha256"], **timing, **FRESH_CONTRACT}
 
 
-def freeze(directory: Path):
-    from run_visual import codex_runtime_identity
+def declared_conditions():
+    """The fixed matrix and actor boundary shared by freeze and v2 checks."""
     from visual_agent import CONTRACT as action_contract, MAX_ACTIONS, MAX_ADVANCE_FRAMES, MAX_HISTORY, MAX_MEMORY_CHARS
+    return {"models": list(MODELS), "modes": list(MODES), "challenges": list(CHALLENGES),
+            "repetitions": 3, "seed": 1, "ship": "PLAYER_SHIP_HARD", "difficulty": 0,
+            "reasoning_effort": "medium", "budgets": {"decisions": 60, "wall_seconds": 1800,
+                "idle_decisions": 8}, "action_contract": action_contract,
+            "max_actions": MAX_ACTIONS, "max_advance_frames": MAX_ADVANCE_FRAMES,
+            "time_contract": {"visual_clock_version": 2, "fixed_step_numerator": 1,
+                              "fixed_step_denominator": 60},
+            "history_length": MAX_HISTORY, "memory_chars": MAX_MEMORY_CHARS,
+            "execution_order": "model, mode, challenge, repetition; Sol before Luna"}
+
+
+def freeze(directory: Path, *, native_evidence=None, evidence_root=None):
+    from run_visual import codex_runtime_identity
+    if (native_evidence is None) != (evidence_root is None):
+        raise ValueError("--native-evidence and --evidence-root must be provided together")
     directory.mkdir(parents=True, exist_ok=False)
-    source = source_identity()
-    accepted = accepted_native_runtime(source)
-    _, acceptance_origins = fresh_start_evidence(read_json(ROOT / "dist/native-validation.visual-v1.json"))
+    selector = None
+    if native_evidence is not None:
+        selector = portable.freeze_admission(directory, native_evidence, source_root=ROOT, evidence_root=evidence_root)
+        source = selector["source_files"]
+        accepted = selector["admission"]["runtime"]
+        portable.require_installed(selector["admission"], portable.installed_runtime(ROOT))
+        acceptance_origins = {}
+    else:
+        source = source_identity()
+        accepted = accepted_native_runtime(source)
+        _, acceptance_origins = fresh_start_evidence(read_json(ROOT / "dist/native-validation.visual-v1.json"))
     from validate_visual_challenges import TASK_VERSIONS, task_identity
-    protocol = {"task_versions": dict(TASK_VERSIONS),
+    protocol = {**declared_conditions(), "task_versions": dict(TASK_VERSIONS),
                 "tasks": {challenge: task_identity(challenge) for challenge in CHALLENGES},
-                "contract": CONTRACT, "created_at": stamp(), "models": list(MODELS),
-                "modes": list(MODES), "challenges": list(CHALLENGES), "repetitions": 3,
-                "seed": 1, "ship": "PLAYER_SHIP_HARD", "difficulty": 0,
-                "reasoning_effort": "medium", "budgets": {"decisions": 60, "wall_seconds": 1800,
-                    "idle_decisions": 8}, "action_contract": action_contract,
-                "max_actions": MAX_ACTIONS, "max_advance_frames": MAX_ADVANCE_FRAMES,
-                "time_contract": {"visual_clock_version": 2, "fixed_step_numerator": 1,
-                                  "fixed_step_denominator": 60},
-                "history_length": MAX_HISTORY, "memory_chars": MAX_MEMORY_CHARS,
-                "execution_order": "model, mode, challenge, repetition; Sol before Luna",
+                "contract": portable.MATRIX_CONTRACT if selector else CONTRACT, "created_at": stamp(),
                 "source_files": source, "source_sha256": digest(source),
                 "codex_cli": codex_runtime_identity(),
                 "hud_extractor_identity": {p: h for p, h in source.items() if "visible_hud" in p},
@@ -240,18 +256,38 @@ def freeze(directory: Path):
                                  if "native-validation.visual-v1" in p or p in acceptance_origins},
                     "runtime": accepted},
                 "scope": "Repeated diagnostic challenges; not full-game scores or a population ranking."}
+    if selector:
+        protocol["admission_selector"] = selector
+        protocol["native_acceptance"]["receipts"] = {}
     protocol["protocol_sha256"] = digest(protocol)
     write_json(directory / "protocol.json", protocol)
     write_json(directory / "ledger.json", {"protocol_sha256": protocol["protocol_sha256"], "cells": plan_cells()})
     return protocol
 
 
-def verify_protocol(protocol, root=ROOT):
+def verify_protocol(protocol, root=ROOT, *, directory=None, verify_installed=True):
     original = dict(protocol)
     recorded = original.pop("protocol_sha256", None)
-    if recorded != digest(original):
+    if recorded != digest(original) or protocol.get("contract") not in (CONTRACT, portable.MATRIX_CONTRACT):
         raise RuntimeError("Experiment protocol changed; preserve it and freeze a new experiment")
-    current = source_identity(root)
+    if protocol["contract"] == portable.MATRIX_CONTRACT:
+        if directory is None:
+            raise RuntimeError("Portable experiment verification requires its cohort directory")
+        if any(digest(protocol.get(name)) != digest(value)
+               for name, value in declared_conditions().items()):
+            raise RuntimeError("Declared portable matrix conditions changed")
+        admission = portable.verify_admission(directory, protocol.get("admission_selector"), source_root=root)
+        current = admission["source_files"]
+        if protocol.get("hud_extractor_identity") != {p: h for p, h in current.items() if "visible_hud" in p}:
+            raise RuntimeError("Portable HUD extractor identity differs from executable sources")
+        if protocol.get("native_acceptance") != {"receipts": {}, "runtime": admission["runtime"]}:
+            raise RuntimeError("Portable native acceptance changed")
+        if verify_installed:
+            portable.require_installed(admission, portable.installed_runtime(root))
+    else:
+        current = source_identity(root)
+    if protocol["contract"] == portable.MATRIX_CONTRACT and digest(current) != protocol.get("source_sha256"):
+        raise RuntimeError("Frozen executable source digest changed")
     if current != protocol["source_files"]:
         changed = sorted(k for k in current.keys() | protocol["source_files"].keys()
                          if current.get(k) != protocol["source_files"].get(k))
@@ -384,14 +420,21 @@ def refresh_summary(directory, ledger):
     validate_ledger(ledger, protocol)
     paths = [saved_trial(directory, cell) for cell in ledger["cells"]
              if (saved_trial(directory, cell) / "trajectory.jsonl").is_file()]
-    report = aggregate_visual_runs(paths, protocol=protocol)
+    if protocol.get("contract") == portable.MATRIX_CONTRACT:
+        admission_issues = {str(path): audit_trial_admission(path, protocol, protocol_file=directory / "protocol.json")
+                            for path in paths}
+        report = aggregate_visual_runs(paths, protocol=protocol, admission_issues=admission_issues)
+    else:
+        report = aggregate_visual_runs(paths, protocol=protocol)
+    if protocol.get("contract") == portable.MATRIX_CONTRACT:
+        report["contract"] = protocol["contract"]
     write_json(directory / "comparison.json", report)
 
 
 def run(directory, limit):
     control = StopControl(directory / "stop-request.json", str(directory.resolve()))
     protocol = read_json(directory / "protocol.json")
-    verify_protocol(protocol)
+    verify_protocol(protocol, directory=directory)
     with controller_lock(directory):
         ledger = read_json(directory / "ledger.json")
         validate_ledger(ledger, protocol)
@@ -408,7 +451,7 @@ def run(directory, limit):
                 break
             if cell["status"] != "planned" or done >= limit:
                 continue
-            verify_protocol(protocol)
+            verify_protocol(protocol, directory=directory)
             if control.pending():
                 ledger["stop_requested"] = True
                 write_json(directory / "ledger.json", ledger)
@@ -451,14 +494,20 @@ def main(argv=None):
     parser.add_argument("--limit", type=int, default=1, help="Maximum new cells to run this invocation (default: 1)")
     parser.add_argument("--initiator", default="operator", help="Identity of stop requester")
     parser.add_argument("--reason", default="operator_requested")
+    parser.add_argument("--native-evidence", type=Path, help="Portable admission spec (freeze only)")
+    parser.add_argument("--evidence-root", type=Path, help="Portable evidence root (freeze only)")
     args = parser.parse_args(argv)
+    if (args.native_evidence is None) != (args.evidence_root is None):
+        parser.error("--native-evidence and --evidence-root must be provided together")
+    if args.operation != "freeze" and args.native_evidence is not None:
+        parser.error("Portable evidence options are freeze-only")
     directory = args.output.resolve()
     if args.limit < 1:
         parser.error("--limit must be positive")
     if args.operation == "stop":
         request_stop(directory / "stop-request.json", str(directory), args.initiator, args.reason)
     elif args.operation == "freeze":
-        freeze(directory)
+        freeze(directory, native_evidence=args.native_evidence, evidence_root=args.evidence_root)
     elif args.operation == "run":
         run(directory, args.limit)
     else:

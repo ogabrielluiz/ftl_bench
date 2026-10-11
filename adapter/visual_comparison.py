@@ -9,8 +9,31 @@ from urllib.parse import urlencode
 MAX_JSON_BYTES = 16 * 1024 * 1024
 MAX_MATRICES = 32
 FULLGAME_CONTRACT = "ftl-fullgame-experiment-v1"
+MATRIX_CONTRACTS = ("ftl-visual-challenge-matrix-v1", "ftl-visual-challenge-matrix-v2")
+FULLGAME_CONTRACTS = (FULLGAME_CONTRACT, "ftl-fullgame-experiment-v2")
+PORTABLE_CONTRACTS = (MATRIX_CONTRACTS[1], FULLGAME_CONTRACTS[1])
 FULLGAME_ARTIFACTS = ("run.json", "visual-report.json", "trajectory.jsonl",
                       "save-backup/manifest.json", "save-backup/restoration.json")
+
+
+def stored_admission(protocol: dict) -> dict | None:
+    """Expose frozen protocol metadata, never recompute or claim fresh admission."""
+    if protocol.get("contract") not in PORTABLE_CONTRACTS:
+        return None
+    selector = protocol.get("admission_selector")
+    if (not isinstance(selector, dict)
+            or selector.get("contract") != "portable-visual-controller-admission-v1"
+            or not isinstance(selector.get("admission"), dict)):
+        raise ValueError("portable protocol stored admission metadata missing")
+    admission = selector["admission"]
+    fields = ("candidate", "build_origin", "review", "reviewer", "runtime", "runtime_files")
+    if (not isinstance(selector.get("spec"), dict)
+            or any(not isinstance(admission.get(name), dict) for name in fields)
+            or not isinstance(selector.get("evidence_files"), dict)):
+        raise ValueError("portable protocol stored admission metadata malformed")
+    return {"source": "Stored protocol admission metadata only; the dashboard does not rerun admission or a live runtime audit.",
+            "spec": selector["spec"], **{name: admission[name] for name in fields},
+            "evidence_files": selector["evidence_files"]}
 
 
 def safe_path(root: Path, path: Path) -> Path:
@@ -155,7 +178,7 @@ def fullgame_view(root, directory, key, protocol, ledger, protocol_hash, ledger_
     issues, report, report_hash = [], {}, None
     try:
         report, report_hash = read_json(root, directory / "comparison.json")
-        if (report.get("contract") != FULLGAME_CONTRACT or report.get("protocol_sha256") != identity
+        if (report.get("contract") != protocol["contract"] or report.get("protocol_sha256") != identity
                 or report.get("pilot_excluded_from_fullgame_totals") is not True):
             raise ValueError("full-game comparison identity mismatch")
     except (OSError, ValueError, UnicodeError) as error:
@@ -267,6 +290,7 @@ def fullgame_view(root, directory, key, protocol, ledger, protocol_hash, ledger_
         issues.append("Saved full-game totals disagree with joined trial evidence.")
     refresh = "unavailable" if not report else "inconsistent" if issues else "live_progress" if live_progress else "current"
     return {"key": key, "name": directory.name, "experiment_kind": "full_game", "protocol_sha256": identity,
+        "contract": protocol["contract"], "stored_admission": stored_admission(protocol),
         "scope": report.get("scope", protocol.get("scope")), "partial": counts["finished"] < 5 or bool(issues),
         "qualified_scoped_comparison": False, "valid_for_full_game_comparison": False,
         "counts": counts, "reported_trials": len(trials), "requested_models": models,
@@ -284,7 +308,7 @@ def comparison_view(bench: Path, key: str) -> dict:
         raise ValueError("invalid comparison key")
     directory = safe_path(root, root / key)
     protocol, protocol_file_hash = read_json(root, directory / "protocol.json")
-    if protocol.get("contract") not in ("ftl-visual-challenge-matrix-v1", FULLGAME_CONTRACT):
+    if protocol.get("contract") not in (*MATRIX_CONTRACTS, *FULLGAME_CONTRACTS):
         raise ValueError("not a visual matrix")
     identity = protocol.get("protocol_sha256")
     unhashed = {k: v for k, v in protocol.items() if k != "protocol_sha256"}
@@ -296,13 +320,17 @@ def comparison_view(bench: Path, key: str) -> dict:
     cells = ledger["cells"]
     if len(cells) > 5000 or any(not isinstance(c, dict) for c in cells):
         raise ValueError("invalid ledger cells")
-    if protocol.get("contract") == FULLGAME_CONTRACT:
+    if protocol.get("contract") in FULLGAME_CONTRACTS:
         return fullgame_view(root, directory, key, protocol, ledger, protocol_file_hash, ledger_hash)
     issues = []
     report, report_hash = {}, None
     try:
         report, report_hash = read_json(root, directory / "comparison.json")
-        if report.get("protocol_sha256") != identity or report.get("report_version") != "visual-comparison-v1":
+        # Legacy aggregate reports predate the explicit contract field. Only
+        # their absent field is tolerated; v2 requires exact protocol semantics.
+        report_contract = report.get("contract", MATRIX_CONTRACTS[0])
+        if (report.get("protocol_sha256") != identity or report.get("report_version") != "visual-comparison-v1"
+                or report_contract != protocol["contract"]):
             raise ValueError("comparison protocol mismatch")
     except (OSError, ValueError, UnicodeError) as exc:
         report = {}
@@ -377,6 +405,7 @@ def comparison_view(bench: Path, key: str) -> dict:
     if lagging:
         issues.append("Saved results and the execution ledger are at different refresh boundaries.")
     return {"key": key, "name": directory.name, "experiment_kind": "challenge", "protocol_sha256": identity,
+        "contract": protocol["contract"], "stored_admission": stored_admission(protocol),
         "scope": report.get("scope", "paired_diagnostic_challenges"),
         "qualified_scoped_comparison": report.get("qualified_scoped_comparison") is True and not issues
             and counts["finished"] == counts["total"],

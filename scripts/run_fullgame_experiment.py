@@ -25,6 +25,8 @@ from visual_reporting import audit_visual_run
 from ftl_bench.fullgame_setup import packet_proof, receipt_proof
 from ftl_bench.installation import runtime_fingerprint
 from ftl_bench.protected_game import _processes as game_processes
+from ftl_bench import experiment_admission as portable
+from ftl_bench.visual_admission import audit_trial_admission
 
 CONTRACT = "ftl-fullgame-experiment-v1"
 BUDGETS = {"decisions": 300, "wall_seconds": 14400, "idle_decisions": 8}
@@ -114,17 +116,29 @@ def archive_sources(directory, sources):
             output.write(data)
 
 
-def freeze(directory):
+def freeze(directory, *, native_evidence=None, evidence_root=None):
+    if (native_evidence is None) != (evidence_root is None):
+        raise ValueError("--native-evidence and --evidence-root must be provided together")
     if directory.exists():
         raise RuntimeError("Experiment output already exists")
-    sources = source_identity()
-    accepted = shared.accepted_native_runtime(sources, ROOT)
-    installed = installed_identity()
-    tested = require_tested_runtime(installed)
+    selector = None
+    if native_evidence is not None:
+        directory.mkdir(parents=True, exist_ok=False)
+        selector = portable.freeze_admission(directory, native_evidence, source_root=ROOT, evidence_root=evidence_root)
+        sources = selector["source_files"]
+        accepted = selector["admission"]["runtime"]
+        installed = portable.installed_runtime(ROOT)
+        portable.require_installed(selector["admission"], installed)
+        tested = {"files_sha256": installed["files_sha256"]}
+    else:
+        sources = source_identity()
+        accepted = shared.accepted_native_runtime(sources, ROOT)
+        installed = installed_identity()
+        tested = require_tested_runtime(installed)
     if installed["files_sha256"]["Hyperspace.dll"] != accepted["dll_sha256"]:
         raise RuntimeError("Installed DLL differs from accepted native runtime")
     actor = CodexVisualAgent(model="gpt-6.1-sol").instruction_identity()
-    protocol = {"contract": CONTRACT, "created_at": stamp(), "seed": 1,
+    protocol = {"contract": portable.FULLGAME_CONTRACT if selector else CONTRACT, "created_at": stamp(), "seed": 1,
         "reasoning_effort": "medium", "budgets": dict(BUDGETS), "cells": plan_cells(),
         "source_files": sources, "source_sha256": digest(sources), "codex_cli": codex_runtime_identity(),
         "installed_runtime": installed, "tested_runtime": tested,
@@ -133,22 +147,42 @@ def freeze(directory):
         "scope": "One sector pilot followed by four matched single-seed full-game attempts; descriptive results, not a population ranking.",
         "pilot_admission": "Finished audited attempt with verified cleanup; sector success is reported separately.",
         "fullgame_completion": "Native victory or native defeat only; budget and interrupted attempts remain incomplete."}
+    if selector:
+        protocol["admission_selector"] = selector
     protocol["protocol_sha256"] = digest(protocol)
-    directory.mkdir(parents=True, exist_ok=False)
-    archive_sources(directory, sources)
+    if selector is None:
+        directory.mkdir(parents=True, exist_ok=False)
+        archive_sources(directory, sources)
     write(directory / "protocol.json", protocol)
     write(directory / "ledger.json", {"protocol_sha256": protocol["protocol_sha256"], "cells": plan_cells()})
     return protocol
 
 
-def verify_protocol(protocol):
+def verify_protocol(protocol, *, directory=None, verify_installed=True):
     unsigned = dict(protocol)
     expected = unsigned.pop("protocol_sha256", None)
-    if expected != digest(unsigned) or protocol.get("contract") != CONTRACT:
+    if expected != digest(unsigned) or protocol.get("contract") not in (CONTRACT, portable.FULLGAME_CONTRACT):
         raise RuntimeError("Full-game protocol changed")
     if (protocol.get("seed") != 1 or protocol.get("budgets") != BUDGETS
             or protocol.get("reasoning_effort") != "medium" or protocol.get("cells") != plan_cells()):
         raise RuntimeError("Declared full-game conditions changed")
+    if protocol["contract"] == portable.FULLGAME_CONTRACT:
+        if directory is None:
+            raise RuntimeError("Portable experiment verification requires its cohort directory")
+        admission = portable.verify_admission(directory, protocol.get("admission_selector"), source_root=ROOT)
+        sources = admission["source_files"]
+        if (sources != protocol["source_files"] or digest(sources) != protocol.get("source_sha256")
+                or admission["runtime"] != protocol["native_acceptance"]
+                or protocol.get("tested_runtime") != {"files_sha256": admission["runtime_files"]}):
+            raise RuntimeError("Portable full-game admission changed")
+        if verify_installed:
+            installed = portable.installed_runtime(ROOT)
+            portable.require_installed(admission, installed)
+            if installed != protocol["installed_runtime"]:
+                raise RuntimeError("Installed runtime changed")
+        if codex_runtime_identity() != protocol["codex_cli"]:
+            raise RuntimeError("Authenticated Codex CLI identity changed")
+        return
     sources = source_identity()
     if sources != protocol["source_files"] or digest(sources) != protocol.get("source_sha256"):
         raise RuntimeError("Frozen full-game source or acceptance evidence changed")
@@ -184,6 +218,8 @@ def trial_command(directory, cell, protocol):
         "--output", str(trial_directory(directory, cell))]
     if cell["stop_after_sector"] is not None:
         command += ["--stop-after-sector", str(cell["stop_after_sector"])]
+    if protocol.get("contract") == portable.FULLGAME_CONTRACT:
+        command += ["--experiment-file", str(directory / "protocol.json")]
     return command
 
 
@@ -209,6 +245,7 @@ def audit_trial(directory, cell, protocol, *, verify_live_saves=False):
     path = trial_directory(directory, cell)
     audit = audit_visual_run(path, require_terminal=True, verify_live_saves=verify_live_saves)
     issues = list(audit.get("issues") or [])
+    issues.extend(audit_trial_admission(path, protocol, protocol_file=directory / "protocol.json"))
     manifest, report, terminal, last = {}, {}, {}, {}
     def check(condition, message):
         if not condition:
@@ -273,7 +310,7 @@ def refresh_summary(directory, ledger, protocol):
     trials = [audit_trial(directory, cell, protocol) for cell in ledger["cells"]
               if cell["status"] in ("finished", "interrupted_unknown")]
     full = [row for row in trials if row["scope"] == "full_game"]
-    result = {"contract": CONTRACT, "protocol_sha256": protocol["protocol_sha256"], "updated_at": stamp(),
+    result = {"contract": protocol["contract"], "protocol_sha256": protocol["protocol_sha256"], "updated_at": stamp(),
         "scope": protocol["scope"], "ranking_claimed": False, "pilot_excluded_from_fullgame_totals": True,
         "counts": {"planned": sum(c["status"] == "planned" for c in ledger["cells"]),
             "running": sum(c["status"] == "running" for c in ledger["cells"]), "finished_attempts": len(trials),
@@ -350,7 +387,7 @@ def require_audited_cleanup(directory, cell, protocol):
 def run(directory, limit):
     control = StopControl(directory / "stop-request.json", str(directory.resolve()))
     protocol, ledger = read(directory / "protocol.json"), read(directory / "ledger.json")
-    verify_protocol(protocol)
+    verify_protocol(protocol, directory=directory)
     with shared.controller_lock(directory):
         validate_ledger(ledger, protocol)
         for cell in ledger["cells"]:
@@ -371,7 +408,7 @@ def run(directory, limit):
                 break
             if cell["status"] != "planned" or done >= limit:
                 continue
-            verify_protocol(protocol)
+            verify_protocol(protocol, directory=directory)
             if control.pending():
                 ledger["stop_requested"] = True
                 write(directory / "ledger.json", ledger)
@@ -400,7 +437,7 @@ def run(directory, limit):
             if check:
                 cell.setdefault("cleanup_checks", []).append(check)
                 write(directory / "ledger.json", ledger)
-            verify_protocol(protocol)
+            verify_protocol(protocol, directory=directory)
             done += 1
 
 
@@ -411,14 +448,20 @@ def main(argv=None):
     parser.add_argument("--limit", type=int, default=1)
     parser.add_argument("--initiator", default="operator", help="Identity of stop requester")
     parser.add_argument("--reason", default="operator_requested")
+    parser.add_argument("--native-evidence", type=Path, help="Portable admission spec (freeze only)")
+    parser.add_argument("--evidence-root", type=Path, help="Portable evidence root (freeze only)")
     args = parser.parse_args(argv)
+    if (args.native_evidence is None) != (args.evidence_root is None):
+        parser.error("--native-evidence and --evidence-root must be provided together")
+    if args.operation != "freeze" and args.native_evidence is not None:
+        parser.error("Portable evidence options are freeze-only")
     if args.limit < 1:
         parser.error("--limit must be positive")
     directory = args.output.resolve()
     if args.operation == "stop":
         request_stop(directory / "stop-request.json", str(directory), args.initiator, args.reason)
     elif args.operation == "freeze":
-        freeze(directory)
+        freeze(directory, native_evidence=args.native_evidence, evidence_root=args.evidence_root)
     elif args.operation == "run":
         run(directory, args.limit)
     else:

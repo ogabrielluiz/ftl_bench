@@ -105,6 +105,206 @@ determinism or complete a model comparison. Cleanup is a saved point-in-time
 attestation. Controller promotion and any broader native acceptance checks
 remain separate; historical frozen protocols are unchanged.
 
+## Prospective portable controller admission
+
+The implemented controller workflow is **WIP with offline validation**. No
+completed live v2 controller admission is claimed. A prospective cohort requires
+fresh main-checkout startup and all nine timing probes after executable sources
+settle and the active controller completes protected cleanup. Collect them in a
+new exclusive `harness/runs/validation/visual-v1/main-admission-<UTC>` directory,
+then have an independent reviewer examine that exact source/evidence collection
+and execute meaningful negative probes before freezing a new cohort. Executable
+source changes require fresh diagnostics and review; do not modify existing
+frozen sources or evidence to make an old cohort pass.
+
+`ftl_bench.controller_admission.require_admission` recomputes the positive raw
+evidence baseline. It requires `validated_scoped`, both startup/timing producer
+descriptors, complete native source reconstruction and the common six-file
+runtime. It also verifies the original build origin and independent review
+bindings described below. Missing or contradictory gates raise
+`AdmissionError`, a `ValueError` subclass, before a controller launches a child.
+Its deterministic result separately derives `controller_admission: true` while
+retaining `production_accepted: false`. The scoped native report itself keeps
+both admission fields false. This grants only the documented local controller
+scope, with no general full-game determinism or build-execution attestation.
+
+### Admission and build-origin schemas
+
+Every reference below is exactly `{"path": relative_POSIX_path, "sha256":
+lowercase_SHA256}`. The spec itself and all nested referenced files must reside
+under the explicit evidence root. Links, absolute reference paths and traversal
+are rejected. Preserve the original bytes, including line endings.
+
+The controller spec has exactly four keys:
+
+| Key | Required value |
+| --- | --- |
+| `contract` | `portable-visual-controller-admission-v1` |
+| `candidate` | Reference to the portable native acceptance candidate |
+| `build_origin` | Reference to the build-origin document |
+| `review` | Reference to the independent review document |
+
+The build-origin document uses `contract: portable-native-build-origin-v1`,
+`kind: fresh` or `historical`, `record` as a reference to the **original** build
+record, and `build_sources` as a map from every native patched filename to its
+explicit hashed source-file reference. Its keys must equal the complete
+reconstructed patched-file inventory. The bytes behind every reference must
+match reconstruction and current provenance; a declared hash map alone is
+insufficient.
+
+For `fresh`, `record` is the original output of
+`scripts/write_native_provenance.py`, with `source_commit`, a complete
+`source_files_sha256` map and matching `patch_sha256`. A
+`production_reuse_of_tested_build` record cannot be presented as a fresh build.
+For `historical`, `record` is the original diagnostic build manifest, with
+`base_commit` and a nonempty `candidate_source_sha256` subset whose entries all
+match the complete map. Historical origins additionally require `integration`
+as a hashed reference to the original integration document. That document must
+contain:
+
+| Key | Required value |
+| --- | --- |
+| `contract` | `native-production-integration-plan-v1` |
+| `candidate_dll_sha256` | Admitted DLL hash |
+| `staged_complete_patch_sha256` | Admitted cumulative patch hash |
+| `complete_patch_paths` | Exact complete patched-file inventory |
+| `staged_sha256` | Complete matching `native-source/<filename>` hash entries |
+
+Backslashes in historical integration labels are normalized for comparison;
+they are not paths to read from the machine. Historical diagnostic scope stays
+historical. For either kind, the original timezone-aware `built_at`, DLL
+hash/size, native base, platform, game version and every required native
+capability must match current provenance. `toolchain.image_id` must be nonempty
+and match. The recorded `build_command` (or `command`) must match after decoding
+JSON-list strings when present. Compiler identities must be present on both
+sides or absent on both; recorded labels compare ignoring case and whitespace.
+Missing compiler evidence is never manufactured.
+
+### Independent review and mutation receipts
+
+The review document contains `contract: portable-native-admission-review-v1`,
+`reviewer`, `bindings` and `mutations`. `reviewer` must identify a nonempty `id`
+and explicitly declare `independent_of_producer: true`. The required baseline
+bindings are:
+
+| Binding | Required value |
+| --- | --- |
+| `candidate_sha256` | `spec.candidate.sha256` |
+| `build_origin_sha256` | `spec.build_origin.sha256` |
+| `source_sha256` | `native_acceptance.source_digest(report.source_files)` |
+| `verification_sha256` | `native_acceptance.source_digest(report)` |
+| `verifier_sources` | Exact source-map entries for the three verifier files below |
+
+The three verifier paths are
+`harness/src/ftl_bench/native_acceptance.py`,
+`harness/src/ftl_bench/native_build_origin.py` and
+`harness/src/ftl_bench/controller_admission.py`. Here `report` means the
+recomputed positive native report for the referenced candidate and exact source
+checkout. Use the implementation's `source_digest` for both bindings, including
+the whole report; do not substitute the SHA of a pretty-printed JSON file.
+
+`mutations` must contain exactly eight rows, each with exactly `id` and
+`evidence` keys. `evidence` is a hashed reference to the reviewer's saved
+negative-probe receipt. The unique IDs are `source`, `bridge`,
+`native_artifact`, `build_origin`, `runtime_baseline`, `trial_inventory`,
+`capture_actions` and `cleanup`. Each referenced receipt must contain:
+
+| Key | Required value |
+| --- | --- |
+| `case` | The row's same mutation ID |
+| `candidate_sha256` | The review's candidate binding |
+| `build_origin_sha256` | The review's build-origin binding |
+| `verifier_sources` | The review's exact verifier source map |
+| `rejected` | `true`, recording an actually rejected negative probe |
+| `error` | Nonempty observed rejection error |
+| `method` | Nonempty description of the executed negative probe |
+
+The reviewer must actually execute meaningful negative probes and retain their
+methods and observed errors. These hash-bound receipts are independent-review
+attestations: admission recomputes the positive baseline and checks their
+bindings, but does not replay the reviewer's mutation procedure. Do not generate
+passing review receipts automatically from a positive validator result.
+
+Original build records and the reviewer identity/independence declaration are
+**explicit provenance trust anchors**. Their hashes bind the recorded bytes;
+they are not cryptographic proof that a compiler ran or that the reviewer is
+independent. An empty reviewer name, an acceptance boolean or rewritten build
+labels cannot replace the original records and declarations.
+
+### Offline verification and prospective freeze commands
+
+Run from a source checkout with its `harness/src` package, not an installed
+wheel's bundled source root. This file-only command prints derived admission
+without game/model operations or writing a review receipt. Replace the evidence
+root and spec filename with the reviewed collection's real paths; uv runs from
+`harness/`:
+
+```powershell
+@'
+import json
+from pathlib import Path
+from ftl_bench.controller_admission import require_admission
+root = Path("..").resolve()
+evidence = root / "harness/runs/validation/visual-v1/main-admission-<UTC>"
+result = require_admission(evidence / "controller-admission-spec.json",
+                           source_root=root, evidence_root=evidence)
+print(json.dumps(result, indent=2))
+'@ | uv run --directory harness python -
+```
+
+After independent review accepts that exact collection, use a new output
+directory and both freeze-only options. These are command templates, not a
+claim that such a reviewed collection currently exists:
+
+```powershell
+uv run --directory harness python ../scripts/run_visual_experiment.py freeze --output runs/visual/portable-matrix-<UTC> --native-evidence runs/validation/visual-v1/main-admission-<UTC>/controller-admission-spec.json --evidence-root runs/validation/visual-v1/main-admission-<UTC>
+uv run --directory harness python ../scripts/run_fullgame_experiment.py freeze --output runs/visual/portable-fullgame-<UTC> --native-evidence runs/validation/visual-v1/main-admission-<UTC>/controller-admission-spec.json --evidence-root runs/validation/visual-v1/main-admission-<UTC>
+```
+
+The paired options select exactly `ftl-visual-challenge-matrix-v2` and
+`ftl-fullgame-experiment-v2`, respectively. Supplying only one option, or either
+portable option for `run`, `report` or `stop`, is rejected. Omitting both retains
+the existing v1 admission path and conditions.
+
+The controller creates the cohort exclusively. `freeze_admission` exclusively
+creates `native-evidence/` containing every consumed evidence file, preserving
+evidence-relative paths, and `frozen-source/` containing separately pinned
+executable source bytes. It recomputes admission from the copied evidence.
+There is no separate manifest: `protocol.json` stores `admission_selector`
+with exactly `contract`, `spec`, `evidence_files`, `source_files` and `admission`;
+`spec` is a relative hashed reference. Protocol source pins remain separate
+from evidence pins. Keep failed partial archives and use a new directory.
+
+Verification requires exact archived inventories, identical recomputed
+admission and matching current/archived source bytes. Extra, missing, changed,
+unsafe or linked files reject. Relocation preserves the evidence layout and
+bytes but still requires the matching executable source checkout. Portable
+failure never falls back to legacy admission.
+
+Before each new cell, the controller checks the frozen admission and installed
+six-file runtime. Inside protected children, after deployment and before the
+first model request, a second gate checks the frozen protocol, actual cell
+configuration, six installed hashes/native provenance and deployed Lua.
+Fullgames require production Lua; challenges require its exactly regenerated
+fixture derivative. Existing per-decision guards remain active.
+`trial/controller-admission.json` is written exclusively, retaining acceptance
+or rejection, protocol/spec hashes, configuration, derived admission, installed
+runtime and deployed bridge hash. `run.json` pins that receipt's hash. Rejection
+records a technical failure with zero model calls and normal protected cleanup.
+Saved report audits join the receipt to cohort protocol bytes, run manifest and
+runtime fingerprint; a failed join excludes a challenge trial or prevents a
+verified fullgame completion. Dashboard provenance remains a saved audit, not a
+new live runtime/save inspection. Budgets, ordering, cooperative stop, no-retry
+rules and native-ending completion requirements remain unchanged.
+
+The optional `test_portable_admission_flow.py` exercises raw validation through
+admission and relocated archives with synthetic build/review fixtures. It needs
+authenticated native base objects: select a local repository explicitly with
+`FTL_NATIVE_SOURCE_TEST_REPOSITORY`, or a collected proof JSON under the checkout
+with `FTL_NATIVE_SOURCE_TEST_PROOF`. Without either input the test reports a skip;
+it never fetches Git objects. Its test-only reviewer records are not independent
+review evidence and cannot establish live admission.
+
 ## Measured main-checkout example
 
 The 2026-10-11 collection `main-native-20261011-0330` used the producer source

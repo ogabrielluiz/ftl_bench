@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import sys
 import time
 from uuid import uuid4
 
@@ -17,6 +18,7 @@ from ftl_bench.scoring import achieved_metrics
 from ftl_bench.scenario import Scenario, SubObjective
 from ftl_bench.session import ftl_user_folder
 from ftl_bench.trajectory import TrajectoryRecorder, load_trajectory
+from ftl_bench.visual_admission import admit_trial, trial_configuration
 from ftl_bench.visual_session import (ExternalInputInterference, VisualFrame, VisualSession, validate_visual_clock,
                                       VISUAL_CLOCK_VERSION, FIXED_STEP_NUMERATOR, FIXED_STEP_DENOMINATOR)
 from visual_agent import CodexVisualAgent, VisualObservation, VisualProtocolError, VisualBackendError, _codex_executable
@@ -328,6 +330,8 @@ def main(argv: list[str] | None = None) -> None:
                         help="Stop after this many consecutive empty, zero-frame decisions (default: 8)")
     parser.add_argument("--max-wall-seconds", type=float, default=14400)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--experiment-file", type=Path,
+                        help="Portable full-game controller protocol to verify before model calls")
     parser.add_argument("--stop-file", type=Path)
     parser.add_argument("--stop-scope")
     args = parser.parse_args(argv)
@@ -390,6 +394,19 @@ def main(argv: list[str] | None = None) -> None:
             fingerprint = runtime_fingerprint(ROOT)
             fingerprint["codex_cli"] = client
             (directory / "runtime-fingerprint.json").write_text(json.dumps(fingerprint, indent=2), encoding="utf-8")
+            if args.experiment_file is not None:
+                sys.path.insert(0, str(ROOT / "scripts"))
+                from run_fullgame_experiment import verify_protocol
+                bridge_hash = hashlib.sha256(bridge.read_bytes()).hexdigest()
+                try:
+                    admit_trial(experiment_file=args.experiment_file, output=directory, source_root=ROOT,
+                                fingerprint=fingerprint, cli_identity=client, production_hash=bridge_hash,
+                                deployed_hash=bridge_hash, verify_protocol=verify_protocol,
+                                configuration=trial_configuration(args))
+                finally:
+                    if (directory / "controller-admission.json").is_file():
+                        write_manifest(controller_admission_sha256=hashlib.sha256(
+                            (directory / "controller-admission.json").read_bytes()).hexdigest())
             if not (fingerprint.get("native_build") or {}).get("matches_installed_dll"):
                 raise RuntimeError("Installed native DLL does not match its build provenance")
             native_build = fingerprint["native_build"]

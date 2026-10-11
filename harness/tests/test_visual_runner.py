@@ -781,3 +781,83 @@ def test_startup_stop_is_recorded_before_protected_save_cleanup(tmp_path, protec
         runner.main(["--output", str(directory), "--stop-file", str(stop), "--stop-scope", "startup-test"])
     assert events == ["launch", "stop", "restore"] and not agent.seen
     assert (save / "continue.sav").read_bytes() == original
+
+
+@pytest.fixture
+def portable_fullgame(tmp_path, protected_cli, monkeypatch):
+    from ftl_bench import visual_admission
+    from ftl_bench.native_acceptance import CAPABILITIES, RUNTIME_FILES
+    import run_fullgame_experiment as controller
+    _, _, events, state, _ = protected_cli
+    cohort = tmp_path / "portable-cohort"
+    cohort.mkdir()
+    protocol_file = cohort / "protocol.json"
+    directory = cohort / "trials/fullgame/gpt-6.1-sol/image"
+    bridge_hash = hashlib.sha256((runner.ROOT / "mod/ftl_bench_bridge/dev/ftl_bench_dev.lua").read_bytes()).hexdigest()
+    files = {name: "a" * 64 for name in RUNTIME_FILES}
+    build = {**CAPABILITIES, "matches_installed_dll": True, "dll_sha256": "a" * 64, "patch_sha256": "b" * 64}
+    admitted = {"runtime_files": files, "runtime": {"dll_sha256": "a" * 64,
+                "patch_sha256": "b" * 64, "production_bridge_sha256": bridge_hash}}
+    protocol = {"contract": visual_admission.FULLGAME_CONTRACT,
+                "codex_cli": runner.codex_runtime_identity(), "seed": 1, "reasoning_effort": "medium",
+                "budgets": {"decisions": 1, "wall_seconds": 14400, "idle_decisions": 8},
+                "cells": [controller.plan_cells()[1]],
+                "admission_selector": {"spec": {"sha256": "c" * 64}, "admission": admitted}}
+    protocol_file.write_text(json.dumps(protocol), encoding="utf-8")
+    def verify(received, *, directory, verify_installed):
+        events.append("portable-gate")
+        assert directory == cohort and verify_installed is False and received == protocol
+        if state["failure"] == "archive":
+            raise ValueError("Archived evidence changed")
+    def installed(root):
+        actual = dict(files)
+        if state["failure"] == "runtime":
+            actual["ftl.dat"] = "d" * 64
+        return {"files_sha256": actual, "native_build": build}
+    def fingerprint(root):
+        events.append("fingerprint")
+        return {"native_build": build, "native_dll": {"sha256": files["Hyperspace.dll"]},
+                "bridge_lua": {"sha256": "e" * 64 if state["failure"] == "bridge" else bridge_hash}}
+    monkeypatch.setattr(controller, "verify_protocol", verify)
+    monkeypatch.setattr(visual_admission, "installed_runtime", installed)
+    monkeypatch.setattr(runner, "runtime_fingerprint", fingerprint)
+    return protocol_file, directory, protocol
+
+
+def test_portable_fullgame_gate_precedes_actor_and_preserves_cleanup(portable_fullgame, protected_cli):
+    from ftl_bench.visual_admission import audit_trial_admission
+    protocol_file, directory, protocol = portable_fullgame
+    save, original, events, _, agent = protected_cli
+    runner.main(["--output", str(directory), "--experiment-file", str(protocol_file), "--max-decisions", "1"])
+    receipt = json.loads((directory / "controller-admission.json").read_text())
+    assert receipt["accepted"] is True and len(agent.seen) == 1
+    assert events.index("portable-gate") < events.index("reset_episode")
+    assert events[-2:] == ["stop", "restore"]
+    assert (save / "continue.sav").read_bytes() == original
+    assert not audit_trial_admission(directory, protocol, protocol_file=protocol_file)
+
+
+@pytest.mark.parametrize("failure, overrides", [
+    ("archive", []), ("runtime", []), ("bridge", []),
+    (None, ["--model", "gpt-6-luna"]), (None, ["--mode", "hybrid"]),
+    (None, ["--seed", "2"]), (None, ["--reasoning-effort", "high"]),
+    (None, ["--max-decisions", "2"]), (None, ["--max-wall-seconds", "60"]),
+    (None, ["--max-idle-decisions", "3"]), (None, ["--stop-after-sector", "1"]),
+])
+def test_portable_fullgame_rejection_retains_receipt_without_calls(
+        portable_fullgame, protected_cli, failure, overrides):
+    protocol_file, directory, _ = portable_fullgame
+    save, original, events, state, agent = protected_cli
+    state["failure"] = failure
+    with pytest.raises(ValueError):
+        runner.main(["--output", str(directory), "--experiment-file", str(protocol_file),
+                     "--max-decisions", "1", *overrides])
+    receipt = json.loads((directory / "controller-admission.json").read_text())
+    manifest = json.loads((directory / "run.json").read_text())
+    assert receipt["accepted"] is False and receipt["error"]
+    assert manifest["controller_admission_sha256"] == hashlib.sha256(
+        (directory / "controller-admission.json").read_bytes()).hexdigest()
+    assert manifest["reason"] == "protected_run_failed" and manifest["save_restoration"] == "verified"
+    assert events[-2:] == ["stop", "restore"] and "reset_episode" not in events and not agent.seen
+    assert (save / "continue.sav").read_bytes() == original
+    assert not (save / "generated.sav").exists()

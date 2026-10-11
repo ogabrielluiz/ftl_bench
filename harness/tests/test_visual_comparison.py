@@ -264,3 +264,111 @@ def test_comparison_exact_selection_roundtrips_through_replay_and_image_routes(m
     assert status == 200 and image == png
     (trial / "first.png").write_bytes(png + b"tampered")
     assert asgi_request(app, "/api/artifact", query)[0] == 404
+
+
+def portable_selector():
+    ref = {"path": "admission.json", "sha256": "a" * 64}
+    return {"contract": "portable-visual-controller-admission-v1", "spec": ref,
+        "source_files": {}, "evidence_files": {"admission.json": ref["sha256"]},
+        "admission": {"candidate": {"path": "candidate.json", "sha256": "b" * 64},
+            "build_origin": {"path": "origin.json", "sha256": "c" * 64},
+            "review": {"path": "review.json", "sha256": "d" * 64},
+            "reviewer": {"id": "explicit-reviewer", "independent_of_producer": True},
+            "runtime": {"dll_sha256": "e" * 64}, "runtime_files": {"Hyperspace.dll": "e" * 64}}}
+
+
+def upgrade_saved_protocol(directory, contract):
+    protocol = json.loads((directory / "protocol.json").read_text())
+    protocol.pop("protocol_sha256")
+    protocol.update(contract=contract, admission_selector=portable_selector())
+    protocol["protocol_sha256"] = hashlib.sha256(json.dumps(protocol,
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+    save(directory / "protocol.json", protocol)
+    ledger = json.loads((directory / "ledger.json").read_text())
+    ledger["protocol_sha256"] = protocol["protocol_sha256"]
+    for cell in ledger["cells"]:
+        for check in cell.get("cleanup_checks", []):
+            path = directory / check["path"]
+            receipt = json.loads(path.read_text())
+            receipt["protocol_sha256"] = protocol["protocol_sha256"]
+            save(path, receipt)
+            check["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    save(directory / "ledger.json", ledger)
+    report = json.loads((directory / "comparison.json").read_text())
+    report.update(contract=contract, protocol_sha256=protocol["protocol_sha256"])
+    save(directory / "comparison.json", report)
+    return protocol
+
+
+def test_v2_matrix_exposes_stored_provenance_without_a_live_verifier(matrix, monkeypatch):
+    root, directory, _, report = matrix
+    protocol = upgrade_saved_protocol(directory, "ftl-visual-challenge-matrix-v2")
+    result = comparison.comparison_view(root, "matrix")
+    assert result["contract"] == protocol["contract"]
+    assert result["conditions"] == report["conditions"]
+    assert result["stored_admission"]["candidate"] == protocol["admission_selector"]["admission"]["candidate"]
+    assert result["stored_admission"]["reviewer"]["id"] == "explicit-reviewer"
+    assert result["stored_admission"]["runtime"]["dll_sha256"] == "e" * 64
+    assert "does not rerun admission" in result["stored_admission"]["source"]
+    # No native-evidence directory exists: this is stored metadata, not a claim
+    # that the dashboard independently admitted the cohort or installed runtime.
+    assert not (directory / "native-evidence").exists()
+
+
+@pytest.mark.parametrize("contract", [None, "ftl-visual-challenge-matrix-v1", "ftl-fullgame-experiment-v2", "unknown"])
+def test_v2_matrix_report_requires_exact_protocol_contract(matrix, contract):
+    root, directory, _, _ = matrix
+    upgrade_saved_protocol(directory, "ftl-visual-challenge-matrix-v2")
+    report = json.loads((directory / "comparison.json").read_text())
+    if contract is None:
+        report.pop("contract")
+    else:
+        report["contract"] = contract
+    save(directory / "comparison.json", report)
+    result = comparison.comparison_view(root, "matrix")
+    assert result["conditions"] == [] and result["issues"]
+    assert result["qualified_scoped_comparison"] is False
+
+
+def test_unknown_protocol_is_rejected_even_with_matching_report(matrix):
+    root, directory, _, _ = matrix
+    upgrade_saved_protocol(directory, "ftl-visual-challenge-matrix-v99")
+    with pytest.raises(ValueError, match="not a visual matrix"):
+        comparison.comparison_view(root, "matrix")
+
+
+def test_v1_explicit_wrong_contract_rejected_but_absent_legacy_field_remains_valid(matrix):
+    root, directory, _, report = matrix
+    assert comparison.comparison_view(root, "matrix")["conditions"] == report["conditions"]
+    report["contract"] = "ftl-visual-challenge-matrix-v2"
+    save(directory / "comparison.json", report)
+    assert comparison.comparison_view(root, "matrix")["conditions"] == []
+
+
+def test_v2_fullgame_preserves_native_cleanup_and_audit_joins(tmp_path):
+    from test_fullgame_comparison import fullgame
+    root, directory, _, _, report = fullgame.__wrapped__(tmp_path)
+    upgrade_saved_protocol(directory, "ftl-fullgame-experiment-v2")
+    view = comparison.comparison_view(root, "fullgame")
+    assert view["fullgame_summary"] == report["counts"]
+    assert view["trials"][1]["verified_fullgame_complete"] is True
+    assert view["trials"][0]["verified_fullgame_complete"] is False
+    assert view["trials"][2]["verified_fullgame_complete"] is False
+    assert view["stored_admission"]["reviewer"]["id"] == "explicit-reviewer"
+    trial = directory / "trials" / view["trials"][1]["id"]
+    (trial / "trajectory.jsonl").write_text('{"kind":"end","reason":"native_victory"}\n')
+    tampered = comparison.comparison_view(root, "fullgame")
+    assert tampered["fullgame_summary"] is None
+    assert tampered["trials"][1]["verified_fullgame_complete"] is None
+    assert tampered["issues"]
+
+
+def test_v2_fullgame_does_not_accept_a_v1_report(tmp_path):
+    from test_fullgame_comparison import fullgame
+    root, directory, _, _, _ = fullgame.__wrapped__(tmp_path)
+    upgrade_saved_protocol(directory, "ftl-fullgame-experiment-v2")
+    report = json.loads((directory / "comparison.json").read_text())
+    report["contract"] = "ftl-fullgame-experiment-v1"
+    save(directory / "comparison.json", report)
+    view = comparison.comparison_view(root, "fullgame")
+    assert view["fullgame_summary"] is None and view["issues"]

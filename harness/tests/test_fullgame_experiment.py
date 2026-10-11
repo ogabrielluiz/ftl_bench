@@ -16,6 +16,82 @@ controller = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(controller)
 
 
+@pytest.mark.parametrize("operation,flags", [
+    ("freeze", ["--native-evidence", "spec.json"]),
+    ("freeze", ["--evidence-root", "evidence"]),
+    *[(op, ["--native-evidence", "spec.json", "--evidence-root", "evidence"])
+      for op in ("run", "report", "stop")],
+])
+def test_portable_options_are_paired_and_freeze_only(tmp_path, operation, flags):
+    with pytest.raises(SystemExit) as error:
+        controller.main([operation, "--output", str(tmp_path / "new"), *flags])
+    assert error.value.code == 2
+    assert not (tmp_path / "new").exists()
+
+
+def test_portable_fullgame_freeze_and_child_use_frozen_protocol(tmp_path, monkeypatch):
+    sources = {"scripts/run_fullgame_experiment.py": "a" * 64}
+    runtime = {"dll_sha256": "b" * 64}
+    files = {"Hyperspace.dll": runtime["dll_sha256"]}
+    admission = {"source_files": sources, "runtime": runtime, "runtime_files": files}
+    selector = {"source_files": sources, "admission": admission}
+    installed = {"files_sha256": files, "native_build": {"id": "build"}}
+    calls = []
+    def archive(directory, spec, **kwargs):
+        assert directory.is_dir()
+        return selector
+    monkeypatch.setattr(controller.portable, "freeze_admission", archive)
+    monkeypatch.setattr(controller.portable, "verify_admission", lambda directory, selected, **kwargs: admission)
+    monkeypatch.setattr(controller.portable, "installed_runtime", lambda root: installed)
+    monkeypatch.setattr(controller.portable, "require_installed", lambda a, i: calls.append((a, i)))
+    monkeypatch.setattr(controller, "source_identity", lambda *a: pytest.fail("legacy source lookup"))
+    monkeypatch.setattr(controller, "archive_sources", lambda *a: pytest.fail("duplicate archive"))
+    monkeypatch.setattr(controller, "codex_runtime_identity", lambda: {"cli": "pinned"})
+    monkeypatch.setattr(controller.CodexVisualAgent, "instruction_identity", lambda self: {"actor": "pinned"})
+    directory = tmp_path / "cohort"
+    protocol = controller.freeze(directory, native_evidence=tmp_path / "spec.json", evidence_root=tmp_path)
+    assert protocol["contract"] == controller.portable.FULLGAME_CONTRACT
+    assert protocol["admission_selector"] == selector
+    assert protocol["tested_runtime"] == {"files_sha256": files}
+    assert "deployed_bridge_sha256" not in protocol["installed_runtime"]
+    with pytest.raises(RuntimeError, match="cohort directory"):
+        controller.verify_protocol(protocol)
+    controller.verify_protocol(protocol, directory=directory)
+    assert len(calls) == 2
+    monkeypatch.setattr(controller.portable, "installed_runtime", lambda root: pytest.fail("installed check"))
+    controller.verify_protocol(protocol, directory=directory, verify_installed=False)
+    command = controller.trial_command(directory, controller.plan_cells()[1], protocol)
+    assert command[command.index("--experiment-file") + 1] == str(directory / "protocol.json")
+    report = controller.refresh_summary(directory, {"protocol_sha256": protocol["protocol_sha256"],
+                                                   "cells": controller.plan_cells()}, protocol)
+    assert report["contract"] == protocol["contract"]
+
+
+def test_portable_fullgame_rejection_never_falls_back(tmp_path, monkeypatch):
+    protocol = {"contract": controller.portable.FULLGAME_CONTRACT, "seed": 1,
+                "budgets": controller.BUDGETS, "reasoning_effort": "medium", "cells": controller.plan_cells()}
+    protocol["protocol_sha256"] = controller.digest(protocol)
+    monkeypatch.setattr(controller.portable, "verify_admission", lambda *a, **kw:
+                        (_ for _ in ()).throw(ValueError("archive changed")))
+    monkeypatch.setattr(controller, "source_identity", lambda *a: pytest.fail("legacy fallback"))
+    with pytest.raises(ValueError, match="archive changed"):
+        controller.verify_protocol(protocol, directory=tmp_path)
+
+
+def test_portable_rejection_blocks_fullgame_child_creation(tmp_path, monkeypatch):
+    protocol = {"contract": controller.portable.FULLGAME_CONTRACT, "seed": 1,
+                "budgets": controller.BUDGETS, "reasoning_effort": "medium", "cells": controller.plan_cells()}
+    protocol["protocol_sha256"] = controller.digest(protocol)
+    controller.write(tmp_path / "protocol.json", protocol)
+    controller.write(tmp_path / "ledger.json", {"protocol_sha256": protocol["protocol_sha256"],
+                                              "cells": controller.plan_cells()})
+    monkeypatch.setattr(controller.portable, "verify_admission", lambda *a, **kw:
+                        (_ for _ in ()).throw(ValueError("runtime substituted")))
+    monkeypatch.setattr(controller.subprocess, "Popen", lambda *a, **kw: pytest.fail("child launched"))
+    with pytest.raises(ValueError, match="runtime substituted"):
+        controller.run(tmp_path, 1)
+
+
 def test_declared_pilot_and_four_fullgames_have_fixed_matched_conditions(tmp_path):
     cells = controller.plan_cells()
     assert len(cells) == 5 and cells[0]["scope"] == "sector_pilot"
@@ -178,6 +254,28 @@ def test_actual_saved_audit_native_loss_and_budget_attribution(tmp_path):
     assert result["integrity_passed"], result["issues"]
     assert result["verified_fullgame_complete"] and result["native_outcome"] == "defeat"
     assert result["model_calls"]["calls"] == 1
+
+
+def test_portable_missing_child_admission_excludes_native_completion(tmp_path):
+    cell, protocol, _ = trial_fixture(tmp_path)
+    protocol["contract"] = controller.portable.FULLGAME_CONTRACT
+    result = controller.audit_trial(tmp_path, cell, protocol)
+    assert not result["integrity_passed"]
+    assert not result["verified_fullgame_complete"]
+    assert result["native_outcome"] == "defeat"
+    assert any(issue.startswith("Controller admission:") for issue in result["issues"])
+
+
+def test_saved_admission_rejection_reaches_fullgame_totals(tmp_path):
+    cell, protocol, path = trial_fixture(tmp_path)
+    protocol.update(contract=controller.portable.FULLGAME_CONTRACT, cells=controller.plan_cells(), scope="test")
+    controller.write(path / "controller-admission.json", {"accepted": False, "error": "runtime mismatch"})
+    ledger = {"protocol_sha256": protocol["protocol_sha256"], "cells": controller.plan_cells()}
+    ledger["cells"][1]["status"] = "finished"
+    result = controller.refresh_summary(tmp_path, ledger, protocol)
+    assert result["counts"]["verified_fullgame_completions"] == 0
+    assert result["counts"]["incomplete_fullgames"] == 1
+    assert any(issue.startswith("Controller admission:") for issue in result["trials"][0]["issues"])
 
 
 @pytest.mark.parametrize("mutation", ["recorded_reasoning", "call_reasoning", "requested_model", "terminal_budget", "report_budget", "metadata_budget", "metadata_seed"])
@@ -346,7 +444,7 @@ def fake_controller(tmp_path, monkeypatch):
     protocol = {"protocol_sha256": "hash", "seed": 1, "budgets": controller.BUDGETS, "reasoning_effort": "medium"}
     controller.write(tmp_path / "protocol.json", protocol)
     controller.write(tmp_path / "ledger.json", {"protocol_sha256": "hash", "cells": controller.plan_cells()})
-    monkeypatch.setattr(controller, "verify_protocol", lambda protocol: None)
+    monkeypatch.setattr(controller, "verify_protocol", lambda protocol, **kwargs: None)
     monkeypatch.setattr(controller.shared, "controller_lock", lambda directory: nullcontext())
     monkeypatch.setattr(controller, "refresh_summary", lambda *args: None)
     monkeypatch.setattr(controller, "require_audited_cleanup", lambda *args: None)

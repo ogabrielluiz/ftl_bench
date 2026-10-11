@@ -31,8 +31,12 @@ in Git; the frozen controllers need those artifacts and a matching runtime.
 Fresh-checkout setup of that complete evidence chain remains WIP. The
 [portable evidence tools](docs/native-acceptance.md) collect protected startup
 and timing probes, require a common recorded runtime, and optionally reconstruct
-all patched native sources from authenticated Git objects. They verify their
-documented scopes without promoting a runtime.
+all patched native sources from authenticated Git objects. An optional v2
+controller workflow archives that evidence with original build records and an
+independent review. It verifies installed bytes and frozen trial settings before
+model calls, retaining accepted and rejected gates in the replay artifacts.
+Fresh live validation of this controller workflow remains WIP; finite evidence
+checks do not establish general runtime or full-game acceptance.
 
 ## Visual iteration
 
@@ -81,6 +85,19 @@ attempts. It retains interrupted responses and cleanup evidence. Only verified
 native victory or defeat completes a full game; budget stops and the pilot do not.
 Stopped attempts remain recorded as interrupted; use a fresh output directory
 for a new experiment after a stop request.
+
+The commands above retain the historical local acceptance workflow. For a new
+source checkout, the [portable admission workflow](docs/native-acceptance.md#prospective-portable-controller-admission)
+documents the required source-bound diagnostics, original build evidence and
+independent review. Once that evidence passes, select it explicitly when freezing:
+
+```powershell
+harness/.venv/Scripts/python.exe scripts/run_fullgame_experiment.py freeze --output harness/runs/visual/fullgame-portable-001 --native-evidence harness/runs/acceptance/admission.json --evidence-root .
+```
+
+Both flags are required together and only apply to `freeze`; the same flags work
+with the challenge controller. A new cohort retains all consumed evidence and
+source bytes. Changed sources require fresh diagnostics and a new cohort.
 
 ## Local setup
 

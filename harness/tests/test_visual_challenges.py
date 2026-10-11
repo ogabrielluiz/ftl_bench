@@ -455,6 +455,160 @@ def test_stop_scope_requires_file_before_runtime_identity(monkeypatch):
         challenge.main(["--stop-scope", "cohort"])
 
 
+@pytest.fixture
+def portable_child(tmp_path, monkeypatch):
+    """Real child/admission gates with offline lifecycle and baseline boundaries."""
+    from contextlib import contextmanager
+    from ftl_bench import visual_admission, native_acceptance
+    from ftl_bench.controller_admission import AdmissionError
+    from test_challenge_setup import first_frame, good_packets
+    monkeypatch.syspath_prepend(str(_bench_root() / "scripts"))
+    import run_visual_experiment
+    cohort = tmp_path / "cohort"
+    cohort.mkdir()
+    cli = {"path": "offline-cli", "sha256": "1" * 64}
+    production_hash = challenge.digest((_bench_root() / native_acceptance.BRIDGE).read_bytes())
+    runtime = {**native_acceptance.CAPABILITIES, "dll_sha256": "2" * 64,
+               "patch_sha256": "3" * 64, "production_bridge_sha256": production_hash}
+    installed = {"files_sha256": {name: challenge.digest(name.encode()) for name in native_acceptance.RUNTIME_FILES},
+                 "native_build": {**runtime, "matches_installed_dll": True}}
+    installed["files_sha256"]["Hyperspace.dll"] = runtime["dll_sha256"]
+    protocol = {"contract": "ftl-visual-challenge-matrix-v2", "models": ["gpt-6.1-sol", "gpt-6-luna"],
+        "modes": ["image", "hybrid"], "challenges": list(challenge.TASKS), "repetitions": 3,
+        "seed": 1, "reasoning_effort": "medium", "budgets": {"decisions": 60, "wall_seconds": 1800, "idle_decisions": 8},
+        "codex_cli": deepcopy(cli), "native_acceptance": {"runtime": runtime},
+        "tasks": {name: challenge.task_identity(name) for name in challenge.TASKS},
+        "task_versions": dict(challenge.TASK_VERSIONS),
+        "admission_selector": {"spec": {"sha256": "4" * 64},
+            "admission": {"runtime": runtime, "runtime_files": deepcopy(installed["files_sha256"])}}}
+    protocol_file = cohort / "protocol.json"
+    protocol_file.write_text(json.dumps(protocol))
+    args = challenge.parser().parse_args(["--challenge", "combat", "--experiment-file", str(protocol_file)])
+    output = cohort / "trials/gpt-6.1-sol/image/combat/repeat-01/repetition-01/combat"
+    events, state = [], {"archive_valid": True, "bridge_valid": True, "actor_calls": 0}
+    user = tmp_path / "user"
+    user.mkdir()
+    class Protected:
+        def __init__(self, user, backup, bridge):
+            self.backup, self.bridge = backup, bridge
+        @contextmanager
+        def protected(self):
+            events.append("protected")
+            try:
+                yield self
+            finally:
+                events.append("cleanup")
+                self.backup.mkdir(parents=True)
+                (self.backup / "restoration.json").write_text('{"verified":true}')
+        def launch(self):
+            events.append("deploy")
+            data = self.bridge.read_bytes()
+            (user / "ftl_bench_dev.lua").write_bytes(data)
+            state["fixture_hash"] = challenge.digest(data)
+    def fingerprint(root):
+        return {"native_dll": {"sha256": runtime["dll_sha256"]},
+            "native_build": deepcopy(installed["native_build"]),
+            "bridge_lua": {"sha256": state["fixture_hash"] if state["bridge_valid"] else "5" * 64}}
+    def baseline(value, *, directory, verify_installed):
+        events.append("baseline")
+        assert value == protocol and directory == cohort and verify_installed is False
+        assert (user / "ftl_bench_dev.lua").is_file()
+        if not state["archive_valid"]:
+            raise AdmissionError("Frozen archive byte mismatch")
+    def actual(root):
+        events.append("installed")
+        return deepcopy(installed)
+    frame = first_frame(tmp_path)
+    raw = initial("combat")
+    raw["visual"].update(frame.observation.raw["visual"])
+    frame.observation.raw = raw
+    class Actor:
+        def __init__(self, **kw):
+            events.append("actor_created")
+        def instruction_identity(self):
+            return {}
+        def decide(self, observation):
+            receipt = json.loads((output / "controller-admission.json").read_text())
+            assert receipt["accepted"] is True
+            events.append("actor_call")
+            state["actor_calls"] += 1
+            raise RuntimeError("Offline actor boundary reached")
+    def runner(transport, agent, recorder, **kw):
+        agent.decide(None)
+    monkeypatch.setattr(challenge, "ProtectedGame", Protected)
+    monkeypatch.setattr(challenge, "ftl_user_folder", lambda: user)
+    monkeypatch.setattr(challenge, "runtime_fingerprint", fingerprint)
+    monkeypatch.setattr(run_visual_experiment, "verify_protocol", baseline)
+    monkeypatch.setattr(visual_admission, "installed_runtime", actual)
+    monkeypatch.setattr(challenge, "AgentSession", lambda **kw: SimpleNamespace(setup_packets=good_packets()))
+    monkeypatch.setattr(challenge, "prepare", lambda *args: events.append("setup"))
+    monkeypatch.setattr(challenge, "VisualSession", lambda *args: SimpleNamespace(capture=lambda: frame))
+    monkeypatch.setattr(challenge, "verify_visual_setup", lambda *args: {"verified": True})
+    monkeypatch.setattr(challenge, "first_capture_proof", lambda *args: {"passed": True})
+    monkeypatch.setattr(challenge, "packet_proof", lambda *args: {"passed": True})
+    monkeypatch.setattr(challenge, "receipt_proof", lambda *args: {"passed": True})
+    monkeypatch.setattr(challenge, "CodexVisualAgent", Actor)
+    monkeypatch.setattr(challenge, "run_loop", runner)
+    def run():
+        return challenge.run_trial(args, "combat", 1, output, cli, protocol)
+    return locals()
+
+
+def test_portable_challenge_real_gate_accepts_before_actor_and_protected_cleanup(portable_child):
+    d = portable_child
+    result = d["run"]()
+    receipt = json.loads((d["output"] / "controller-admission.json").read_text())
+    manifest = json.loads((d["output"] / "run.json").read_text())
+    assert receipt["accepted"] is True and "error" not in receipt
+    assert receipt["configuration"]["model"] == d["args"].model
+    assert manifest["controller_admission_sha256"] == challenge.digest((d["output"] / "controller-admission.json").read_bytes())
+    assert d["events"].index("deploy") < d["events"].index("baseline") < d["events"].index("installed") < d["events"].index("actor_call")
+    assert d["state"]["actor_calls"] == 1 and d["events"][-1] == "cleanup"
+    assert result["save_restoration_verified"] is True
+    assert not (d["user"] / "ftl_bench_dev.lua").exists()
+
+
+@pytest.mark.parametrize("mutation", ["model", "mode", "reasoning", "decisions", "wall", "idle", "seed", "setup_only",
+    "runtime", "bridge", "archive", "cli", "output", "protocol_file"])
+def test_portable_challenge_rejection_keeps_zero_calls_receipt_and_cleanup(portable_child, mutation):
+    d = portable_child
+    if mutation in ("model", "mode", "reasoning", "decisions", "wall", "idle", "seed", "setup_only"):
+        key, value = {"model": ("model", "gpt-6-luna"), "mode": ("mode", "hybrid"),
+            "reasoning": ("reasoning_effort", "high"), "decisions": ("max_decisions", 61),
+            "wall": ("max_wall_seconds", 1801), "idle": ("max_idle_decisions", 9),
+            "seed": ("seed", 2), "setup_only": ("setup_only", True)}[mutation]
+        setattr(d["args"], key, value)
+    elif mutation == "runtime":
+        d["installed"]["files_sha256"]["FTLGame.exe"] = "6" * 64
+    elif mutation == "bridge":
+        d["state"]["bridge_valid"] = False
+    elif mutation == "archive":
+        d["state"]["archive_valid"] = False
+    elif mutation == "cli":
+        # The protocol's recorded CLI remains unchanged on disk.
+        d["cli"]["sha256"] = "7" * 64
+    elif mutation == "output":
+        # Keep every requested argument valid but bind to no frozen cell path.
+        d["output"] = d["cohort"] / "other-trial"
+    else:
+        changed = deepcopy(d["protocol"])
+        changed["contract"] = "ftl-visual-challenge-matrix-v1"
+        d["protocol_file"].write_text(json.dumps(changed))
+    if mutation == "output":
+        result = challenge.run_trial(d["args"], "combat", 1, d["output"], d["cli"], d["protocol"])
+    else:
+        result = d["run"]()
+    receipt = json.loads((d["output"] / "controller-admission.json").read_text())
+    assert receipt["accepted"] is False and receipt["error"]
+    assert d["state"]["actor_calls"] == 0
+    assert "actor_created" not in d["events"] and "setup" not in d["events"]
+    assert d["events"][-1] == "cleanup"
+    assert result["outcome_category"] == "infrastructure_failure"
+    assert result["save_restoration_verified"] is True
+    assert not any(row.get("model") for row in challenge.load_trajectory(d["output"] / "trajectory.jsonl"))
+    assert not (d["user"] / "ftl_bench_dev.lua").exists()
+
+
 def test_setup_stop_after_ack_preserves_receipt_and_prevents_next_packet(tmp_path):
     from visual_cancellation import StopControl, CooperativeStop, request_stop
     stop = tmp_path / "STOP.json"

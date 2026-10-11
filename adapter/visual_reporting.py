@@ -443,7 +443,7 @@ def audit_visual_run(directory: str | Path, *, require_terminal: bool = True,
                             "Historical save restoration relies on the recorded receipt and original backup hashes."]}
 
 
-def aggregate_visual_runs(directories, protocol: dict | None = None) -> dict:
+def aggregate_visual_runs(directories, protocol: dict | None = None, *, admission_issues=None) -> dict:
     """Compare only intact paired challenge trials under one frozen protocol.
 
     Game losses and budget stops remain outcomes. Technical failures are reported
@@ -456,7 +456,7 @@ def aggregate_visual_runs(directories, protocol: dict | None = None) -> dict:
     for supplied in directories:
         directory = Path(supplied)
         audit = audit_visual_run(directory)
-        problems = []
+        problems = list((admission_issues or {}).get(str(directory), []))
         try:
             manifest, report = _read(directory / "run.json"), _read(directory / "visual-report.json")
             experiment = report.get("experiment") or manifest.get("experiment") or {}

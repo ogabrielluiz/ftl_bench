@@ -8,6 +8,24 @@ model/observation comparison or fixture-free full-game ending is established.
 See [current results and remaining work](NEXT.md) for the dated status and
 [validation history](validation-history-2026-10-11.md) for superseded evidence.
 
+## Portable controller protocols
+
+`ftl-visual-challenge-matrix-v2` and `ftl-fullgame-experiment-v2` retain the v1
+tasks, order, budgets and completion rules while selecting explicit portable
+admission evidence at freeze time. The [admission workflow](native-acceptance.md)
+defines source/build/review joins, immutable cohort archives and the six-file
+runtime baseline. Legacy v1 cohorts continue to use their original pinned chain.
+
+Portable children verify those archives inside protected startup, then compare
+the actual runtime, deployed production or regenerated challenge Lua, and actual
+cell configuration before the first model call. The trial retains an exclusive
+`controller-admission.json` on acceptance or rejection. Saved audits require its
+protocol, runtime and manifest bindings alongside existing native/cleanup proofs;
+the dashboard shows stored admission metadata without claiming a new live audit.
+Changed sources or cell settings require a new freeze. Fresh live validation of
+v2 remains WIP; neither an offline test nor an admission receipt completes any
+game or establishes general determinism.
+
 ## Preserved cohort and prospective repairs (2026-10-11)
 
 The `matrix-fresh-v3-20261011` cohort, protocol `551c712f...`, is stopped and its
