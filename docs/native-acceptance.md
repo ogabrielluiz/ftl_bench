@@ -107,8 +107,12 @@ remain separate; historical frozen protocols are unchanged.
 
 ## Prospective portable controller admission
 
-The implemented controller workflow is **WIP with offline validation**. No
-completed live v2 controller admission is claimed. A prospective cohort requires
+The controller workflow remains **WIP with scoped live diagnostic validation**.
+The repaired runtime passed its first real collection, independent rejection
+review, local admission and v2 cohort freezes at 2026-10-11 05:41 UTC; see
+[current evidence](NEXT.md#replacement-cohorts-and-local-admission). The first
+Sol/image combat child also passed live admission before its model call; that
+trial is still running at the documented snapshot. A prospective cohort requires
 fresh main-checkout startup and all nine timing probes after executable sources
 settle and the active controller completes protected cleanup. Collect them in a
 new exclusive `harness/runs/validation/visual-v1/main-admission-<UTC>` directory,

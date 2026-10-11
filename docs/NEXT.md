@@ -1,7 +1,7 @@
 # Current validation and next work
 
-**WIP / alpha. Snapshot: 2026-10-11 05:28 UTC (02:28 in São Paulo).**
-Nine of 36 challenge cells are finished. The sector pilot ended in native defeat;
+**WIP / alpha. Snapshot: 2026-10-11 05:46 UTC (02:46 in São Paulo).**
+Nine of 36 challenge cells finished in the preserved original cohort. The sector pilot ended in native defeat;
 Sol/image full-game was cooperatively stopped at 276 decisions after a confirmed
 native store-arrival blocker froze warp. Three full-game cells remain unstarted.
 The original failed run restored all seven saves and its 15 baseline paths. No
@@ -14,8 +14,9 @@ The replacement DLL passed the protected natural store-arrival regression at
 updates at the visible store, and a successful native CLOSE click. Independent
 review checked 110 archived artifacts, all input packets, the new six-file runtime
 and exact restoration of all seven saves, with no game left running. This covers
-the reproduced defect only. Fresh startup/timing admission and replacement model
-cohorts remain required. See [store-arrival diagnosis](native-store-arrival.md).
+the reproduced defect only. Fresh startup, nine timing probes, independent
+rejection checks and local admission have now passed. Replacement cohorts are
+frozen as described below. See [store-arrival diagnosis](native-store-arrival.md).
 
 ## Implemented and verified scope
 
@@ -33,7 +34,46 @@ The visual track is `visual-v1`; historical structured runs retain runner/rulese
 v7 and their own contracts. Do not pool their scores or treat a diagnostic fixture
 ending as a fixture-free full game.
 
-## Current challenge results
+## Replacement cohorts and local admission
+
+The repaired runtime's collection is
+`harness/runs/validation/visual-v1/main-admission-20261011T053058Z` in the
+integration checkout. Fixture-free startup and all nine timing trials passed,
+including equality across delays of 0, 0.35 and 1.2 seconds for each challenge.
+Raw verification joined 541 evidence files, 78 executable source pins, the common
+six-file runtime and all 12 reconstructed native source files. Its receipt
+SHA-256 is `8ba525a10d1d9acdccd21e20ed5762db38fc6bda59338551fa899aec6234630c`.
+
+A separate reviewer agent executed eight isolated mutations. Source, bridge,
+DLL, original build timestamp, runtime baseline, trial inventory, dispatched
+capture identity and cleanup-process alterations all failed their intended
+checks. The untouched baseline passed again. Reviewer identity and the shared
+collaborating environment are disclosed in `review/review.json`. Independent
+cleanup review also matched all ten probe inventories, all seven live saves and
+the current runtime, with no FTL process remaining.
+
+`controller-admission-result.json` grants local controller admission while
+retaining `production_accepted: false`. It joins 565 evidence files and the same
+78 source pins. The admission spec SHA-256 is
+`f10dd5787e90f628902069bb54bdb5e3c5b7ea3bcf4ec668479d1154179cfcb3`.
+This measured path does not establish unrestricted gameplay or model performance.
+
+New cohorts under `harness/runs/validation/visual-v1/`:
+
+| Cohort | Protocol SHA-256 | Planned scope |
+| --- | --- | --- |
+| `matrix-portable-store-v1-20261011` | `571a892136eae9206c45f1925b04e104f69dfc1b4981d159d0a397d245673ba0` | 36 challenge cells, Sol then Luna, image and hybrid, three repetitions |
+| `fullgame-portable-store-v1-20261011` | `8210928ecb549c85aebc260165d6db00fb52a19ec8c86a1991f5cd8978f54723` | Sol/image sector pilot followed by four native-ending conditions |
+
+At freeze, all cells were planned. Sol/image combat repeat one started at
+05:43:35 UTC and passed protected child admission before the first Codex CLI
+model call. It is running at this snapshot, with 35 challenge cells and all five
+full-game-controller cells still planned. The read-only dashboard on port 8768
+reports both new cohorts without catalog issues. Prior results below belong to
+their original runtime and are not pooled into these replacement cohorts. No
+new completed result or full-game child admission is claimed yet.
+
+## Preserved challenge results
 
 Cohort: `harness/runs/validation/visual-v1/matrix-task-v2-stop-v1-20261011`.
 Protocol SHA-256:
@@ -190,8 +230,8 @@ The verification receipt SHA-256 is
 The independent check also matched all seven live saves, all 15 baseline paths
 and the six runtime assets shared by all ten diagnostics, with no game left
 running. These finite measured paths do not establish full-game determinism.
-The later controller integration described below is implemented offline; fresh
-live admission and broader acceptance remain WIP.
+The later replacement collection above refreshes local admission for the repaired
+runtime. This older receipt remains pinned to its original source and DLL.
 
 Subsequent verifier hardening requires a common six-file runtime across all ten
 diagnostics and supports authenticated reconstruction of the complete native
@@ -224,14 +264,12 @@ gates use normal protected cleanup. Saved-result audits require the bound child
 gate, and the dashboard exposes stored evidence identities with their limited
 scope. The legacy v1 cohorts keep their original behavior.
 
-This implementation has no fresh live v2 acceptance receipt yet. Source changes
-invalidate the earlier main collection for prospective admission. After the
-store-arrival repair has passed live regression and cleanup checks, collect a new
-fixture-free startup plus nine timing probes on settled main sources, retain
-original build-source evidence, and independently review that exact collection
-before freezing a portable cohort. The [workflow](native-acceptance.md) gives the
-schemas and commands. This does not replace the remaining 27 challenge cells or
-the four native-ending full-game conditions in the benchmark goal.
+The first real collection, independent review and v2 freezes passed at
+05:41 UTC. The first Sol/image combat child subsequently passed its live
+admission gate. The [workflow](native-acceptance.md) gives the schemas and commands.
+Source changes require new diagnostics and review. Admission does not replace
+the 36 replacement challenge cells or the four native-ending full-game conditions
+in the benchmark goal.
 
 The final local controller-admission suite passed **2,247 tests with 12 explicit
 skips**: eight unavailable host C++ checks, three Windows symlink checks and one
@@ -294,9 +332,10 @@ documentation snapshot, and no new release is published.
 
 ## Remaining work
 
-1. Integrate portable evidence with prospective controller admission and retain
-   the broader runtime checks. Source changes require a new evidence collection.
-2. Finish the active Sol/image game and execute the remaining 27 challenge cells and three
+1. Finish and audit the first admitted challenge trial, then exercise the
+   full-game child gate and broader gameplay checks. Executable changes require
+   a new evidence collection.
+2. Execute the replacement 36-cell challenge matrix, sector pilot and four
    fixture-free full-game conditions sequentially. Preserve every attempted
    outcome and stop for technical failures or ambiguous cleanup.
 3. Report matched conditions with denominators, exclusions, outcome reasons,

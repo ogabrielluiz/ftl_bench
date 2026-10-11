@@ -7,8 +7,9 @@ stall. The other three full-game cells remain unstarted. Original saves were
 verified restored. No complete model/observation comparison or fixture-free
 full-game ending is established. The failed cohort stays frozen; native repairs
 require new prospective cohorts and fresh validation. The replacement DLL passed
-the protected natural store/Continue/CLOSE regression at 05:28 UTC; startup and
-timing admission still need refreshing.
+the protected natural store/Continue/CLOSE regression at 05:28 UTC. Fresh startup,
+nine timing probes and independent local admission subsequently passed; replacement
+v2 cohorts were frozen at 05:41 UTC with all model cells planned.
 See [current results and remaining work](NEXT.md) for the dated status and
 [validation history](validation-history-2026-10-11.md) for superseded evidence.
 
@@ -26,9 +27,11 @@ cell configuration before the first model call. The trial retains an exclusive
 `controller-admission.json` on acceptance or rejection. Saved audits require its
 protocol, runtime and manifest bindings alongside existing native/cleanup proofs;
 the dashboard shows stored admission metadata without claiming a new live audit.
-Changed sources or cell settings require a new freeze. Fresh live validation of
-v2 remains WIP; neither an offline test nor an admission receipt completes any
-game or establishes general determinism.
+Changed sources or cell settings require a new freeze. The first real diagnostic
+collection and v2 freezes have passed, followed by live admission of the first
+Sol/image combat child. Model outcomes and full-game child admission remain WIP.
+Neither an offline test nor an admission receipt completes any game or establishes
+general determinism.
 
 ## Preserved cohort and prospective repairs (2026-10-11)
 

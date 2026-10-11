@@ -17,16 +17,17 @@ and three full-game conditions are unstarted; no full-game completion is claimed
 The repaired native runtime passed a protected store-arrival check at 05:28 UTC:
 warp finished, Continue opened the store, and CLOSE worked with exact save
 restoration. The [diagnosis](docs/native-store-arrival.md) records both defects,
-the retained failures and the limited validation scope. New runtime admission
-and replacement cohorts are still required.
+the retained failures and the limited validation scope. Fresh startup, all nine
+timing probes, independent rejection checks and local controller admission have
+passed. Replacement cohorts were frozen at 05:41 UTC; their model trials remain
+to be completed.
 
 Screenshot play, conservative image-derived HUD summaries, protected saves,
 frozen experiment controllers and dashboard replays are implemented. A complete
 model/observation comparison and fixture-free native-ending full games remain
-unproven. CI passes on Windows and Linux with Python 3.11 and 3.13. The merged
-bridge previously passed protected startup and nine measured timing probes;
-those checks must be refreshed for the repaired native runtime. These checks
-establish their documented scopes, not completion of the benchmark plan.
+unproven. CI passes on Windows and Linux with Python 3.11 and 3.13. Startup and
+nine measured timing probes passed again with the repaired native runtime. These
+checks establish their documented scopes, not completion of the benchmark plan.
 
 Read [current results, evidence and remaining work](docs/NEXT.md), the
 [experiment protocol](docs/visual-experiment-protocol.md), and
@@ -41,8 +42,9 @@ all patched native sources from authenticated Git objects. An optional v2
 controller workflow archives that evidence with original build records and an
 independent review. It verifies installed bytes and frozen trial settings before
 model calls, retaining accepted and rejected gates in the replay artifacts.
-Fresh live validation of this controller workflow remains WIP; finite evidence
-checks do not establish general runtime or full-game acceptance.
+The first portable admission and cohort freezes passed against real diagnostic
+evidence. The first Sol/image challenge child also passed its live admission
+gate and is running. Model results and complete games remain to be validated.
 
 ## Visual iteration
 

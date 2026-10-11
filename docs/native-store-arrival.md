@@ -1,8 +1,9 @@
 # Hidden store arrival diagnosis
 
 Status: both source repairs passed the protected natural arrival regression at
-2026-10-11 05:28 UTC. Broader runtime admission and new model cohorts remain
-pending. This is a harness defect, not a model gameplay failure.
+2026-10-11 05:28 UTC. Fresh startup/timing checks and local controller admission
+also passed; replacement cohorts were frozen at 05:41 UTC. Their model trials
+remain incomplete. This is a harness defect, not a model gameplay failure.
 
 ## Retained failure
 
@@ -154,7 +155,9 @@ host-compiler skips; the queued-choice regression also passed under WSL. Its
 ordinary Continue case changed from zero actual updates to one, followed by the
 store blocker.
 
-Before another model cohort, refresh the required startup/timing acceptance
-against the new runtime and complete portable controller admission. Independent
-review, archived evidence and new frozen cohort identities remain required.
+The required startup/timing refresh, independent rejection review and portable
+controller admission subsequently passed, with new frozen cohort identities.
+See [current evidence](NEXT.md#replacement-cohorts-and-local-admission). The first
+Sol/image combat child passed live admission; its completed outcome and complete
+games remain to be validated.
 Finite store-arrival checks do not establish general full-game determinism.
