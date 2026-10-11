@@ -20,11 +20,22 @@ for both producers. From the repository root (uv executes from harness/):
     uv run --directory harness python ../scripts/validate_visual_startup.py --seed 1 --evidence-root .. --output runs/acceptance/startup
     uv run --directory harness python ../scripts/validate_visual_timing.py --challenge all --evidence-root .. --output runs/acceptance/timing
 
-After both producers finish, assemble a candidate from explicit files. All
+Archive the exact native inputs inside the collection so later builds preserve
+its references. In PowerShell, from the repository root:
+
+```powershell
+New-Item -ItemType Directory -Path harness/runs/acceptance/native-artifacts -ErrorAction Stop
+Copy-Item -LiteralPath dist/Hyperspace.visual-v1.dll -Destination harness/runs/acceptance/native-artifacts/Hyperspace.visual-v1.dll -ErrorAction Stop
+Copy-Item -LiteralPath dist/native-build.visual-v1.json -Destination harness/runs/acceptance/native-artifacts/native-build.visual-v1.json -ErrorAction Stop
+Copy-Item -LiteralPath mod/ftl_bench_bridge/dev/ftl_bench_dev.lua -Destination harness/runs/acceptance/native-artifacts/production-bridge.lua -ErrorAction Stop
+```
+
+Use a fresh archive directory; preserve partial attempts if copying fails.
+After both producers finish, assemble a candidate from the explicit copies. All
 selected files and their nested references must stay under --evidence-root.
 No directory search substitutes for a recorded reference:
 
-    uv run --directory harness python ../scripts/validate_native_acceptance.py --assemble-spec --source-root .. --evidence-root .. --startup-evidence runs/acceptance/startup/startup-evidence.json --timing-evidence runs/acceptance/timing/timing-evidence.json --dll ../dist/Hyperspace.visual-v1.dll --provenance ../dist/native-build.visual-v1.json --bridge ../mod/ftl_bench_bridge/dev/ftl_bench_dev.lua --output runs/acceptance/candidate.json
+    uv run --directory harness python ../scripts/validate_native_acceptance.py --assemble-spec --source-root .. --evidence-root .. --startup-evidence runs/acceptance/startup/startup-evidence.json --timing-evidence runs/acceptance/timing/timing-evidence.json --dll runs/acceptance/native-artifacts/Hyperspace.visual-v1.dll --provenance runs/acceptance/native-artifacts/native-build.visual-v1.json --bridge runs/acceptance/native-artifacts/production-bridge.lua --output runs/acceptance/candidate.json
     uv run --directory harness python ../scripts/validate_native_acceptance.py --source-root .. --evidence-root .. --spec runs/acceptance/candidate.json --output runs/acceptance/verification.json
 
 Both assembly and verification create new files exclusively; existing outputs
@@ -68,8 +79,8 @@ remain separate; historical frozen protocols are unchanged.
 
 ## Measured main-checkout example
 
-The 2026-10-11 collection `main-native-20261011-0330` used these tracked producers
-at `b862afd`, the unchanged native DLL beginning `a33b9984`, and the prospective
+The 2026-10-11 collection `main-native-20261011-0330` used the producer source
+recorded in `b862afd`, the unchanged native DLL beginning `a33b9984`, and the prospective
 merged bridge beginning `d9a1ed59`. Startup and all nine probes passed; the
 file-only receipt reports `validated_scoped` across 516 pinned evidence files
 and 73 source files. Independent cleanup at 03:39:23 UTC matched seven saves,
@@ -77,3 +88,11 @@ and 73 source files. Independent cleanup at 03:39:23 UTC matched seven saves,
 The [current validation record](NEXT.md) gives the local evidence path and full
 receipt hash. Raw evidence and native binaries remain local. This example does
 not grant controller admission or certify another machine's runtime.
+
+The later `candidate-archived-inputs.json` preserves exact native input copies
+under that collection, leaving the first candidate untouched. All 516 referenced
+files were then copied to a separate evidence root and validated again at
+03:46:20 UTC, without game or live-save access. The archived-input verification
+receipt SHA-256 is
+`d5ba97cb7af7db703d4fc783b83ec948e55f81b7b3c67e96199c8395136e5007`;
+`relocation-receipt.json` records the portability check.

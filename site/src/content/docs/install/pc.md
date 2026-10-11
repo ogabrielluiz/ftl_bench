@@ -10,9 +10,9 @@ Native Windows x86 with FTL **1.6.9**, launched through Steam, is the current fu
 Install FTL through Steam. The setup script handles the Hyperspace build, loader, data mods and Lua bridge. Select a **registry digest**, rather than a mutable image tag or a local Docker image ID, before the build stage:
 
 ```bash
-# In WSL, resolve a published tag and inspect the immutable image before choosing it.
-docker buildx imagetools inspect ghcr.io/ftl-hyperspace/hs-devcontainer:v2
-export DEVCONTAINER='ghcr.io/ftl-hyperspace/hs-devcontainer@sha256:<registry-manifest-digest>'
+# In WSL, select the historical toolchain whose registry identity was verified.
+export DEVCONTAINER='ghcr.io/ftl-hyperspace/hs-devcontainer@sha256:9fc15466b3591395209a479cfbcd50bb78b47d5b78d983c4740cd00acce8aca2'
+docker manifest inspect --verbose "$DEVCONTAINER"
 docker pull --platform linux/amd64 "$DEVCONTAINER"
 docker image inspect "$DEVCONTAINER" --format '{{.Id}} {{json .RepoDigests}}'
 
@@ -24,7 +24,11 @@ STAGES="repos build" bash scripts/setup_pc.sh
 
 The build uses the supplied immutable image reference directly, bypassing the upstream wrapper's mutable tag. It applies the complete patch selected by the manifest, currently `native/patches/0003-visual-io.patch`. This retains structured protocol-5 controls and adds visual I/O, fixed clock 2 at 1/60 second per update, and fresh-start seed contract v3. Do not stack the historical `0001` or structured-only `0002` patches onto it.
 
-As a **prospective, unvalidated build example**, the public `v2` tag resolved on 2026-10-11 to `ghcr.io/ftl-hyperspace/hs-devcontainer@sha256:6010528d4f74d55c91a9b49d313584404171ee83e8cb45fe98bace287040e96c`. Its image configuration is `sha256:87bf8091a79fc9b4dbc76ca4d0513b76ffae03761f2de0be12e0ce335e683915`. The previously accepted local build recorded a different image ID, `sha256:f359f36f9eae862d65a133cb9b9076590e2f194f1357f700af3a7db0457c8061`, without a retained registry digest. These images must not be treated as interchangeable. No exact reproduction or live acceptance is claimed for a newly selected toolchain.
+On 2026-10-11, a remote metadata query verified that the immutable manifest above selects the `linux/amd64` image configuration `sha256:f359f36f9eae862d65a133cb9b9076590e2f194f1357f700af3a7db0457c8061`. That is both the locally cached Ubuntu image ID and the image ID recorded by the historical accepted native build. The decoded raw manifest's SHA-256 equals the registry digest. The successful remote query used the Windows Docker CLI; the Ubuntu registry query failed with a routing error.
+
+The local evidence is `dist/native-toolchain-mapping-20261011T034047Z/mapping-receipt.json` (SHA-256 `3f5c98ba7b4f6468fdb51271d1bf1f8e11f98cf7cca89fbda98e246af43a0ac4`), with the cached image inspection, remote manifest and historical build-manifest snapshot beside it. This generated receipt is not included in a fresh clone. It adds a verified registry-to-image mapping; the old provenance still records its original mutable tag and image ID and remains unchanged.
+
+This is **metadata verification**, not a fresh build or bit-for-bit DLL reproduction. No image layers were downloaded, and their remote availability was not checked. The isolated cached-only build plan remains unexecuted; complete offline dependency availability, the resulting DLL bytes and acceptance of a newly built runtime remain unproven.
 
 For an existing Hyperspace source checkout:
 
