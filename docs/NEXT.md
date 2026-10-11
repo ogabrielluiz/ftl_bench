@@ -1,6 +1,6 @@
 # Current validation and next work
 
-**WIP / alpha. Snapshot: 2026-10-11 05:55 UTC (02:55 in São Paulo).**
+**WIP / alpha. Snapshot: 2026-10-11 06:31 UTC (03:31 in São Paulo).**
 Nine of 36 challenge cells finished in the preserved original cohort. The sector pilot ended in native defeat;
 Sol/image full-game was cooperatively stopped at 276 decisions after a confirmed
 native store-arrival blocker froze warp. Three full-game cells remain unstarted.
@@ -17,8 +17,9 @@ and exact restoration of all seven saves, with no game left running. This covers
 the reproduced defect only. Fresh startup, nine timing probes, independent
 rejection checks and local admission have now passed. Replacement cohorts are
 frozen as described below. Their first completed challenge exposed a reporting
-false exclusion, now repaired prospectively. Further model cells await fresh
-source-bound admission. See [store-arrival diagnosis](native-store-arrival.md).
+false exclusion, now repaired prospectively. Both reporting fixes passed fresh
+source-bound admission at `078a5e2`; new cohorts are frozen and the first Sol
+image combat trial is running. See [store-arrival diagnosis](native-store-arrival.md).
 
 ## Implemented and verified scope
 
@@ -36,7 +37,34 @@ The visual track is `visual-v1`; historical structured runs retain runner/rulese
 v7 and their own contracts. Do not pool their scores or treat a diagnostic fixture
 ending as a fixture-free full game.
 
-## Replacement cohorts and local admission
+## Current admitted cohorts
+
+Executable sources at `078a5e2` passed all five CI jobs and fresh local
+validation in `main-admission-dashboard-20261011T061245Z`: fixture-free startup,
+all nine timing probes and eight independently executed evidence-rejection
+checks. Independent review matched both 78-file source archives to current
+sources and the commit, checked all ten cleanup inventories, and confirmed the
+seven original saves, restored bridge, six-file runtime and no remaining game.
+The local admission joins 565 evidence files and preserves
+`production_accepted: false`. Admission-spec SHA-256:
+`95f34f49d804852ac33f552f937319e5865dadd11576cea7f3019dfb033e6495`.
+
+Both new cohorts are under `harness/runs/validation/visual-v1/`:
+
+| Cohort | Embedded protocol SHA-256 | Scope |
+| --- | --- | --- |
+| `matrix-main-078a5e2-20261011` | `412bcc6e687ebde35b6edb69331c9763673f0d2e5650bca45872004d4116b415` | 36 cells: 18 Sol, then 18 Luna; both modes and three repeats of each challenge |
+| `fullgame-main-078a5e2-20261011` | `5351f3309a58bd0bc4fb7516e5b1759574efe68830e3e04e3528e4ddf4be8933` | Sol/image sector pilot, then four native-ending conditions |
+
+Budgets remain 60 decisions / 1,800 seconds / eight idle decisions for challenges
+and 300 / 14,400 / eight for full-game attempts, seed 1 and medium reasoning.
+Independent freeze review records protocol IDs separately from file-byte hashes
+in `dist/store-warp-diagnosis-20261011/main-078a5e2-cohort-review.json`. The
+first Sol/image combat trial is running; no result is claimed yet. No model
+cells from these cohorts have been pooled with earlier attempts. The updated
+local dashboard at port 8768 shows both current and preserved cohorts.
+
+## First portable cohorts (preserved)
 
 The repaired runtime's collection is
 `harness/runs/validation/visual-v1/main-admission-20261011T053058Z` in the

@@ -46,8 +46,9 @@ The first portable admission and cohort freezes passed against real diagnostic
 evidence. Sol then completed one combat challenge in ten decisions with verified
 cleanup. Its saved comparison report falsely excluded it by requiring legacy
 receipts; a tested reporting fix now recognizes v2 admission. The original result
-and exclusion remain preserved. Fresh admission is required for the changed
-reporter before further trials; complete games and the comparison remain WIP.
+and exclusion remain preserved. Both reporting fixes subsequently passed fresh
+admission at `078a5e2`; new challenge and full-game cohorts are frozen, with the
+first Sol image combat trial running. Complete games and the comparison remain WIP.
 The full-game dashboard also checks saved child admission before showing
 verified completion, withholding totals when that evidence is missing or changed.
 

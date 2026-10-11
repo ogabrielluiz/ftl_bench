@@ -34,8 +34,9 @@ Changed sources or cell settings require a new freeze. The first real diagnostic
 collection and v2 freezes have passed, followed by live admission of the first
 Sol/image combat child. That trial completed its task, but a legacy-receipt check
 falsely excluded it from the saved rollup. The prospective reporter fix retains
-its original outcome and exclusion; new source bytes require fresh admission and
-cohorts. Full-game child admission and completed comparisons remain WIP. Neither
+its original outcome and exclusion. Fresh admission of source `078a5e2` and new
+cohort freezes now pass; the first replacement Sol/image combat trial is
+running. Full-game child admission and completed comparisons remain WIP. Neither
 an offline test nor an admission receipt establishes general determinism.
 
 ## Preserved cohort and prospective repairs (2026-10-11)
