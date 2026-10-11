@@ -25,8 +25,10 @@ local). The operator has been asked to refresh sign-in, cancel the pending FTL
 launch and leave FTL closed; confirmation is still pending. New code implements
 a durable pending-launch guard and explicit recovery: 240 focused offline checks
 pass after the final recovery fixes. The broader harness suite passed 2,583 tests
-with 17 skips before those final fixes; final CI, live validation and fresh
-admission remain pending.
+with 17 skips before those final fixes. All five
+[CI jobs for implementation `552377c`](https://github.com/ogabrielluiz/ftl_bench/actions/runs/38156148686)
+passed, including both Windows and Linux Python versions and the package checks.
+Live validation and fresh admission remain pending.
 An unresolved guarded timeout blocks restoration-success and new protected runs.
 The harness still cannot cancel Steam's queued request, and the fix does not
 retrofit this historical bb failure, which has no guard. Do not run recovery for
