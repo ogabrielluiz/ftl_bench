@@ -29,9 +29,11 @@ protocol, runtime and manifest bindings alongside existing native/cleanup proofs
 the dashboard shows stored admission metadata without claiming a new live audit.
 Changed sources or cell settings require a new freeze. The first real diagnostic
 collection and v2 freezes have passed, followed by live admission of the first
-Sol/image combat child. Model outcomes and full-game child admission remain WIP.
-Neither an offline test nor an admission receipt completes any game or establishes
-general determinism.
+Sol/image combat child. That trial completed its task, but a legacy-receipt check
+falsely excluded it from the saved rollup. The prospective reporter fix retains
+its original outcome and exclusion; new source bytes require fresh admission and
+cohorts. Full-game child admission and completed comparisons remain WIP. Neither
+an offline test nor an admission receipt establishes general determinism.
 
 ## Preserved cohort and prospective repairs (2026-10-11)
 

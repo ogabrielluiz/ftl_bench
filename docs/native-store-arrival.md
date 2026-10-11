@@ -158,6 +158,7 @@ store blocker.
 The required startup/timing refresh, independent rejection review and portable
 controller admission subsequently passed, with new frozen cohort identities.
 See [current evidence](NEXT.md#replacement-cohorts-and-local-admission). The first
-Sol/image combat child passed live admission; its completed outcome and complete
-games remain to be validated.
+Sol/image combat child passed live admission and completed its task with verified
+cleanup. A subsequent report-eligibility fix requires new source-bound admission;
+complete games remain unproven.
 Finite store-arrival checks do not establish general full-game determinism.

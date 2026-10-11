@@ -1,6 +1,6 @@
 # Current validation and next work
 
-**WIP / alpha. Snapshot: 2026-10-11 05:46 UTC (02:46 in São Paulo).**
+**WIP / alpha. Snapshot: 2026-10-11 05:55 UTC (02:55 in São Paulo).**
 Nine of 36 challenge cells finished in the preserved original cohort. The sector pilot ended in native defeat;
 Sol/image full-game was cooperatively stopped at 276 decisions after a confirmed
 native store-arrival blocker froze warp. Three full-game cells remain unstarted.
@@ -16,7 +16,9 @@ review checked 110 archived artifacts, all input packets, the new six-file runti
 and exact restoration of all seven saves, with no game left running. This covers
 the reproduced defect only. Fresh startup, nine timing probes, independent
 rejection checks and local admission have now passed. Replacement cohorts are
-frozen as described below. See [store-arrival diagnosis](native-store-arrival.md).
+frozen as described below. Their first completed challenge exposed a reporting
+false exclusion, now repaired prospectively. Further model cells await fresh
+source-bound admission. See [store-arrival diagnosis](native-store-arrival.md).
 
 ## Implemented and verified scope
 
@@ -65,13 +67,38 @@ New cohorts under `harness/runs/validation/visual-v1/`:
 | `matrix-portable-store-v1-20261011` | `571a892136eae9206c45f1925b04e104f69dfc1b4981d159d0a397d245673ba0` | 36 challenge cells, Sol then Luna, image and hybrid, three repetitions |
 | `fullgame-portable-store-v1-20261011` | `8210928ecb549c85aebc260165d6db00fb52a19ec8c86a1991f5cd8978f54723` | Sol/image sector pilot followed by four native-ending conditions |
 
-At freeze, all cells were planned. Sol/image combat repeat one started at
-05:43:35 UTC and passed protected child admission before the first Codex CLI
-model call. It is running at this snapshot, with 35 challenge cells and all five
-full-game-controller cells still planned. The read-only dashboard on port 8768
-reports both new cohorts without catalog issues. Prior results below belong to
-their original runtime and are not pooled into these replacement cohorts. No
-new completed result or full-game child admission is claimed yet.
+Sol/image combat repeat one started at 05:43:35 UTC and passed protected child
+admission before the first Codex CLI call. It completed the task in ten decisions:
+enemy defeat, 18 scrap collected, hull 30/30 and all three crew at full health.
+Independent review checked 12 PNGs, all actions and frame counts, native outcome,
+child admission and exact restoration of the seven saves and deployed bridge.
+No FTL process remained. Recorded model latency totals 152.755 seconds, median
+15.5975 seconds. CLI usage reports 186,628 input tokens (118,784 cached, included
+in that total), 2,684 output tokens and 967 reasoning output tokens. The backend's
+resolved model identity is unavailable; `gpt-6.1-sol` is the requested CLI model.
+
+The saved rollup nevertheless marks this trial ineligible, solely with
+`native_acceptance:native acceptance receipts missing`. The aggregator
+unconditionally required v1 receipts, while v2 deliberately uses an empty legacy
+receipt map plus portable admission. The dashboard accurately displayed that
+saved exclusion. This is a reporting defect, not a failed gameplay task.
+
+The prospective fix selects v2's admitted runtime and requires an explicit saved
+child-audit result. It retains runtime, bridge and fixture checks, rejects absent
+or malformed audit entries and unknown contracts, and preserves legacy receipt
+checks. The real aggregator regression passed within 186 focused checks, with
+one skip; independent review passed 22 targeted cases and additional rejection
+probes. Separate reanalysis of the actual retained trial removes the false
+exclusion. All 40 original run artifacts remain byte-identical, and the original
+saved rollup is not overwritten or retroactively promoted.
+
+Local receipts are under `dist/store-warp-diagnosis-20261011/`:
+`first-portable-model-review.json`, `portable-report-exclusion-before.json` and
+`portable-report-exclusion-after.json`. The latter is diagnostic reanalysis only.
+The port-8768 dashboard shows one finished challenge, 35 planned challenges and
+all five full-game-controller cells planned. These frozen cohorts remain preserved;
+new reporter source bytes require fresh diagnostic admission and new cohorts
+before further model trials. No complete comparison or full-game ending is claimed.
 
 ## Preserved challenge results
 
@@ -332,9 +359,9 @@ documentation snapshot, and no new release is published.
 
 ## Remaining work
 
-1. Finish and audit the first admitted challenge trial, then exercise the
-   full-game child gate and broader gameplay checks. Executable changes require
-   a new evidence collection.
+1. Refresh source-bound admission and freeze new cohorts for the reporting fix;
+   retain the previous false exclusion and separate diagnostic reanalysis.
+   Exercise full-game child admission and broader gameplay checks.
 2. Execute the replacement 36-cell challenge matrix, sector pilot and four
    fixture-free full-game conditions sequentially. Preserve every attempted
    outcome and stop for technical failures or ambiguous cleanup.

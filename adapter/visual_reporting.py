@@ -456,7 +456,9 @@ def aggregate_visual_runs(directories, protocol: dict | None = None, *, admissio
     for supplied in directories:
         directory = Path(supplied)
         audit = audit_visual_run(directory)
-        problems = list((admission_issues or {}).get(str(directory), []))
+        child_issues = admission_issues.get(str(directory)) if isinstance(admission_issues, dict) else None
+        child_audit_recorded = isinstance(child_issues, list) and all(isinstance(issue, str) for issue in child_issues)
+        problems = list(child_issues) if child_audit_recorded else []
         try:
             manifest, report = _read(directory / "run.json"), _read(directory / "visual-report.json")
             experiment = report.get("experiment") or manifest.get("experiment") or {}
@@ -593,12 +595,30 @@ def aggregate_visual_runs(directories, protocol: dict | None = None, *, admissio
                 if experiment.get("runtime_identity") is not None and runtime_identity(experiment["runtime_identity"]) != audit["runtime_identity"]:
                     problems.append("experiment_runtime_mismatch")
                 try:
-                    acceptance = protocol["native_acceptance"]
-                    accepted = acceptance["runtime"]
-                    _require(bool(acceptance["receipts"]), "native acceptance receipts missing")
-                    for receipt, digest in acceptance["receipts"].items():
-                        _require(protocol.get("source_files", {}).get(receipt) == digest,
-                                 "native receipt was not frozen with sources")
+                    contract = protocol.get("contract")
+                    _require(contract in (None, "ftl-visual-challenge-matrix-v1", "ftl-visual-challenge-matrix-v2"),
+                             "unknown comparison contract")
+                    if contract == "ftl-visual-challenge-matrix-v2":
+                        _require(child_audit_recorded, "portable saved child admission audit missing or malformed")
+                        selector = _object(protocol.get("admission_selector"))
+                        admission = _object(selector.get("admission"))
+                        _require(selector.get("contract") == admission.get("contract")
+                                 == "portable-visual-controller-admission-v1"
+                                 and admission.get("controller_admission") is True
+                                 and admission.get("production_accepted") is False,
+                                 "portable controller admission missing or rejected")
+                        _require(selector == experiment.get("admission_selector"),
+                                 "trial portable admission differs from frozen protocol")
+                        accepted = admission["runtime"]
+                        _require(protocol.get("native_acceptance") == {"receipts": {}, "runtime": accepted},
+                                 "portable runtime metadata differs from admitted runtime")
+                    else:
+                        acceptance = protocol["native_acceptance"]
+                        accepted = acceptance["runtime"]
+                        _require(bool(acceptance["receipts"]), "native acceptance receipts missing")
+                        for receipt, digest in acceptance["receipts"].items():
+                            _require(protocol.get("source_files", {}).get(receipt) == digest,
+                                     "native receipt was not frozen with sources")
                     _require(accepted["dll_sha256"] == audit["runtime_identity"]["native_dll"]
                              and accepted["patch_sha256"] == audit["runtime_identity"]["patch"],
                              "accepted DLL or patch differs from trial")

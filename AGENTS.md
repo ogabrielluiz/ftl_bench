@@ -77,7 +77,11 @@ is local and explicit. Keep all source/evidence archives immutable, reject
 unreadable or extra archive content, and check the installed runtime, deployed
 bridge and actual cell settings inside protected children before model calls.
 Saved child admission is required for v2 result eligibility; it does not replace
-native outcome or protected-cleanup verification.
+native outcome or protected-cleanup verification. Comparison aggregation must
+select the protocol-specific admission path: v2 uses admitted runtime plus the
+saved child audit, while v1 retains its legacy receipts. Cover successful v2
+aggregation without mocking the aggregator; dashboard projection tests alone
+cannot verify eligibility. Preserve old reports when repairing their interpretation.
 
 Visual startup requires native protocol 5, clock 2 with fixed step 1/60, and
 `fresh-start-seed-v3`; protocol 5 alone is insufficient. Preserve the structured

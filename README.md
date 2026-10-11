@@ -43,8 +43,11 @@ controller workflow archives that evidence with original build records and an
 independent review. It verifies installed bytes and frozen trial settings before
 model calls, retaining accepted and rejected gates in the replay artifacts.
 The first portable admission and cohort freezes passed against real diagnostic
-evidence. The first Sol/image challenge child also passed its live admission
-gate and is running. Model results and complete games remain to be validated.
+evidence. Sol then completed one combat challenge in ten decisions with verified
+cleanup. Its saved comparison report falsely excluded it by requiring legacy
+receipts; a tested reporting fix now recognizes v2 admission. The original result
+and exclusion remain preserved. Fresh admission is required for the changed
+reporter before further trials; complete games and the comparison remain WIP.
 
 ## Visual iteration
 

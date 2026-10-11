@@ -402,3 +402,115 @@ def test_prospective_task_version_mutations_are_excluded(tmp_path, damage):
     trial = reporting.aggregate_visual_runs([directory], frozen)["trials"][0]
     assert not trial["eligible"]
     assert any(reason.startswith("task_version:") for reason in trial["exclusions"])
+
+
+def portable_saved_run(directory):
+    rows = saved_run(directory)
+    frozen = protocol()
+    frozen.pop("protocol_sha256")
+    frozen["contract"] = "ftl-visual-challenge-matrix-v2"
+    frozen["native_acceptance"]["receipts"] = {}
+    frozen["admission_selector"] = {
+        "contract": "portable-visual-controller-admission-v1",
+        "admission": {"contract": "portable-visual-controller-admission-v1",
+                      "controller_admission": True, "production_accepted": False,
+                      "runtime": deepcopy(frozen["native_acceptance"]["runtime"])}}
+    bind_portable_protocol(directory, frozen)
+    return frozen
+
+
+def bind_portable_protocol(directory, frozen):
+    frozen["protocol_sha256"] = reporting.canonical_sha256({k: v for k, v in frozen.items() if k != "protocol_sha256"})
+    rows = [json.loads(line) for line in (directory / "trajectory.jsonl").read_text().splitlines()]
+    for name in ("run.json", "visual-report.json"):
+        value = json.loads((directory / name).read_text())
+        value["experiment"]["protocol_sha256"] = frozen["protocol_sha256"]
+        if "admission_selector" in frozen:
+            value["experiment"]["admission_selector"] = deepcopy(frozen["admission_selector"])
+        if name == "visual-report.json":
+            value["experiment_sha256"] = reporting.canonical_sha256(value["experiment"])
+        write(directory / name, value)
+    rows[0]["meta"]["experiment"] = json.loads((directory / "run.json").read_text())["experiment"]
+    save_rows(directory, rows)
+
+
+def test_portable_aggregation_accepts_empty_legacy_receipts_with_audited_child(tmp_path):
+    directory = tmp_path / "portable"
+    frozen = portable_saved_run(directory)
+    trial = reporting.aggregate_visual_runs([directory], frozen, admission_issues={str(directory): []})["trials"][0]
+    assert trial["eligible"], trial["exclusions"]
+    assert trial["task_success"]
+
+
+@pytest.mark.parametrize("audit_entry", [None, {}, {"other": []}, "corrupt", [None], ["Controller admission: rejected"]])
+def test_portable_aggregation_requires_explicit_valid_saved_child_audit(tmp_path, audit_entry):
+    directory = tmp_path / "portable"
+    frozen = portable_saved_run(directory)
+    supplied = audit_entry if audit_entry is None or isinstance(audit_entry, dict) else {str(directory): audit_entry}
+    trial = reporting.aggregate_visual_runs([directory], frozen, admission_issues=supplied)["trials"][0]
+    assert not trial["eligible"]
+    assert any("saved child admission audit" in issue or "Controller admission: rejected" in issue
+               for issue in trial["exclusions"])
+
+
+@pytest.mark.parametrize("field,value", [("controller_admission", False), ("controller_admission", 1),
+                                         ("production_accepted", True), ("production_accepted", 0),
+                                         ("contract", "unknown")])
+def test_portable_aggregation_rejects_invalid_admission_state(tmp_path, field, value):
+    directory = tmp_path / "portable"
+    frozen = portable_saved_run(directory)
+    frozen["admission_selector"]["admission"][field] = value
+    bind_portable_protocol(directory, frozen)
+    trial = reporting.aggregate_visual_runs([directory], frozen, admission_issues={str(directory): []})["trials"][0]
+    assert not trial["eligible"]
+    assert trial["exclusions"] == ["native_acceptance:portable controller admission missing or rejected"]
+
+
+@pytest.mark.parametrize("field,value", [("dll_sha256", "x" * 64), ("patch_sha256", "x" * 64),
+                                         ("production_bridge_sha256", "x" * 64), ("visual_clock_version", 1)])
+def test_portable_aggregation_retains_runtime_join_rejections(tmp_path, field, value):
+    directory = tmp_path / "portable"
+    frozen = portable_saved_run(directory)
+    frozen["admission_selector"]["admission"]["runtime"][field] = value
+    frozen["native_acceptance"]["runtime"] = deepcopy(frozen["admission_selector"]["admission"]["runtime"])
+    bind_portable_protocol(directory, frozen)
+    trial = reporting.aggregate_visual_runs([directory], frozen, admission_issues={str(directory): []})["trials"][0]
+    assert not trial["eligible"]
+    assert len(trial["exclusions"]) == 1 and trial["exclusions"][0].startswith("native_acceptance:")
+    assert "metadata differs" not in trial["exclusions"][0]
+
+
+def test_unknown_comparison_contract_never_eligible(tmp_path):
+    directory = tmp_path / "unknown"
+    saved_run(directory)
+    frozen = protocol()
+    frozen["contract"] = "unknown"
+    frozen["protocol_sha256"] = reporting.canonical_sha256({k: v for k, v in frozen.items() if k != "protocol_sha256"})
+    trial = reporting.aggregate_visual_runs([directory], frozen)["trials"][0]
+    assert not trial["eligible"]
+    assert any("unknown" in issue for issue in trial["exclusions"])
+
+
+@pytest.mark.parametrize("selector", [None, {}, "corrupt"])
+def test_portable_aggregation_rejects_absent_or_corrupt_selector(tmp_path, selector):
+    directory = tmp_path / "portable"
+    frozen = portable_saved_run(directory)
+    frozen["admission_selector"] = selector
+    bind_portable_protocol(directory, frozen)
+    trial = reporting.aggregate_visual_runs([directory], frozen, admission_issues={str(directory): []})["trials"][0]
+    assert trial["exclusions"] == ["native_acceptance:portable controller admission missing or rejected"]
+
+
+@pytest.mark.parametrize("receipts", [True, False])
+def test_explicit_v1_retains_legacy_receipt_requirement(tmp_path, receipts):
+    directory = tmp_path / "legacy"
+    saved_run(directory)
+    frozen = protocol()
+    frozen["contract"] = "ftl-visual-challenge-matrix-v1"
+    if not receipts:
+        frozen["native_acceptance"]["receipts"] = {}
+    bind_portable_protocol(directory, frozen)
+    trial = reporting.aggregate_visual_runs([directory], frozen)["trials"][0]
+    assert trial["eligible"] is receipts
+    if not receipts:
+        assert trial["exclusions"] == ["native_acceptance:native acceptance receipts missing"]
