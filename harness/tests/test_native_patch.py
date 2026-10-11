@@ -26,6 +26,9 @@ def helper(tmp_path, monkeypatch):
     source = tmp_path / "source"
     source.mkdir()
     subprocess.run(["git", "init", "--quiet"], cwd=source, check=True, capture_output=True)
+    # This independent fixture repository needs the same byte-preserving policy
+    # as the benchmark; the runner's global core.autocrlf is not an input.
+    (source / ".gitattributes").write_bytes(b"* -text\n")
     (source / "control.cpp").write_bytes(b"idle=-1\n")
     return module, source, fixture
 
