@@ -1,4 +1,4 @@
 # Prompts, native patches, and frozen source inventories are byte-addressed.
 # Preserve committed bytes on every platform, including historical CRLF and
 # mixed-ending native inputs; do not normalize them during checkout or staging.
-* -text
+* -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

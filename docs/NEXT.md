@@ -1,9 +1,9 @@
 # Current validation and next work
 
-**WIP / alpha. Snapshot: 2026-10-11 03:06 UTC (00:06 in São Paulo).**
+**WIP / alpha. Snapshot: 2026-10-11 03:24 UTC (00:24 in São Paulo).**
 The visual benchmark is implemented and partially validated. Nine of 36 challenge
-cells are finished; the sector pilot is running and four full-game cells are
-unstarted. The goal has resumed. The pilot runs in the original unchanged
+cells are finished; the sector pilot ended in native defeat and four full-game
+cells are unstarted. The goal has resumed. The pilot ran in the original unchanged
 `visual-benchmark-progress` checkout; development continues separately on `main`.
 
 ## Implemented and verified scope
@@ -15,7 +15,7 @@ unstarted. The goal has resumed. The pilot runs in the original unchanged
 | Repeatable setup | Nine no-model fixture-6 probes passed measured starting-state and step equality across three wall delays. This covers the tested inputs, not every hidden RNG stream or full-game determinism. |
 | Protected lifecycle | Save backups, exact restoration, runtime identities and terminal evidence are recorded. Cooperative-stop probes passed before the actor and during one real CLI request; the returned cancelled response was retained and its actions discarded. |
 | Challenges | Frozen 36-cell controller, versioned public tasks, outcome audits, retained failures and exact replays. Nine Sol/image cells are complete; results are below. |
-| Full-game support | Fixture-free startup and the five-cell controller are implemented. Startup preserves the opening choice. The Sol/image sector pilot is running; no full-game cell has started. |
+| Full-game support | Fixture-free startup and the five-cell controller are implemented. Startup preserves the opening choice. The Sol/image pilot ended in audited native defeat after 78 decisions; no full-game cell has started. |
 | Dashboard | Saved challenge/full-game overviews, exact screenshots and inputs, outcome reasons, task identities and saved cleanup receipts. The dashboard is read-only. |
 
 The visual track is `visual-v1`; historical structured runs retain runner/ruleset
@@ -73,19 +73,21 @@ weights and cost are unavailable and must not be inferred.
 Cohort: `harness/runs/validation/visual-v1/fullgame-stop-v1-20261011`.
 Protocol SHA-256:
 `da498515a486baf0eff09564f880342106ce2e156d3a65a24df1b468f844c1fc`.
-All 78 source/runtime pins matched at the 02:55 UTC preflight. The declared cells are:
+All 78 source/runtime pins matched at the 03:23 UTC terminal audit. The declared cells are:
 
-1. Sol/image sector-one pilot, running since 02:56 UTC.
+1. Sol/image sector-one pilot, native defeat at 03:21 UTC.
 2. Sol/image full game.
 3. Sol/hybrid full game.
 4. Luna/image full game.
 5. Luna/hybrid full game.
 
-The preflight verified all seven original saves, all 15 baseline paths and no
-FTL process before launch. At 03:06 UTC the recorded pilot child was live, with
-32 decisions in sector index 0. This is provisional progress, not a terminal
-result or a live save-restoration check during gameplay. Audit and cleanup are
-required after the pilot exits.
+The pilot ran from 02:56 to 03:21 UTC and ended in sector index 0 after 78
+decisions. Its final native observation records game over, no victory, hull
+13/30, oxygen 0 and the last crew member at zero health. The 03:23 UTC terminal
+audit checked 79 unique PNGs with no integrity issues, verified all seven
+original saves and all 15 baseline paths, and confirmed the recorded child and
+FTL had exited. This is an audited pilot defeat; it contributes zero completed
+full games. The failed outcome and all model responses remain preserved.
 
 The declared settings are seed 1, medium reasoning, 300 decisions, 14,400 seconds
 and eight idle decisions. Only audited native victory or defeat completes a
@@ -122,6 +124,13 @@ locally generated acceptance receipts, referenced evidence and matching installe
 FTL/runtime. The local `dist/run_guarded_matrix.py` supervisor is not shipped.
 Portable acquisition/build/validation of this evidence remains WIP; documented
 `freeze` commands are not a promise that a clean clone is immediately runnable.
+
+The new [portable evidence workflow](native-acceptance.md) supplies protected
+no-model startup and varied-delay timing producers, plus a file-only verifier.
+It binds source bytes, native build identity, the deployed bridge, PNGs, raw
+input packets and trial-specific cleanup receipts. Its finite probe result
+does not grant controller admission or production acceptance. Fresh collection
+on merged `main` and controller integration remain prospective.
 
 ## Main integration
 
@@ -163,8 +172,8 @@ but missing receipts, changed bytes and unexpected live saves still fail.
 
 ## Remaining work
 
-1. Finish and audit the active pilot, including original-save restoration and
-   exclusive game ownership. Changes require a newly declared cohort.
+1. Collect and audit fresh startup/timing evidence for merged `main` after the
+   successful pilot cleanup. Changes require a newly declared evidence set.
 2. Execute the remaining 27 challenge cells and four
    fixture-free full-game conditions sequentially. Preserve every attempted
    outcome and stop for technical failures or ambiguous cleanup.

@@ -16,6 +16,7 @@ from uuid import uuid4
 
 import validate_visual_challenges as challenges
 from run_visual import visual_record
+from ftl_bench import visual_evidence as evidence
 
 ROOT = challenges.ROOT
 DELAYS = (0.0, 0.35, 1.2)
@@ -221,12 +222,16 @@ def compare_repeats(reports):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--output", type=Path)
+    p.add_argument("--evidence-root", type=Path, help="Common parent for all nested portable evidence references")
     p.add_argument("--challenge", choices=("all", *challenges.TASKS), default="repair-charge-escape")
     args = p.parse_args(argv)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8]
     output = (args.output or ROOT / "harness/runs/validation/visual-v1" / ("fixed-step-" + stamp)).resolve()
+    reference_root = evidence.evidence_root(output, args.evidence_root)
     output.mkdir(parents=True, exist_ok=False)
     (output / "timing-driver.py").write_bytes(Path(__file__).read_bytes())
+    source_files = evidence.snapshot_sources(ROOT, output, reference_root)
+    descriptors = []
     results, by_challenge = [], {}
     selected = list(challenges.TASKS) if args.challenge == "all" else [args.challenge]
     for kind in selected:
@@ -235,7 +240,12 @@ def main(argv=None):
             trial = output / kind / f"repetition-{index:02d}" / kind
             trial_args = challenges.parser().parse_args(["--setup-only", "--challenge", kind])
             trial_args.probe_delay_seconds = delay
-            result = challenges.run_trial(trial_args, kind, index, trial, None, None, scripted_probe=run_probe)
+            portable = evidence.TimingTrialEvidence(ROOT, output, source_files, kind, index, delay,
+                output / "timing-driver.py", reference_root)
+            result = challenges.run_trial(trial_args, kind, index, trial, None, None,
+                scripted_probe=run_probe, portable_evidence=portable)
+            if portable.descriptor is not None:
+                descriptors.append(portable.descriptor)
             results.append({"directory": str(trial), **result})
             path = trial / "timing-proof.json"
             if path.is_file():
@@ -246,7 +256,8 @@ def main(argv=None):
         if results[-1]["outcome_category"] != "setup_verified":
             break
     all_exact = set(by_challenge) == set(selected) and all(proof["passed"] for proof in by_challenge.values())
-    cleanup = len(results) == 3 * len(selected) and all(r.get("save_restoration_verified") is True
+    cleanup = len(results) == len(descriptors) == 3 * len(selected) and all(
+        r.get("outcome_category") == "setup_verified" and r.get("save_restoration_verified") is True
         and r.get("production_source_unchanged") is True for r in results)
     report = {"validation_version": "fixed-step-live-acceptance-v1", "classification": "diagnostic_only",
         "model_calls": 0, "time_contract": challenges.TIME_CONTRACT,
@@ -259,6 +270,14 @@ def main(argv=None):
         "repeatability": by_challenge, "trials": results,
         "script_sha256": challenges.digest(Path(__file__).read_bytes())}
     challenges.write_json(output / "fixed-step-report.json", report)
+    evidence.write(output / "timing-evidence.json", {"contract": "visual-timing-evidence-v1",
+        "evidence_root": str(reference_root),
+        "classification": "diagnostic_only", "valid_for_model_comparison": False,
+        "valid_for_full_game_comparison": False,
+        "source_snapshot": evidence.reference(reference_root, output / "source-snapshot.json"),
+        "timing_script": evidence.reference(reference_root, output / "timing-driver.py"), "probes": descriptors,
+        "report": evidence.reference(reference_root, output / "fixed-step-report.json"),
+        "scope": "Portable inputs for independent scoped timing verification; this is not runtime acceptance."})
     print(json.dumps({"fixed_step_acceptance": report["fixed_step_acceptance"], "artifacts": str(output)}), flush=True)
     return 0 if report["fixed_step_acceptance"]["claimed"] else 1
 

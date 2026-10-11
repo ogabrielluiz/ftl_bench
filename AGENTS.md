@@ -97,6 +97,10 @@ environment files are selected explicitly, never discovered automatically.
 
 ## Git scope
 
+Tracked files retain their exact committed bytes through `.gitattributes`.
+Do not normalize line endings in prompts, native inputs or frozen source files:
+their hashes are protocol inputs, including historical mixed-ending artifacts.
+
 Branch names must not include `codex` (the user's explicit preference).
 Stage explicit task paths and inspect the staged diff. Exclude unrelated
 `.claude/worktrees/` checkouts, credentials, local runs and generated artifacts;

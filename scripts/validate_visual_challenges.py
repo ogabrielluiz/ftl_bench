@@ -24,6 +24,7 @@ sys.path.insert(0, str(ROOT / "adapter"))
 
 from ftl_bench.installation import runtime_fingerprint
 from ftl_bench.protected_game import ProtectedGame
+from ftl_bench.protected_game import _processes as game_processes
 from ftl_bench.session import ftl_user_folder, jump
 from ftl_bench.challenge_setup import DeterministicSetupSession as AgentSession, receipt_proof, packet_proof, first_capture_proof
 import ftl_bench.challenge_setup as challenge_setup
@@ -528,7 +529,15 @@ def record_stop_before_cleanup(recorder):
         raise
 
 
-def run_trial(args, challenge, repetition, output, cli_identity, experiment, *, scripted_probe=None):
+def run_trial(args, challenge, repetition, output, cli_identity, experiment, *, scripted_probe=None, portable_evidence=None):
+    if portable_evidence is not None and (not args.setup_only or scripted_probe is None):
+        raise ValueError("Portable timing evidence requires an explicit no-model scripted probe")
+    if portable_evidence is not None and (portable_evidence.challenge != challenge
+            or portable_evidence.repetition != repetition
+            or type(getattr(args, "probe_delay_seconds", None)) not in (int, float)
+            or args.probe_delay_seconds != portable_evidence.delay
+            or args.challenge != challenge):
+        raise ValueError("Portable timing metadata differs from the actual scripted trial")
     verify_task_protocol(experiment, challenge)
     control = StopControl(getattr(args, "stop_file", None), getattr(args, "stop_scope", None))
     output.mkdir(parents=True, exist_ok=False)
@@ -579,6 +588,8 @@ def run_trial(args, challenge, repetition, output, cli_identity, experiment, *, 
             "Combat resets initial drive and enemy weapon charges to zero once, with native before values retained.",
             "Native and DLL C-runtime seed1 apply once before fresh construction; fixture6 does not reseed. Full-game determinism remains unproven.",
             "Repair challenge uses a quiet starting beacon; hostile escape performance is not established."]}
+    if portable_evidence is not None:
+        meta.update(portable_evidence.metadata())
     recorder = TrajectoryRecorder(output / "trajectory.jsonl", meta)
     def manifest(**updates):
         meta.update(updates)
@@ -588,6 +599,8 @@ def run_trial(args, challenge, repetition, output, cli_identity, experiment, *, 
     stage = "protected_launch"
     try:
         control.check("before_protected_startup")
+        if portable_evidence is not None:
+            portable_evidence.before_protected(protected, output)
         with protected.protected(), record_stop_before_cleanup(recorder):
             control.check("before_game_launch")
             protected.launch()
@@ -607,10 +620,11 @@ def run_trial(args, challenge, repetition, output, cli_identity, experiment, *, 
             frame = transport.capture()
             write_json(output / "initial-fixture-capture.json", {"image": frame.reference,
                 "observation": frame.observation.raw, "scope": "First admitted visual capture after fixture initialization and before any visual control or actor input."})
-            recorder.record("fixture_setup", [], frame.observation, visual={"observation_mode": args.mode,
-                "before": frame.reference, "after": frame.reference, "inputs": [],
-                "advance": {"requested_frames": 0, "actual_frames": 0},
-                "outcome": {"status": "unknown", "summary": "Initial fixture state before prerequisite evaluation; no model input."}})
+            if portable_evidence is None:
+                recorder.record("fixture_setup", [], frame.observation, visual={"observation_mode": args.mode,
+                    "before": frame.reference, "after": frame.reference, "inputs": [],
+                    "advance": {"requested_frames": 0, "actual_frames": 0},
+                    "outcome": {"status": "unknown", "summary": "Initial fixture state before prerequisite evaluation; no model input."}})
             control.check("after_initial_fixture_capture")
             initial_fixture = frame.observation.raw.get("visual_challenge_fixture") or {}
             if (initial_fixture.get("applied") is not True
@@ -727,6 +741,14 @@ def run_trial(args, challenge, repetition, output, cli_identity, experiment, *, 
             else:
                 restored = live.is_file() and digest(live.read_bytes()) == live_hash
         source_unchanged = source.is_file() and digest(source.read_bytes()) == source_hash
+        portable_descriptor = None
+        if portable_evidence is not None and restored and source_unchanged:
+            try:
+                portable_descriptor = portable_evidence.after_cleanup(protected, output, game_processes())
+            except BaseException as evidence_error:
+                error = error or evidence_error
+                write_json(output / "portable-evidence-error.json", {"error": str(evidence_error),
+                    "scope": "Portable evidence was not finalized; no acceptance claim."})
         if not restored or not source_unchanged:
             error = error or RuntimeError("Save/deployed bridge restoration or production source verification failed")
         rows = load_trajectory(recorder.path)
@@ -759,6 +781,8 @@ def run_trial(args, challenge, repetition, output, cli_identity, experiment, *, 
         if isinstance(error, CooperativeStop):
             validation["stop_request"] = error.evidence
         validation["failure_type"] = category if category in ("protocol_failure", "infrastructure_failure", "external_interference", "operator_interruption") else None
+        if portable_evidence is not None:
+            validation["portable_evidence"] = portable_descriptor
         write_json(output / "validation.json", validation)
         lifecycle_status = terminal.get("status", "error" if error else "completed")
         if error and lifecycle_status == "completed":

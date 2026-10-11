@@ -7,11 +7,12 @@ An agent benchmark that drives the real **FTL: Faster Than Light** engine throug
 ## Status: work in progress
 
 The visual benchmark is an **alpha implementation with partial live validation**.
-At the 2026-10-11 03:06 UTC snapshot, nine of the 36 planned challenge trials were
+At the 2026-10-11 03:24 UTC snapshot, nine of the 36 planned challenge trials were
 finished, all with Sol in image mode: combat 1/3, fire/crew recovery 3/3 and
-repair/charge/escape 2/3 task successes. The sector pilot is running in the
-original frozen checkout; the remaining 27 challenge trials and four full-game
-conditions are unstarted. This dated snapshot does not establish pilot completion.
+repair/charge/escape 2/3 task successes. The sector pilot ended in an audited
+native defeat after 78 decisions, with exact save restoration. The remaining
+27 challenge trials and four full-game conditions are unstarted. The pilot is
+excluded from full-game totals.
 
 Screenshot play, conservative image-derived HUD summaries, protected saves,
 frozen experiment controllers and dashboard replays are implemented. A complete
@@ -25,7 +26,9 @@ Read [current results, evidence and remaining work](docs/NEXT.md), the
 [validation history](docs/validation-history-2026-10-11.md) preserves superseded
 attempts. Raw runs, native binaries and local acceptance artifacts are not shipped
 in Git; the frozen controllers need those artifacts and a matching runtime.
-Fresh-checkout setup of that complete evidence chain remains WIP.
+Fresh-checkout setup of that complete evidence chain remains WIP. The
+[portable evidence tools](docs/native-acceptance.md) collect protected startup
+and timing probes and verify their raw artifacts without promoting a runtime.
 
 ## Visual iteration
 
