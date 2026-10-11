@@ -30,6 +30,27 @@ Copy-Item -LiteralPath dist/native-build.visual-v1.json -Destination harness/run
 Copy-Item -LiteralPath mod/ftl_bench_bridge/dev/ftl_bench_dev.lua -Destination harness/runs/acceptance/native-artifacts/production-bridge.lua -ErrorAction Stop
 ```
 
+To verify every patched native source file against the exact manifest base,
+archive its Git objects from an explicit local native repository. The collector
+reads committed objects, so it does not require a clean working tree or change
+the native checkout. It performs no fetch, build, installation or game launch:
+
+    uv run --directory harness python ../scripts/collect_native_source_evidence.py --repository <native-repository> --source-root .. --evidence-root .. --output runs/acceptance/native-source
+
+The repository must already contain the manifest's base commit and required
+objects. Add `--source-evidence runs/acceptance/native-source/source-reconstruction.json`
+to the assembly command below to include this proof. Collection creates a new
+directory exclusively; preserve partial output from a failed attempt.
+
+The proof retains raw commit, tree and blob objects with portable SHA-256
+references. Verification authenticates their Git object identities back to the
+exact base commit, proves which added files were absent, applies the cumulative
+patch in memory with exact context and line endings, and compares every resulting
+file hash with build provenance. It supports ordinary additions and modifications;
+unsupported rename, deletion, binary or mode-change patches are rejected.
+This proves source reconstruction, not that a compiler produced a particular DLL.
+Omitting this optional proof leaves `native_identity.source_reconstruction` null.
+
 Use a fresh archive directory; preserve partial attempts if copying fails.
 After both producers finish, assemble a candidate from the explicit copies. All
 selected files and their nested references must stay under --evidence-root.
@@ -52,6 +73,13 @@ cleanup and images (SHA-keyed references). Each of the nine probes adds
 challenge, repetition, delay_seconds and timing_script; setup_store_close is
 required only for the ordinary store close prerequisite. Assembly also pins
 the two producer descriptors.
+
+The verifier also derives `runtime_files` from the joined raw cleanup inventories
+of startup and all nine timing trials. All ten must agree on `FTLGame.exe`,
+`ftl.dat`, `Hyperspace.dll`, `xinput1_4.dll`, `lua-5.3.dll` and
+`ftlbench-native.json`. A missing inventory leaves the check pending; a changed
+asset makes it invalid. This is the recorded diagnostic baseline, not a current
+inspection of the installed game.
 
 Verification derives checks from canonical native observations, dispatched
 packet archives and PNG bytes. It joins the current source map to archived

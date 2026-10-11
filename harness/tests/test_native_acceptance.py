@@ -131,6 +131,57 @@ def test_startup_scoped_validation_never_promotes_missing_nine_probes(evidence):
     assert report["controller_admission"] is report["production_accepted"] is False
     assert report["errors"] == []
     assert any("exactly nine" in x for x in report["missing_requirements"])
+    assert report["checks"]["common_runtime_identity"] == "pending"
+
+
+@pytest.mark.parametrize("mutation", [None, "changed_asset", "absent_inventory", "missing_raw_inventory"])
+def test_common_runtime_joins_individually_valid_cleanup_inventories(evidence, monkeypatch, mutation):
+    root, _, spec = evidence
+    startup_cleanup = a.read_json((root / spec["startup"]["cleanup"]["path"]).read_bytes())
+    probes = []
+    for challenge in a.CHALLENGES:
+        for repetition, delay in enumerate(a.DELAYS, 1):
+            name = f"trials/{challenge}-{repetition}"
+            trial_root = root / name
+            trial_root.mkdir(parents=True)
+            hashes = {k: v for k, v in startup_cleanup["before"].items() if not k.startswith("save/")}
+            if mutation == "changed_asset" and not probes:
+                hashes["runtime/FTLGame.exe"] = "f" * 64
+            if mutation == "absent_inventory" and not probes:
+                hashes.pop("runtime/ftl.dat")
+            ref = cleanup(trial_root, hashes)
+            # Make every nested reference portable to the common evidence root.
+            document = a.read_json((trial_root / ref["path"]).read_bytes())
+            for nested in [*document["raw_inventory_refs"].values(), *document["backups"].values(),
+                           document["backup_manifest"], document["restoration"]]:
+                nested["path"] = name + "/" + nested["path"]
+            document.update(trajectory=spec["startup"]["trajectory"], session=spec["startup"]["session"])
+            if mutation == "missing_raw_inventory" and not probes:
+                document["raw_inventory_refs"].pop("after")
+            ref = put(root, name + "/cleanup.json", document)
+            probes.append({"challenge": challenge, "repetition": repetition, "delay_seconds": delay,
+                "cleanup": ref, "trajectory": document["trajectory"], "session": document["session"]})
+    spec["probes"] = probes
+    # The measured behavior verifier is tested separately; exercise real raw cleanup joins here.
+    monkeypatch.setattr(a, "_drivers", lambda: (None, None))
+    monkeypatch.setattr(a, "_probe", lambda reader, trial, dll, bridge, challenges, timing, sources, provenance:
+        {"states": [], "cleanup": a._cleanup(reader, trial, dll, a.digest(bridge), provenance)})
+    report = verify(evidence)
+    assert report["production_accepted"] is report["controller_admission"] is False
+    if mutation == "changed_asset":
+        assert report["checks"]["nine_probe_repeatability"] == "validated_scoped"
+        assert report["checks"]["common_runtime_identity"] == "invalid"
+        assert report["status"] == "invalid"
+        assert "runtime_files" not in report
+    elif mutation in {"absent_inventory", "missing_raw_inventory"}:
+        assert report["checks"]["common_runtime_identity"] == "pending"
+        assert report["status"] == "pending", report
+        assert "runtime_files" not in report
+    else:
+        assert report["checks"]["common_runtime_identity"] == "validated_scoped", report
+        assert report["status"] == "validated_scoped", report
+        assert report["runtime_files"] == {n: startup_cleanup["before"]["runtime/" + n] for n in a.RUNTIME_FILES}
+        assert report["native_identity"]["runtime_files"] == report["runtime_files"]
 
 
 @pytest.mark.parametrize("name", ["../escape", "/absolute", "C:/drive", "a\\b", "a/../b", "a//b", "./file", "file:ads"])
@@ -452,6 +503,34 @@ def test_raw_after_inventory_cannot_predate_restoration(evidence):
     assert verify(evidence)["status"] == "invalid"
 
 
+@pytest.mark.parametrize("changed", [False, True])
+def test_reconstructed_complete_source_map_must_match_provenance(evidence, monkeypatch, changed):
+    from ftl_bench import native_build_origin
+    root, source, spec = evidence
+    proof = {"contract": native_build_origin.CONTRACT, "objects": {}}
+    spec["native"]["source_reconstruction"] = put(root, "native/source-proof.json", proof)
+    provenance = a.read_json((root / spec["native"]["provenance"]["path"]).read_bytes())
+    reconstructed = dict(provenance["source_files_sha256"])
+    if changed:
+        reconstructed["Benchmark_Extend.cpp"] = "f" * 64
+    def derive(*, manifest, patch, proof: dict, reader):
+        assert proof == {"contract": native_build_origin.CONTRACT, "objects": {}}
+        assert a.digest(patch) == manifest["patch_sha256"]
+        assert reader.root == root
+        return {"source_files_sha256": reconstructed, "base_commit": manifest["base_commit"],
+                "patch_sha256": a.digest(patch)}
+    # Object authentication and patch semantics have separate real-byte tests.
+    monkeypatch.setattr(native_build_origin, "reconstruct_sources", derive)
+    report = verify(evidence)
+    assert report["controller_admission"] is False
+    if changed:
+        assert report["checks"]["native_build_identity"] == "invalid"
+        assert any("Reconstructed native source bytes" in error for error in report["errors"])
+    else:
+        assert report["native_identity"]["source_reconstruction"]["source_files_sha256"] == reconstructed
+        assert spec["native"]["source_reconstruction"]["path"] in report["evidence_files"]
+
+
 def assembly_module():
     spec = importlib.util.spec_from_file_location("_test_acceptance_cli", _bench_root() / "scripts/validate_native_acceptance.py")
     module = importlib.util.module_from_spec(spec)
@@ -478,6 +557,13 @@ def test_assembly_and_verification_pin_real_descriptor_joins(evidence):
         timing_evidence=root / second["path"], dll=root / spec["native"]["dll"]["path"],
         provenance=root / spec["native"]["provenance"]["path"], bridge=root / spec["bridge"]["path"])
     assert a.validate(assembled, source_root=source, evidence_root=root)["status"] == "validated_scoped"
+    proof = put(root, "source-reconstruction.json", {"contract": "native-source-reconstruction-v1", "objects": {}})
+    with_proof = assembly_module().assemble(evidence_root=root, startup_evidence=root / first["path"],
+        timing_evidence=root / second["path"], dll=root / spec["native"]["dll"]["path"],
+        provenance=root / spec["native"]["provenance"]["path"], bridge=root / spec["bridge"]["path"],
+        source_evidence=root / proof["path"])
+    assert with_proof["native"]["source_reconstruction"] == proof
+    assert a.validate(with_proof, source_root=source, evidence_root=root)["checks"]["native_build_identity"] == "pending"
     assembled["startup"] = copy.deepcopy(assembled["startup"])
     assembled["startup"]["images"] = {}
     result = a.validate(assembled, source_root=source, evidence_root=root)

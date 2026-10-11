@@ -5,7 +5,7 @@ from pathlib import Path
 from ftl_bench.native_acceptance import CONTRACT, Reader, digest, read_json, validate, write_report
 
 
-def assemble(*, evidence_root, startup_evidence, timing_evidence, dll, provenance, bridge):
+def assemble(*, evidence_root, startup_evidence, timing_evidence, dll, provenance, bridge, source_evidence=None):
     """Hash explicitly selected artifacts/descriptors; do not claim validation."""
     reader = Reader(evidence_root)
 
@@ -23,8 +23,11 @@ def assemble(*, evidence_root, startup_evidence, timing_evidence, dll, provenanc
     second = reader.json(timing.get("source_snapshot"), "timing source snapshot")
     if first.get("source_files") != second.get("source_files"):
         raise ValueError("Startup and timing measured different source snapshots; create a new prospective collection")
+    native = {"dll": ref(dll), "provenance": ref(provenance)}
+    if source_evidence is not None:
+        native["source_reconstruction"] = ref(source_evidence)
     return {"contract": CONTRACT, "source_snapshot": startup["source_snapshot"],
-        "native": {"dll": ref(dll), "provenance": ref(provenance)}, "bridge": ref(bridge),
+        "native": native, "bridge": ref(bridge),
         "startup": startup["startup"], "probes": timing["probes"],
         "producer_descriptors": {"startup": startup_ref, "timing": timing_ref}}
 
@@ -37,17 +40,19 @@ def main(argv=None):
     parser.add_argument("--assemble-spec", action="store_true", help="Write an unaccepted candidate spec from explicit producer descriptors")
     for name in ("startup-evidence", "timing-evidence", "dll", "provenance", "bridge"):
         parser.add_argument("--" + name, type=Path)
+    parser.add_argument("--source-evidence", type=Path, help="Optional authenticated Git-base reconstruction proof for assembly")
     parser.add_argument("--output", required=True, type=Path, help="New receipt path; existing files are refused")
     args = parser.parse_args(argv)
     if args.assemble_spec:
         if args.spec is not None or any(getattr(args, name) is None for name in ("startup_evidence", "timing_evidence", "dll", "provenance", "bridge")):
             parser.error("--assemble-spec requires --startup-evidence/--timing-evidence/--dll/--provenance/--bridge and excludes --spec")
         spec = assemble(evidence_root=args.evidence_root, startup_evidence=args.startup_evidence,
-            timing_evidence=args.timing_evidence, dll=args.dll, provenance=args.provenance, bridge=args.bridge)
+            timing_evidence=args.timing_evidence, dll=args.dll, provenance=args.provenance, bridge=args.bridge,
+            source_evidence=args.source_evidence)
         write_report(args.output, spec)
         print("candidate_spec_written; not validated or accepted")
         return 0
-    if args.spec is None or any(getattr(args, name) is not None for name in ("startup_evidence", "timing_evidence", "dll", "provenance", "bridge")):
+    if args.spec is None or any(getattr(args, name) is not None for name in ("startup_evidence", "timing_evidence", "dll", "provenance", "bridge", "source_evidence")):
         parser.error("Verification requires --spec and excludes assembly inputs")
     report = validate(read_json(args.spec.read_bytes()), source_root=args.source_root, evidence_root=args.evidence_root)
     write_report(args.output, report)

@@ -89,6 +89,19 @@ original saves and all 15 baseline paths, and confirmed the recorded child and
 FTL had exited. This is an audited pilot defeat; it contributes zero completed
 full games. The failed outcome and all model responses remain preserved.
 
+A retrospective artifact review at 04:02 UTC found concrete model control
+mistakes in the pilot. `O` opened Options; decisions 30 and 37 closed doors when
+the model intended venting, while decision 32 opened doors when it intended
+sealing. The inputs were delivered and their effects were observed. Later
+repair deployments and delayed retreats exhausted crew health; medbay healing
+and movement also had observed effects. The final PNG explicitly reports all
+crew dead. No screenshot, input transport or clock defect was confirmed; oxygen
+0% alone does not prove the precise death mechanism. The review passed 78
+decisions and 79 PNGs and checked recorded restoration artifacts, without a new
+live-save audit. Its local receipt is
+`provisional-audits/sol-image-pilot-loss-analysis-20261011T040223420853Z.json`
+under the full-game cohort. The pilot remains excluded from full-game totals.
+
 The controller rechecked pilot cleanup at 03:40:11 UTC before launching the
 first full-game cell. The resumed invocation is limited to the two Sol
 conditions, sequentially, with another audit gate before hybrid starts. A
@@ -146,6 +159,20 @@ The independent check also matched all seven live saves, all 15 baseline paths
 and the six runtime assets shared by all ten diagnostics, with no game left
 running. These finite measured paths do not establish full-game determinism.
 Controller integration and broader acceptance remain WIP.
+
+Subsequent verifier hardening requires a common six-file runtime across all ten
+diagnostics and supports authenticated reconstruction of the complete native
+patch. A file-only collection at
+`dist/native-source-proof-20261011T0406Z/` authenticated 14 Git objects and
+reconstructed all 12 patched files; every hash matched the existing DLL's source
+provenance. Its verification receipt SHA-256 is
+`5c510cd6949cb942c336b36ab14f613fbfa5c6aa01e0bb5681d0b4a165ac7536`.
+No compiler, installation or game launch was involved. These source changes
+require fresh source-bound diagnostics before prospective controller admission;
+the earlier main collection remains evidence for its original pinned sources.
+The local harness suite after this hardening passed 2,017 tests with ten
+platform/compiler skips. These offline checks do not replace fresh diagnostics
+or the remaining model trials.
 
 ## Main integration
 

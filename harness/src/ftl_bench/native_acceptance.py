@@ -24,6 +24,7 @@ CONTRACT = "portable-visual-native-acceptance-v1"
 BRIDGE = "mod/ftl_bench_bridge/dev/ftl_bench_dev.lua"
 CHALLENGES = ("combat", "fire-crew-recovery", "repair-charge-escape")
 DELAYS = (0.0, 0.35, 1.2)
+RUNTIME_FILES = ("FTLGame.exe", "ftl.dat", "Hyperspace.dll", "xinput1_4.dll", "lua-5.3.dll", "ftlbench-native.json")
 CAPABILITIES = {"native_protocol": 5, "visual_io_version": 1,
     "visual_clock_version": 2, "fixed_step_numerator": 1,
     "fixed_step_denominator": 60, "fresh_start_seed": True,
@@ -96,7 +97,7 @@ def source_identity(root: Path) -> dict[str, str]:
                 names.add(rel.as_posix())
     names.update(p.relative_to(root).as_posix() for p in (root / "scripts").glob("*visual*.py"))
     names.update(("scripts/run_fullgame_experiment.py", "scripts/validate_native_acceptance.py",
-                  "scripts/write_native_provenance.py"))
+                  "scripts/write_native_provenance.py", "scripts/collect_native_source_evidence.py"))
     return {name: digest(_safe_path(root, name).read_bytes()) for name in sorted(names)}
 
 
@@ -302,14 +303,17 @@ def _cleanup(reader, trial, dll_sha, bridge_sha, provenance_sha):
     _require(isinstance(before, dict) and before and before == after, "Recorded cleanup inventories differ")
     _require(all(isinstance(k, str) and k and (v is None or isinstance(v, str) and SHA.fullmatch(v))
                  for k, v in before.items()), "Malformed inventory hashes")
-    roles = {"runtime/" + n for n in ("FTLGame.exe", "ftl.dat", "Hyperspace.dll", "xinput1_4.dll", "lua-5.3.dll", "ftlbench-native.json")}
+    roles = {"runtime/" + n for n in RUNTIME_FILES}
     roles.add("source/ftl_bench_dev.lua")
-    _require(roles.issubset(before) and all(before[k] is not None for k in roles), "Required runtime/production inventory roles missing")
+    if not roles.issubset(before) or any(before[k] is None for k in roles if k in before):
+        raise MissingEvidence("Required runtime/production inventory roles missing")
     _require(before["runtime/Hyperspace.dll"] == dll_sha and before["source/ftl_bench_dev.lua"] == bridge_sha
              and before["runtime/ftlbench-native.json"] == provenance_sha, "Cleanup/runtime/current production identity mismatch")
     ids = value["inventory_ids"]
     raw_before = reader.json(value["raw_inventory_refs"].get("before"), "raw before inventory")
     raw_after = reader.json(value["raw_inventory_refs"].get("after"), "raw after inventory")
+    _fields(raw_before, ("files_sha256",), "raw before inventory")
+    _fields(raw_after, ("files_sha256", "processes", "no_game_process", "checked_at"), "raw after inventory")
     _require(isinstance(ids, dict) and set(ids) == set(raw_before.get("files_sha256") or {}) == set(raw_after.get("files_sha256") or {})
              and len(set(ids.values())) == len(ids) and set(ids.values()) == set(before), "Cleanup inventory ID map is not lossless")
     _require({ids[k]: v for k, v in raw_before["files_sha256"].items()} == before
@@ -338,8 +342,33 @@ def _cleanup(reader, trial, dll_sha, bridge_sha, provenance_sha):
             _require(value["backups"][name] is None, "Absent original has backup bytes")
         else:
             _require(digest(reader.bytes(value["backups"][name], "backup " + name)) == sha, "Backup bytes mismatch")
+    joined_runtime = {ids[k]: v for k, v in raw_before["files_sha256"].items()}
     return {"checked_at": value["checked_at"], "inventory_paths": len(before), "save_paths": len(files),
+            "runtime_files": {name: joined_runtime["runtime/" + name] for name in RUNTIME_FILES},
+            "production_bridge_sha256": joined_runtime["source/ftl_bench_dev.lua"],
             "scope": "Saved point-in-time inventory/process attestation; no current live audit"}
+
+
+def _common_runtime(startup, probes, identity, bridge_sha):
+    """Join validated raw cleanup inventories, never saved acceptance flags."""
+    if not startup or not isinstance(probes, list) or len(probes) != 9:
+        raise MissingEvidence("Common runtime requires validated startup and exactly nine validated timing trials")
+    inventories = []
+    for trial in [startup, *probes]:
+        cleanup = trial.get("cleanup") or {}
+        files = cleanup.get("runtime_files")
+        if not isinstance(files, dict) or any(files.get(n) is None for n in RUNTIME_FILES):
+            raise MissingEvidence("Common runtime requires all six raw cleanup runtime hashes")
+        _require(set(files) == set(RUNTIME_FILES) and all(isinstance(v, str) and SHA.fullmatch(v)
+                 for v in files.values()), "Malformed common runtime inventory")
+        _require(files["Hyperspace.dll"] == identity["dll_sha256"]
+                 and files["ftlbench-native.json"] == identity["provenance_sha256"]
+                 and cleanup.get("production_bridge_sha256") == bridge_sha,
+                 "Common runtime/native/production bridge identity mismatch")
+        inventories.append(files)
+    _require(all(files == inventories[0] for files in inventories[1:]),
+             "Runtime assets differ across startup and timing trials")
+    return dict(sorted(inventories[0].items()))
 
 
 def _startup(reader, trial, dll_sha, bridge_sha, expected_source_digest=None, provenance_sha=None):
@@ -606,8 +635,16 @@ def validate(spec: dict, *, source_root: Path, evidence_root: Path) -> dict:
         for path in (source_root / "native/include").glob("*"):
             if path.is_file():
                 _require(source_hashes.get(path.name) == digest(path.read_bytes()), "Native include/provenance mismatch: " + path.name)
+        reconstruction = None
+        if "source_reconstruction" in fields:
+            from ftl_bench.native_build_origin import reconstruct_sources
+            reconstruction = reconstruct_sources(manifest=manifest, patch=patch,
+                proof=reader.json(fields["source_reconstruction"], "native source reconstruction"), reader=reader)
+            _require(reconstruction["source_files_sha256"] == source_hashes,
+                     "Reconstructed native source bytes differ from build provenance")
         return {"dll_sha256": digest(data), "provenance_sha256": fields["provenance"]["sha256"],
             "patch_sha256": digest(patch), "source_commit": prov["source_commit"], "built_at": prov.get("built_at"),
+            "source_reconstruction": reconstruction,
             "scope": "Artifact/source-provenance joins only; no compiler or live execution inferred"}
 
     identity = run("native_build_identity", native)
@@ -622,6 +659,7 @@ def validate(spec: dict, *, source_root: Path, evidence_root: Path) -> dict:
     bridge_data = run("prospective_bridge_identity", bridge)
     if bridge_data is not None:
         report["bridge_identity"] = {"sha256": digest(bridge_data), "source_path": BRIDGE}
+    startup_result, probe_results = None, None
     if current is not None and identity and bridge_data is not None:
         startup = spec.get("startup")
         if not isinstance(startup, dict):
@@ -631,6 +669,7 @@ def validate(spec: dict, *, source_root: Path, evidence_root: Path) -> dict:
             result = run("fixture_free_startup", lambda: _startup(reader, startup, identity["dll_sha256"], digest(bridge_data), source_digest(current), identity["provenance_sha256"]))
             if result:
                 report["startup"] = result
+                startup_result = result
         probes = spec.get("probes")
         if not isinstance(probes, list) or len(probes) != 9:
             report["missing_requirements"].append("probes: exactly nine current-bridge raw trials required (3 challenges × delays 0, 0.35, 1.2; repetition 1..3)")
@@ -643,15 +682,26 @@ def validate(spec: dict, *, source_root: Path, evidence_root: Path) -> dict:
                 _require(all(type(t.get("repetition")) is int and type(t.get("delay_seconds")) in (int, float) for t in probes)
                          and len(set(actual)) == 9 and set(actual) == expected, "Probe inventory/delay mismatch")
                 challenges, timing = _drivers()
-                states = {}
+                states, trials = {}, []
                 for trial in probes:
                     result = _probe(reader, trial, identity["dll_sha256"], bridge_data, challenges, timing, source_digest(current), identity["provenance_sha256"])
                     states.setdefault(trial["challenge"], []).append(result["states"])
+                    trials.append(result)
                 _require(all(values[0] == values[1] == values[2] for values in states.values()), "Measured gameplay trajectories diverged across delays")
-                return {"trials": 9, "challenges": list(CHALLENGES), "delays_seconds": list(DELAYS)}
+                return {"summary": {"trials": 9, "challenges": list(CHALLENGES), "delays_seconds": list(DELAYS)}, "results": trials}
             result = run("nine_probe_repeatability", repeats)
             if result:
-                report["repeatability"] = result
+                report["repeatability"] = result["summary"]
+                probe_results = result["results"]
+    def common_runtime():
+        if identity is None or bridge_data is None:
+            raise MissingEvidence("Common runtime requires native and production bridge identities")
+        return _common_runtime(startup_result, probe_results, identity, digest(bridge_data))
+    runtime_files = run("common_runtime_identity", common_runtime)
+    if runtime_files is not None:
+        report["runtime_files"] = runtime_files
+        report["native_identity"]["runtime_files"] = runtime_files
+        report["native_identity"]["production_bridge_sha256"] = digest(bridge_data)
     run("evidence_unchanged", lambda: _require(reader.unchanged(), "Evidence changed during validation"))
     if current is not None:
         run("current_sources_unchanged", lambda: _require(source_identity(source_root) == current, "Current sources changed during validation"))

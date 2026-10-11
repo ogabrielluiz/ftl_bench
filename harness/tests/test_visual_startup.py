@@ -31,7 +31,8 @@ def native(tmp_path, monkeypatch):
     (save / "ftl_bench_dev.lua").write_bytes(b"original bridge")
     (save / "capture.png").write_bytes(png(1280, 720))
     (root / "scripts").mkdir()
-    for name in ("run_fullgame_experiment.py", "validate_native_acceptance.py", "write_native_provenance.py"):
+    for name in ("run_fullgame_experiment.py", "validate_native_acceptance.py", "write_native_provenance.py",
+                 "collect_native_source_evidence.py"):
         (root / "scripts" / name).write_text("source")
     for name in ("FTLGame.exe", "ftl.dat", "Hyperspace.dll", "xinput1_4.dll", "lua-5.3.dll", "ftlbench-native.json"):
         (game / name).write_bytes(name.encode())

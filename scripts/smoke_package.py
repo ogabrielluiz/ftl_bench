@@ -138,7 +138,9 @@ except VisualTransportError:
 else:
     raise AssertionError('Installed runtime accepted the old pause-only clock')
 for script in ('validate_visual_live.py', 'validate_visual_interference.py', 'validate_visual_sector.py',
-               'validate_visual_challenges.py', 'run_visual_experiment.py', 'run_fullgame_experiment.py'):
+               'validate_visual_challenges.py', 'run_visual_experiment.py', 'run_fullgame_experiment.py',
+               'validate_visual_startup.py', 'validate_visual_timing.py', 'validate_native_acceptance.py',
+               'collect_native_source_evidence.py'):
     result = subprocess.run([sys.executable, str(root/'scripts'/script), '--help'], capture_output=True, text=True)
     if result.returncode:
         raise RuntimeError(script + ' help failed: ' + result.stderr + result.stdout)

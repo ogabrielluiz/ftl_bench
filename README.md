@@ -30,7 +30,9 @@ attempts. Raw runs, native binaries and local acceptance artifacts are not shipp
 in Git; the frozen controllers need those artifacts and a matching runtime.
 Fresh-checkout setup of that complete evidence chain remains WIP. The
 [portable evidence tools](docs/native-acceptance.md) collect protected startup
-and timing probes and verify their raw artifacts without promoting a runtime.
+and timing probes, require a common recorded runtime, and optionally reconstruct
+all patched native sources from authenticated Git objects. They verify their
+documented scopes without promoting a runtime.
 
 ## Visual iteration
 

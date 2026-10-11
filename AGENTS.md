@@ -60,6 +60,13 @@ Keep the include implementations, patch and manifest consistent.
 `scripts/write_native_provenance.py` records the actual build inputs and DLL.
 Never relabel diagnostic provenance as accepted production evidence.
 
+For portable source evidence, use `scripts/collect_native_source_evidence.py`
+against an explicit local native repository. The proof authenticates the exact
+manifest base and reconstructs every patched file; it does not attest a compiler
+invocation. Runtime equality across diagnostics and build-source reconstruction
+are separate checks. Keep historical evidence pinned to its original verifier
+and source bytes when either implementation changes.
+
 Visual startup requires native protocol 5, clock 2 with fixed step 1/60, and
 `fresh-start-seed-v3`; protocol 5 alone is insufficient. Preserve the structured
 runner's separate contracts. Native DLLs, local acceptance receipts, `dist/`,
