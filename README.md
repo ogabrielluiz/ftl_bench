@@ -7,6 +7,32 @@ An agent benchmark that drives the real **FTL: Faster Than Light** engine throug
 ## Status: work in progress
 
 The visual benchmark is an **alpha implementation with partial live validation**.
+At the 2026-10-11 10:47 UTC (07:47 in São Paulo) snapshot, executable commit `463c340` has fresh scoped
+admission and two new frozen cohorts: `matrix-main-463c340-20261011` (all 36
+challenge cells planned) and `fullgame-main-463c340-20261011` (pilot plus four
+full-game conditions planned). No model calls or new task/native-ending results
+are claimed at this snapshot. The new [CLI recovery policy](docs/cli-recovery.md)
+is source-bound; earlier cohorts and failed attempts remain separate.
+
+Startup's eight checks, nine timing equality probes and protected cleanup passed,
+followed by eight executed independent negative probes. Admission binds 78 sources
+and 565 evidence files; `production_accepted` remains false. The 31 original native
+build/source inputs were reused unchanged with their identities and reuse disclosed.
+All five [CI jobs at `463c340`](https://github.com/ogabrielluiz/ftl_bench/actions/runs/38132428078)
+passed. This establishes the documented admission scope, not completed model
+comparison, clean-build reproduction or fixture-free native endings.
+
+The first new Sol/image combat trial subsequently reached its task goal after 13
+model decisions, with 15 audited PNGs and exact save restoration. Its original comparison
+report remains excluded: the saved auditor incorrectly required actor-policy
+metadata in a trajectory header written before actor construction. A prospective
+repair reads the manifest declaration and validates all present declarations;
+it retains strict rejection of missing, unknown or conflicting request policies.
+The original run and report are preserved. Further model trials are held until
+fresh admission and new cohorts bind the repaired reporting sources.
+
+The following dated `2174cc9` results are preserved historical evidence.
+
 At the 2026-10-11 09:25 UTC (06:25 in São Paulo) boundary, the frozen
 `2174cc9` matrix has all 18 Sol cells finished and 18 Luna cells remaining:
 **17 eligible, 12 task successes, five budget failures and one preserved technical
@@ -56,13 +82,12 @@ Screenshot play, conservative image-derived HUD summaries, protected saves,
 frozen challenge/full-game controllers and exact dashboard replays are
 implemented. CI passes on Windows and Linux with Python 3.11 and 3.13. The
 repaired native runtime passed the protected natural store-arrival regression,
-fixture-free startup and all nine timing probes. The current collection reuses
-the original native build unchanged and discloses
+fixture-free startup and all nine timing probes. The admitted collections reuse
+the original native build unchanged and disclose
 that reuse; all ten cleanup inventories and the current seven original saves
-were independently verified. Both saved-report admission fixes and the CLI
-failure-evidence change are included in the newly admitted sources. All five
-[CI jobs at `2174cc9`](https://github.com/ogabrielluiz/ftl_bench/actions/runs/38121156672)
-passed. These checks establish their documented scopes,
+were independently verified. Both saved-report admission fixes, bounded CLI
+failure evidence and the audited recovery policy are included in the newly
+admitted `463c340` sources. These checks establish their documented scopes,
 not completion of the benchmark plan or general determinism.
 
 The optional [portable v2 workflow](docs/native-acceptance.md) archives local

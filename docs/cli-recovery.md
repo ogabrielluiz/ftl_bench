@@ -1,7 +1,20 @@
 # Audited Codex CLI recovery
 
-Status: prospective implementation; fresh source-bound admission and model runs
-remain unperformed for this policy. It does not change any frozen trial outcome.
+Status at 2026-10-11 10:47 UTC (07:47 in São Paulo): implemented and freshly admitted at executable
+commit `463c340`. The new `matrix-main-463c340-20261011` and
+`fullgame-main-463c340-20261011` cohorts are frozen with all cells planned;
+no model call has yet used this policy at the snapshot. It does not change any
+older frozen trial outcome. See [exact admission and cohort identities](NEXT.md).
+
+The first subsequent Sol/image combat trial completed 13 model decisions and the
+native task goal. Its comparison exposed a saved-auditor format defect: challenge
+trajectory metadata precedes actor construction, while the manifest and experiment
+retain the policy. The prospective repair joins the manifest policy with every
+present declaration instead of inventing a legacy declaration for an absent
+optional carrier. It rejects conflicting, unknown or undeclared modern policies
+and preserves strict historical behavior. The 301 focused tests and a read-only
+re-audit of the complete saved trial passed. Its original exclusion remains saved;
+fresh source-bound admission and cohorts are required before subsequent calls.
 
 ## Observed failure
 
@@ -90,5 +103,10 @@ completions at zero. Local evidence includes
 `dist/cli-recovery-call47-counterfactual-review.json` in the isolated setup
 checkout and `2174-main-fullgame-sol-image-expanded-diagnostics-ui-review.json`
 under the evaluation checkout's `dist/store-warp-diagnosis-20261011/`.
-No live benchmark has yet used the new policy; these checks do not replace
-fresh native admission, complete games or the Sol/Luna comparison.
+Fresh source-bound collection `main-admission-cli-recovery-20261011T103548Z`
+subsequently passed eight startup checks, nine timing equality probes, protected
+cleanup and eight executed independent negative probes. Admission binds 78 sources
+and 565 evidence files, reusing 31 unchanged original native inputs; it retains
+`production_accepted: false`. All five [CI jobs at `463c340`](https://github.com/ogabrielluiz/ftl_bench/actions/runs/38132428078)
+passed. No live model benchmark has yet used the new policy at the 10:47 UTC
+snapshot. Admission does not establish completed games or the Sol/Luna comparison.

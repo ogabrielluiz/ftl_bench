@@ -1,6 +1,77 @@
 # Current validation and next work
 
-**WIP / alpha. Snapshot: 2026-10-11 10:19 UTC (07:19 in São Paulo).**
+**WIP / alpha. Snapshot: 2026-10-11 10:47 UTC (07:47 in São Paulo).**
+
+## Current admitted cohorts (`463c340`)
+
+Commit `463c340069df9ab1c7786bf6cc0c7b07ab1e8017` passed all five jobs in
+[CI run 38132428078](https://github.com/ogabrielluiz/ftl_bench/actions/runs/38132428078).
+Fresh collection `main-admission-cli-recovery-20261011T103548Z` passed startup's
+eight checks, all nine timing equality probes and protected cleanup, followed by
+eight actually executed independent negative review cases. Controller admission
+joins 78 executable sources and 565 evidence files. All 31 original native-build
+and authenticated source-proof inputs were reused unchanged; original timestamps
+and identities remain intact, with reuse disclosed. This is not a new native build
+or compiler proof. `production_accepted` remains false.
+
+Admission-spec SHA-256:
+`a107aa8d76e92c81d804f0b6bac3adcd7a13922da33c908857efd43b91076885`.
+Both new cohorts are under `harness/runs/validation/visual-v1/`:
+
+| Cohort | Embedded protocol SHA-256 | Protocol file SHA-256 | Snapshot |
+| --- | --- | --- | --- |
+| `matrix-main-463c340-20261011` | `8ff0aeb34e8bc69a5738dff9129cfb749fd793126b530cbb9786b628035d30bd` | `1e8889fea6fb7b580bc902af87673a48f5c57135a4e381f741a1f1be586a209f` | All 36 planned |
+| `fullgame-main-463c340-20261011` | `818ffe2ff97bd0f610fdae4d6a7de7c545cdf5a38ae3a5d336f61879ac4d4b46` | `19fd8ed08f5460418e719473d45d319a681029761cc0272a622965cfbc74c877` | Pilot plus four conditions planned |
+
+No model calls have run in these cohorts at this snapshot, and fixture-free
+native-ending completion remains **0/4**. Their source-bound [recovery policy](cli-recovery.md)
+does not retry or reinterpret any old failed cell. Next: review frozen archives
+and rendered planned UI, then run the first Sol cell prospectively. Keep cohorts
+separate; report completed-turn usage separately from unknown aborted internal
+sampling usage. Clean-build/setup reproduction and full comparative/native-ending
+requirements remain unfinished.
+
+### First trial and saved-audit repair
+
+At 10:53:51 UTC, the first Sol/image combat cell completed with
+`fixture_goal_observed`: 13 decisions, 15 audited PNGs, hull 27/30, all three crew alive,
+and the native combat goal achieved. The visible kill dialog and settled reward
+show 18 scrap, three fuel and one missile received. Current exact seven-save
+inventory, prior Lua bridge, six runtime files and no-game-process checks passed.
+The matrix now retains one finished cell and 35 planned; the five full-game/pilot
+entries remain planned. This challenge success does not complete a full game.
+
+The original comparison records zero eligible and one excluded trial because the
+new reporter incorrectly treats absent top-level trajectory actor metadata as a
+legacy-policy declaration. The challenge producer writes that header before actor
+construction; its manifest, frozen experiment and all actual model records carry
+the correct modern policy. The first false rejection causes the subsequent history
+mismatches. This is a reporting defect, not thirteen independent actor failures.
+
+The prospective fix uses the manifest policy and checks every present declaration,
+without requiring optional carriers absent from real challenge or standalone runs.
+All-missing historical policies still use strict legacy behavior. It preserves
+provisional auditing before a final report exists. The focused suite passed 301
+tests, including challenge-shaped multi-step history and conflicting declarations;
+the actual saved 13-decision trace passes a separate read-only re-audit. Original
+run/report/comparison bytes and their exclusion remain unchanged. Changed reporting
+sources require fresh admission and new freezes before further model calls.
+
+All 13 calls report usage: input 245,915 (cached subset 164,736), output 3,916
+(reasoning subset 1,599); recorded latency totals 231.364 seconds, median 18.728.
+No reconnect notice occurred. Local evidence is under
+`dist/store-warp-diagnosis-20261011/`: `463c340-sol-image-combat-01-final-review.json`,
+`463c340-sol-image-combat-01-current-cleanup-review.json`, and
+`463c340-sol-image-combat-01-completed-ui-review.json`. The first receipt preserves
+the original failed audit; the UI correctly exposes its exclusion.
+The separate `463c340-sol-image-combat-01-derived-audit-review.json` reanalysis
+binds the prospective reporter, verifies all 13 decisions and 15 PNGs, and
+derives eligibility and task success with no saved child-admission issues.
+Its eight original artifact guards remain byte-identical; it does not replace
+the saved comparison or authorize further trials on changed sources.
+
+## Preserved `2174cc9` results (10:19 UTC snapshot)
+
 At the 09:25 UTC challenge boundary, the admitted `2174cc9` matrix has all 18
 Sol cells finished and 18 Luna cells remaining: **17 eligible, 12 task successes, five budget failures and one
 preserved technical exclusion**. All five full-game/pilot entries were planned
@@ -48,7 +119,7 @@ The visual track is `visual-v1`; historical structured runs retain runner/rulese
 v7 and their own contracts. Do not pool their scores or treat a diagnostic fixture
 ending as a fixture-free full game.
 
-## Current admitted cohorts (`2174cc9`)
+## Preserved admitted cohorts (`2174cc9`)
 
 Commit `2174cc9704343f91e7d527a6a9f6961eb741be81` passed all five jobs in
 [CI run 38121156672](https://github.com/ogabrielluiz/ftl_bench/actions/runs/38121156672).
@@ -73,7 +144,7 @@ protocol identities and hashes of the complete `protocol.json` bytes differ:
 | `matrix-main-2174cc9-20261011` | `14b187e91c25d675f3f9e1c532f4dfa6ec75d137334dc62e122f9a254118b613` | `b04b9dab9e7f85b24c092f9b53117238506dd5cc5a75f66e4b8368a94ac2910e` | 18 finished, 18 Luna remaining |
 | `fullgame-main-2174cc9-20261011` | `0714ba2975bc1b1fa37ff09a0be85087fda35037e237cc3a15ca4631b590935d` | `53b5b6cac94aef5b9177381b1a103abc14b6b991e656bebe296a71ceeb4288ac` | Pilot native defeat; Sol/image technical interruption; three conditions planned |
 
-### Current results and retained failure
+### Preserved results and retained failure
 
 At the 09:25 UTC boundary, each row has three attempted repeats per mode:
 

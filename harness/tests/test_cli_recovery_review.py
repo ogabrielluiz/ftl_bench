@@ -87,3 +87,119 @@ def test_genuine_redacted_stderr_retains_scoped_original_hash(tmp_path):
     model["cli_recovery"]["stderr"] = stderr
     save_rows(directory, rows)
     assert reporter.audit_visual_run(directory, verify_live_saves=False)["complete"]
+
+def challenge_policy_layout(directory):
+    """Actual challenge meta precedes actor; manifest/report carry its identity."""
+    rows = recovered_run(directory)
+    identity = rows[0]["meta"].pop("actor_identity")
+    manifest = json.loads((directory / "run.json").read_text(encoding="utf-8"))
+    manifest["experiment"]["actor_identity"] = deepcopy(identity)
+    report = json.loads((directory / "visual-report.json").read_text(encoding="utf-8"))
+    report["experiment"] = deepcopy(manifest["experiment"])
+    write(directory / "run.json", manifest)
+    write(directory / "visual-report.json", report)
+    save_rows(directory, rows)
+    return rows
+
+
+def test_actual_challenge_optional_meta_identity_absent_is_valid(tmp_path):
+    directory = tmp_path / "actual-layout"
+    challenge_policy_layout(directory)
+    result = reporter.audit_visual_run(directory, verify_live_saves=False)
+    assert result["complete"], result["issues"]
+    assert result["cli_event_policies"] == [actor.CLI_EVENT_POLICY]
+
+
+@pytest.mark.parametrize("carrier", ["meta", "meta_experiment", "manifest", "manifest_experiment", "report_experiment"])
+@pytest.mark.parametrize("policy", [actor.LEGACY_CLI_EVENT_POLICY, "future", None])
+def test_all_present_actor_policy_carriers_must_match(tmp_path, carrier, policy):
+    directory = tmp_path / (carrier + str(policy))
+    rows = challenge_policy_layout(directory)
+    manifest = json.loads((directory / "run.json").read_text(encoding="utf-8"))
+    report = json.loads((directory / "visual-report.json").read_text(encoding="utf-8"))
+    if carrier == "meta":
+        rows[0]["meta"]["actor_identity"] = {"cli_event_policy": policy}
+    elif carrier == "meta_experiment":
+        rows[0]["meta"]["experiment"]["actor_identity"] = {"cli_event_policy": policy}
+    elif carrier == "manifest":
+        manifest["actor_identity"]["cli_event_policy"] = policy
+    elif carrier == "manifest_experiment":
+        manifest["experiment"]["actor_identity"]["cli_event_policy"] = policy
+    else:
+        report["experiment"]["actor_identity"]["cli_event_policy"] = policy
+    write(directory / "run.json", manifest)
+    write(directory / "visual-report.json", report)
+    save_rows(directory, rows)
+    result = reporter.audit_visual_run(directory, verify_live_saves=False)
+    assert not result["complete"]
+    assert any("CLI event policy" in issue["error"] for issue in result["issues"])
+
+
+def test_missing_manifest_policy_cannot_be_supplied_by_optional_carrier(tmp_path):
+    directory = tmp_path / "manifest-missing"
+    challenge_policy_layout(directory)
+    manifest = json.loads((directory / "run.json").read_text(encoding="utf-8"))
+    manifest.pop("actor_identity")
+    write(directory / "run.json", manifest)
+    result = reporter.audit_visual_run(directory, verify_live_saves=False)
+    assert not result["complete"]
+    assert any("CLI event policy" in issue["error"] for issue in result["issues"])
+
+
+def test_challenge_policy_join_preserves_multiple_step_history(tmp_path):
+    directory = tmp_path / "two-steps"
+    rows = challenge_policy_layout(directory)
+    first = rows[2]
+    second = deepcopy(first)
+    second["i"] = 2
+    second["pre_obs"] = deepcopy(first["obs"])
+    second["visual"]["before"] = deepcopy(first["visual"]["after"])
+    image_bytes = (directory / "screens/1.png").read_bytes()
+    (directory / "screens/2.png").write_bytes(image_bytes)
+    for key, value in (("path", "screens/2.png"), ("frame_id", "2"), ("capture_id", "2"),
+                       ("action_seq", 2), ("world_updates", "40"), ("simulated_updates", "40")):
+        second["visual"]["after"][key] = value
+        if key not in ("path",):
+            second["obs"]["visual"][key] = value
+    second["obs"]["last_action_seq"] = 2
+    second["obs"]["capabilities"].update(world_updates="40", simulated_updates="40")
+    history = [{"actions": [], "advance_frames": 20, "actual_advance_frames": 20,
+                "intent": "Wait", "delivery": "delivered"}]
+    observation = actor.VisualObservation(directory / "screens/1.png", "1", history=history)
+    _, image = actor.read_screenshot(observation.image_path)
+    instructions = first["model"]["prompt"].rsplit("\n\nDECISION INPUT\n", 1)[0]
+    prompt = actor.build_visual_prompt(observation, image, instructions)
+    second["model"].update(frame_id="1", image=image, prompt=prompt,
+                            prompt_sha256=hashlib.sha256(prompt.encode()).hexdigest())
+    rows.insert(3, second)
+    rows[-1]["decisions"] = 2
+    save_rows(directory, rows)
+    report = json.loads((directory / "visual-report.json").read_text(encoding="utf-8"))
+    report["decisions"] = 2
+    write(directory / "visual-report.json", report)
+    result = reporter.audit_visual_run(directory, verify_live_saves=False)
+    assert result["complete"], result["issues"]
+    assert result["checked_decisions"] == 2
+
+
+def test_present_legacy_meta_identity_does_not_silently_inherit_modern_policy(tmp_path):
+    directory = tmp_path / "legacy-declaration"
+    rows = challenge_policy_layout(directory)
+    rows[0]["meta"]["actor_identity"] = {"task": rows[2]["model"]["task"]}
+    save_rows(directory, rows)
+    result = reporter.audit_visual_run(directory, verify_live_saves=False)
+    assert not result["complete"]
+    assert any("CLI event policy" in issue["error"] for issue in result["issues"])
+
+
+def test_provisional_challenge_audit_does_not_require_terminal_report(tmp_path):
+    directory = tmp_path / "provisional"
+    rows = challenge_policy_layout(directory)
+    save_rows(directory, rows[:-1])
+    (directory / "visual-report.json").unlink()
+    result = reporter.audit_visual_run(directory, require_terminal=False, verify_live_saves=False)
+    assert result["status"] == "provisional"
+    assert result["issues"] == []
+    assert result["checked_decisions"] == 1
+    terminal = reporter.audit_visual_run(directory, verify_live_saves=False)
+    assert not terminal["complete"] and terminal["issues"]

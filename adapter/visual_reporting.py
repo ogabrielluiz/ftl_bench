@@ -214,7 +214,7 @@ def audit_visual_run(directory: str | Path, *, require_terminal: bool = True,
     run's originals. Backup hashes and the recorded restoration receipt are always
     required for a final audit. Missing or corrupt artifacts fail closed.
     """
-    from visual_agent import (CONTRACT, LEGACY_CLI_EVENT_POLICY, _visible_hud, audit_codex_events, decision_schema,
+    from visual_agent import (CONTRACT, CLI_EVENT_POLICY, LEGACY_CLI_EVENT_POLICY, _visible_hud, audit_codex_events, decision_schema,
                               parse_decision, read_screenshot)
     from visible_hud import extract_visible_hud
     directory = Path(directory).resolve()
@@ -291,6 +291,8 @@ def audit_visual_run(directory: str | Path, *, require_terminal: bool = True,
         _require(isinstance(rows[0].get("meta"), dict), "invalid trajectory metadata")
         meta = rows[0]["meta"]
         manifest, runtime = _read(directory / "run.json"), _read(directory / "runtime-fingerprint.json")
+        report_path = directory / "visual-report.json"
+        report = _read(report_path) if report_path.exists() else {}
         _require(meta.get("observation_mode") in ("image", "hybrid"), "invalid observation mode")
         for key in ("model", "observation_mode", "codex_cli"):
             _require(meta.get(key) == manifest.get(key), "manifest/trajectory mismatch: " + key)
@@ -382,9 +384,25 @@ def audit_visual_run(directory: str | Path, *, require_terminal: bool = True,
                 _require(key not in declared or declared[key] == actual, "declared actor identity mismatch: " + key)
             _require(not meta.get("prompt_sha256") or meta["prompt_sha256"] == model["manual_sha256"], "run manual identity mismatch")
             event_policy = model.get("cli_event_policy", LEGACY_CLI_EVENT_POLICY)
-            declared_policy = _object(meta.get("actor_identity")).get("cli_event_policy", LEGACY_CLI_EVENT_POLICY)
-            _require(declared_policy == _object(manifest.get("actor_identity")).get("cli_event_policy", LEGACY_CLI_EVENT_POLICY),
-                     "CLI event policy differs between manifest and trajectory")
+            # Challenge metadata precedes actor construction. An absent optional
+            # carrier declares nothing; a present legacy identity keeps its default.
+            manifest_actor = manifest.get("actor_identity", {})
+            _require(isinstance(manifest_actor, dict), "Invalid CLI event policy manifest actor identity")
+            declarations = [manifest_actor.get("cli_event_policy", LEGACY_CLI_EVENT_POLICY)]
+            for carrier in (meta, report,
+                            _object(manifest.get("experiment")),
+                            _object(meta.get("experiment")),
+                            _object(report.get("experiment"))):
+                if "actor_identity" in carrier:
+                    identity = carrier["actor_identity"]
+                    _require(isinstance(identity, dict), "Invalid CLI event policy actor identity")
+                    declarations.append(identity.get("cli_event_policy", LEGACY_CLI_EVENT_POLICY))
+            _require(all(isinstance(value, str) and value in
+                         (CLI_EVENT_POLICY, LEGACY_CLI_EVENT_POLICY)
+                         for value in declarations), "Unknown declared CLI event policy")
+            declared_policy = declarations[0] if declarations else LEGACY_CLI_EVENT_POLICY
+            _require(all(value == declared_policy for value in declarations),
+                     "CLI event policy differs between recorded actor declarations")
             _require(event_policy == declared_policy, "CLI event policy differs from declared actor")
             event_policies.add(event_policy)
             _require(len(event_policies) == 1, "CLI event policy changed during run")
