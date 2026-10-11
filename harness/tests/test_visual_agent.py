@@ -79,8 +79,8 @@ def test_codex_attaches_exact_image_in_separate_workspace_and_audits_answer(monk
     assert "--ephemeral" in captured["command"] and "--json" in captured["command"]
     assert captured["command"][-1] == "-"
     assert "gpt-6.1-sol" in captured["command"]
-    assert str(observation.image_path) not in captured["input"]
-    assert "visible_hud" not in captured["input"].split("DECISION INPUT\n")[1]
+    assert str(observation.image_path) not in captured["input"].decode("utf-8")
+    assert "visible_hud" not in captured["input"].decode("utf-8").split("DECISION INPUT\n")[1]
     assert not Path(captured["cwd"]).exists()
     assert decision.metadata["response_model_identity"]["status"] == "not_reported"
     assert decision.metadata["requested_model"] == "gpt-6.1-sol"
@@ -98,7 +98,8 @@ def test_invalid_model_json_retains_provider_usage_and_explicit_model_identity(m
         visual.CodexVisualAgent(codex_bin=executable).decide(observation)
     metadata = error.value.metadata
     assert metadata["usage"] == {"input_tokens": 101, "cached_input_tokens": 0, "output_tokens": 21}
-    assert metadata["tool_use"] is False and metadata["events"][-1]["type"] == "turn.completed"
+    assert metadata["tool_use"] is False and "events" not in metadata
+    assert "turn.completed" in metadata["cli_failure"]["stdout"]["text"]
     assert metadata["response_model_identity"]["models"] == ["provider-reported-fixture"]
     assert metadata["requested_model"] == "gpt-6.1-sol"
 
@@ -134,7 +135,7 @@ def test_actor_freezes_manual_bytes_at_construction(tmp_path, monkeypatch, obser
     manual.write_text("Changed during trial", encoding="utf-8")
     reply = json.dumps(answer())
     def run(command, **kwargs):
-        assert kwargs["input"].startswith("Original instructions")
+        assert kwargs["input"].decode("utf-8").startswith("Original instructions")
         Path(command[command.index("-o") + 1]).write_text(reply)
         return SimpleNamespace(returncode=0, stdout=event_stream(reply), stderr="")
     monkeypatch.setattr(visual.subprocess, "run", run)
@@ -174,14 +175,15 @@ def test_infrastructure_failures_never_fall_back_to_text_or_retry(monkeypatch, o
             Path(command[command.index("--image") + 1]).write_bytes(png(200, 100))
         return SimpleNamespace(returncode=2 if failure == "nonzero" else 0,
                                stdout="" if failure == "no_events" else event_stream("{}" if failure == "mismatched_answer" else reply),
-                               stderr="secret-value-that-must-not-be-reflected")
+                               stderr="transport diagnostic details")
 
     monkeypatch.setattr(visual.subprocess, "run", run)
     with pytest.raises(visual.VisualProtocolError) as error:
         visual.CodexVisualAgent(codex_bin=executable).decide(observation)
     assert len(calls) == 1
-    assert "secret-value" not in str(error.value)
-    assert "secret-value" not in json.dumps(error.value.metadata)
+    assert "transport diagnostic details" not in str(error.value)
+    if failure != "timeout":
+        assert "transport diagnostic details" in error.value.metadata["cli_failure"]["stderr"]["text"]
 
 
 def test_missing_or_corrupt_image_fails_before_model_is_called(monkeypatch, observation, executable):
@@ -270,7 +272,7 @@ def test_task_is_bounded_and_present_in_decision_prompt(monkeypatch, observation
     reply = json.dumps(answer())
 
     def run(command, **kwargs):
-        assert "CURRENT TASK\n" + task in kwargs["input"]
+        assert "CURRENT TASK\n" + task in kwargs["input"].decode("utf-8")
         Path(command[command.index("-o") + 1]).write_text(reply)
         return SimpleNamespace(returncode=0, stderr="", stdout=event_stream(reply))
 
@@ -280,3 +282,164 @@ def test_task_is_bounded_and_present_in_decision_prompt(monkeypatch, observation
         visual.CodexVisualAgent(task="x" * 1001)
     with pytest.raises(visual.VisualProtocolError):
         visual.CodexVisualAgent(task="")
+
+
+@pytest.mark.parametrize("kind", ["unsupported", "error", "turn_failed", "tool", "nonzero", "malformed", "invalid_answer", "invalid_utf8", "timeout"])
+def test_rejected_cli_retains_original_output_after_staging_cleanup(monkeypatch, observation, executable, kind):
+    import base64
+    import hashlib
+    captured = {}
+    reply = json.dumps(answer() if kind != "invalid_answer" else {"invalid": True})
+    stdout = event_stream(reply).encode()
+    if kind in ("unsupported", "error"):
+        stdout = b'{"type":"turn.started"}\r\n' + json.dumps({"type": "error" if kind == "error" else "unknown.event", "message": "diagnostic detail"}).encode() + b'\r\n'
+    elif kind == "turn_failed":
+        stdout = b'{"type":"turn.started"}\n{"type":"turn.failed","error":{"message":"failed"}}\n'
+    elif kind == "tool":
+        stdout = b'{"type":"turn.started"}\n{"type":"item.started","item":{"type":"command_execution"}}\n'
+    elif kind == "invalid_utf8":
+        stdout = b'invalid UTF8\xff'
+    elif kind == "malformed":
+        stdout = b'{not JSON}\n'
+    elif kind == "timeout":
+        stdout = b'{"type":"turn.started"}\npartial\xff'
+    stderr = b'CLI diagnostic\r\n\xff'
+    def run(command, **kwargs):
+        captured["cwd"] = kwargs["cwd"]
+        captured["calls"] = captured.get("calls", 0) + 1
+        if kind == "timeout":
+            raise subprocess.TimeoutExpired(command, 3, output=stdout, stderr=stderr)
+        Path(command[command.index("-o") + 1]).write_text(reply)
+        return SimpleNamespace(returncode=2 if kind == "nonzero" else 0, stdout=stdout, stderr=stderr)
+    monkeypatch.setattr(visual.subprocess, "run", run)
+    with pytest.raises(visual.VisualProtocolError) as error:
+        visual.CodexVisualAgent(codex_bin=executable).decide(observation)
+    assert captured["calls"] == 1 and not Path(captured["cwd"]).exists()
+    failure = error.value.metadata["cli_failure"]
+    for name, raw in (("stdout", stdout), ("stderr", stderr)):
+        evidence = failure[name]
+        assert base64.b64decode(evidence["base64"]) == raw
+        assert evidence["sha256"] == hashlib.sha256(raw).hexdigest()
+        assert evidence["bytes"] == evidence["retained_bytes"] == len(raw)
+        assert evidence["truncated"] is False
+    assert failure["kind"] == {"unsupported": "unsupported_event", "error": "unsupported_event", "turn_failed": "unsupported_event", "tool": "unsupported_activity", "invalid_utf8": "invalid_utf8", "nonzero": "nonzero_exit", "malformed": "malformed_json", "invalid_answer": "invalid_final_answer", "timeout": "timeout"}[kind]
+    if kind in ("unsupported", "error"):
+        assert failure["event_index"] == 1
+        assert failure["event_type"] == ("error" if kind == "error" else "unknown.event")
+    if kind == "timeout":
+        assert failure["partial"] is True
+        assert failure["stdout"]["utf8_valid"] is False
+
+
+def test_rejected_oversized_cli_evidence_is_bounded(monkeypatch, observation, executable):
+    import base64
+    import hashlib
+    stdout = b'x' * (2 * 1024 * 1024 + 9)
+    stderr = b'y' * (64 * 1024 + 7)
+    monkeypatch.setattr(visual.subprocess, "run", lambda *a, **kw: SimpleNamespace(returncode=0, stdout=stdout, stderr=stderr))
+    with pytest.raises(visual.VisualProtocolError) as error:
+        visual.CodexVisualAgent(codex_bin=executable).decide(observation)
+    failure = error.value.metadata["cli_failure"]
+    for name, raw, cap in (("stdout", stdout, 2 * 1024 * 1024), ("stderr", stderr, 64 * 1024)):
+        e = failure[name]
+        assert e["bytes"] == len(raw) and e["retained_bytes"] == cap and e["truncated"] is True
+        assert e["sha256"] == hashlib.sha256(raw).hexdigest()
+        assert base64.b64decode(e["base64"]) == raw[:cap]
+
+
+def test_successful_byte_stream_preserves_decision_without_failure_metadata(monkeypatch, observation, executable):
+    reply = json.dumps(answer())
+    def run(command, **kwargs):
+        assert isinstance(kwargs["input"], bytes) and "text" not in kwargs
+        Path(command[command.index("-o") + 1]).write_text(reply)
+        return SimpleNamespace(returncode=0, stdout=event_stream(reply).encode(), stderr=b'nonfatal notice')
+    monkeypatch.setattr(visual.subprocess, "run", run)
+    result = visual.CodexVisualAgent(codex_bin=executable).decide(observation)
+    assert result.as_dict() == answer()
+    assert "cli_failure" not in result.metadata
+
+
+def test_timeout_without_output_records_unavailable_not_empty(monkeypatch, observation, executable):
+    def run(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, 3)
+    monkeypatch.setattr(visual.subprocess, "run", run)
+    with pytest.raises(visual.VisualBackendError) as error:
+        visual.CodexVisualAgent(codex_bin=executable).decide(observation)
+    failure = error.value.metadata["cli_failure"]
+    assert failure["kind"] == "timeout" and failure["partial"] is True
+    assert failure["stdout"]["available"] is False and failure["stderr"]["available"] is False
+    assert error.value.metadata["attempts"] == 1
+
+
+@pytest.mark.parametrize("invalid_answer", [False, True])
+def test_failure_evidence_redacts_credentials_in_text_base64_and_events(monkeypatch, observation, executable, invalid_answer):
+    import base64
+    import hashlib
+    tokens = ["sk-testCredential123", "apikey_private456", "bearerSecret789", "assignedSecret321"]
+    detail = "diagnostic E42 Authorization: Bearer bearerSecret789 api_key=assignedSecret321 sk-testCredential123 apikey_private456"
+    reply = json.dumps({"invalid": detail})
+    stdout = event_stream(reply).encode() if invalid_answer else json.dumps({"type": "error", "message": detail}).encode()
+    stderr = detail.encode()
+    def run(command, **kwargs):
+        Path(command[command.index("-o") + 1]).write_text(reply)
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr=stderr)
+    monkeypatch.setattr(visual.subprocess, "run", run)
+    with pytest.raises(visual.VisualProtocolError) as error:
+        visual.CodexVisualAgent(codex_bin=executable).decide(observation)
+    metadata = error.value.metadata
+    for token in tokens:
+        assert token not in json.dumps(metadata)
+    for name, raw in (("stdout", stdout), ("stderr", stderr)):
+        e = metadata["cli_failure"][name]
+        retained = base64.b64decode(e["base64"])
+        assert all(token.encode() not in retained for token in tokens)
+        assert b"diagnostic E42" in retained
+        assert e["redacted"] is True and e["redaction_count"] == 4
+        assert e["sha256"] == hashlib.sha256(raw).hexdigest()
+        assert e["retained_sha256"] == hashlib.sha256(retained).hexdigest()
+        assert e["hash_scope"] == "original_bytes"
+        assert e["retained_hash_scope"] == "redacted_retained_bytes"
+
+
+@pytest.mark.parametrize("case", ["json_key", "event_type", "item_type"])
+def test_failure_context_cannot_bypass_credential_redaction_or_bounds(monkeypatch, observation, executable, case):
+    import base64
+    secret = "privateAssignedCredential"
+    reply = json.dumps({"api_key": secret})
+    if case == "json_key":
+        stdout = event_stream(reply).encode()
+    else:
+        value = "sk-privateCredential " + "x" * 4096
+        event = {"type": value} if case == "event_type" else {"type": "item.started", "item": {"type": value}}
+        stdout = (json.dumps({"type": "turn.started"}) + "\n" + json.dumps(event)).encode()
+    def run(command, **kwargs):
+        Path(command[command.index("-o") + 1]).write_text(reply)
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr=b'')
+    monkeypatch.setattr(visual.subprocess, "run", run)
+    with pytest.raises(visual.VisualProtocolError) as error:
+        visual.CodexVisualAgent(codex_bin=executable).decide(observation)
+    metadata = error.value.metadata
+    assert "events" not in metadata
+    assert secret not in json.dumps(metadata)
+    assert "sk-privateCredential" not in json.dumps(metadata)
+    evidence = metadata["cli_failure"]
+    assert secret.encode() not in base64.b64decode(evidence["stdout"]["base64"])
+    for field in ("event_type", "item_type"):
+        if field in evidence:
+            assert isinstance(evidence[field], str) and len(evidence[field].encode()) <= 256
+
+
+def test_failure_error_diagnostic_is_redacted_and_bounded():
+    result = visual._cli_failure("request_failure", error=ValueError("Bearer privateToken " + "x" * 5000))
+    assert "privateToken" not in json.dumps(result)
+    assert len(result["error"].encode()) <= 1024
+    assert result["error"].startswith("Bearer [REDACTED]")
+
+
+def test_non_scalar_event_type_still_rejects_without_untrusted_context(monkeypatch, observation, executable):
+    stdout = b'{"type":{"api_key":"privateToken"}}'
+    monkeypatch.setattr(visual.subprocess, "run", lambda *a, **kw: SimpleNamespace(returncode=0, stdout=stdout, stderr=b''))
+    with pytest.raises(visual.VisualProtocolError) as error:
+        visual.CodexVisualAgent(codex_bin=executable).decide(observation)
+    assert error.value.metadata["cli_failure"]["event_type"] == "<dict>"
+    assert "privateToken" not in json.dumps(error.value.metadata)

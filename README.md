@@ -7,12 +7,14 @@ An agent benchmark that drives the real **FTL: Faster Than Light** engine throug
 ## Status: work in progress
 
 The visual benchmark is an **alpha implementation with partial live validation**.
-At 2026-10-11 06:55 UTC (03:55 in São Paulo), the current `078a5e2` cohort has
-three completed Sol/image combat repeats: one task success and two idle-budget
-failures, all independently reviewed with eligible evidence and no exclusions.
-The next six Sol/image fire and repair trials have started. Fixture-free
-native-ending full games remain **0/4**, and there is no qualified
-model/observation comparison. Older cohorts are not pooled with these results.
+At 2026-10-11 07:22 UTC (04:22 in São Paulo), the preserved `078a5e2` cohort has
+nine completed Sol/image cells: six task successes, two idle-budget failures and
+one technical exclusion; eight trials have eligible evidence. All recorded cleanup
+checks passed, including the last current check of seven saves and the bridge.
+The next model batch is held for a prospective CLI failure-evidence fix. Actor
+source changes require fresh admission and new cohorts; failures are not retried
+or relabelled. Fixture-free native-ending full games remain **0/4**, with no
+qualified model/observation comparison. Older cohorts are not pooled.
 
 Screenshot play, conservative image-derived HUD summaries, protected saves,
 frozen challenge/full-game controllers and exact dashboard replays are

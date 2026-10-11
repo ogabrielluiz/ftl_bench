@@ -1,6 +1,6 @@
 # Current validation and next work
 
-**WIP / alpha. Snapshot: 2026-10-11 06:55 UTC (03:55 in São Paulo).**
+**WIP / alpha. Snapshot: 2026-10-11 07:22 UTC (04:22 in São Paulo).**
 Nine of 36 challenge cells finished in the preserved original cohort. The
 sector pilot ended in native defeat;
 Sol/image full-game was cooperatively stopped at 276 decisions after a confirmed
@@ -19,9 +19,9 @@ the reproduced defect only. Fresh startup, nine timing probes, independent
 rejection checks and local admission have now passed. Replacement cohorts are
 frozen as described below. Their first completed challenge exposed a reporting
 false exclusion, now repaired prospectively. Both reporting fixes passed fresh
-source-bound admission at `078a5e2`; the first current Sol/image combat trial is
-finished and independently reviewed. Repeat two is also finished and
-independently reviewed; repeat three succeeded with verified cleanup. See the
+source-bound admission at `078a5e2`. All nine current Sol/image cells are finished
+and independently reviewed: six successes, two idle-budget failures and one
+technical exclusion. The next model batch is held as described below. See the
 [store-arrival diagnosis](native-store-arrival.md).
 
 ## Implemented and verified scope
@@ -84,8 +84,57 @@ was 28/30 and all three crew survived. The receipt is
 `main-combat-03-final-review.json` in the same diagnosis directory. The current
 combat result is **1/3 task successes, 3/3 eligible trials**. These results are
 not pooled with earlier cohorts, and fixture-free native-ending full games
-remain **0/4**. The next six Sol/image fire and repair cells have started under
-the unchanged frozen protocol.
+remain **0/4**. All nine Sol/image cells are now finished:
+
+| Challenge | Task successes | Idle-budget failures | Technical exclusions | Eligible evidence |
+| --- | ---: | ---: | ---: | ---: |
+| Combat | 1 | 2 | 0 | 3/3 |
+| Fire/crew recovery | 3 | 0 | 0 | 3/3 |
+| Repair/charge/escape | 2 | 0 | 1 | 2/3 |
+| Total | 6 | 2 | 1 | 8/9 |
+
+The bounded summary is `dist/store-warp-diagnosis-20261011/main-sol-image-summary.json`.
+The nine cells completed 100 decisions and made 101 model calls. One failed call's
+usage is unavailable, so complete token totals are unknown rather than zero.
+All recorded cleanup receipts passed; the final repair batch audit at 07:10 UTC
+also checked current seven-save inventory, restored bridge, runtime and source
+pins, and no remaining FTL process. This is a dated check, not a continuing claim.
+
+### Held next batch and prospective CLI failure evidence
+
+Repair repeat three retained `visual_model_error` / `protocol_failure` after five
+completed decisions. The sixth CLI call exited zero but was rejected as
+`CLI failed or emitted an unsupported event`. Only its event-stream hash was
+saved, so the underlying event cannot be identified from that trial. Separately,
+the model jumped with engines still at 1/2 health (one damaged bar and
+`needs_repair: true`), although drive charge was 85/85 and native `can_jump` was
+true. This partial repair correctly failed the full-repair task predicate before
+any arrival modal; it is independent of the unknown CLI error. Exact rows and
+image hashes are retained in `main-repair-03-task-attribution.json` in the diagnosis
+directory. This trial establishes neither task success nor eligible gameplay evidence.
+Keep its exclusion and original attempt intact. There is no silent retry.
+
+A failure-only evidence change is implemented in the isolated development checkout:
+bounded stdout (2 MiB) and stderr (64 KiB), raw-byte hashes, redacted retained
+content with hashes and byte counts, truncation flags, and timeout partial-output
+metadata. Successful decisions are unchanged. Unsupported/error/tool events still
+fail closed; no retries, tools or fallback are enabled. The official
+[Codex non-interactive contract](https://learn.chatgpt.com/docs/non-interactive-mode)
+lists `error` and `turn.failed` in `--json` output and says `--ephemeral` does not
+persist session rollouts, making retained failure output necessary for attribution.
+Those documented events do not identify this particular unretained failure.
+
+The next model batch is held. Any actor diagnostic source change requires fresh
+startup/timing collection, independent review and new source-bound admission and
+cohorts. Preserve `matrix-main-078a5e2-20261011` and
+`fullgame-main-078a5e2-20261011` unchanged; do not reuse their admission for changed
+actor sources or rewrite their results. The prospective fix passes 249 focused
+checks and independent review, including a separate 67-test visual-agent suite.
+Its full CI/package checks are pending at this snapshot. The preceding dashboard
+commit `eb513d5` passed all five jobs in
+[CI run 38119672406](https://github.com/ogabrielluiz/ftl_bench/actions/runs/38119672406),
+and actual rendered dashboard inspection passed. That published validation does
+not establish CI acceptance of the new failure-evidence change.
 
 ### Separate dashboard repair and rendered check (2026-10-11 06:55 UTC)
 

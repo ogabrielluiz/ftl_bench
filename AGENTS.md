@@ -125,6 +125,12 @@ Do not mutate frozen sources or saved runs to make an existing cohort pass.
 Changed sources, tasks or budgets require a new freeze/output directory.
 Preserve failures, responses, images, terminal reasons and cleanup receipts;
 do not silently retry or overwrite started cells.
+Failure-only actor diagnostics are executable source changes: collect fresh
+startup/timing evidence and obtain new review/admission/cohorts before model calls.
+Keep failed CLI output bounded and redacted, retaining raw-byte and retained-content
+hashes, byte counts, truncation and timeout partial-output metadata. Error/tool
+rejection stays fail closed; do not add retries or fallback. Missing usage is
+unknown, not zero. Preserve prior cohorts and their technical exclusions.
 
 Use one game/controller at a time. Paused experiments resume only on request;
 static documentation work does not authorize a launch or imply live acceptance.

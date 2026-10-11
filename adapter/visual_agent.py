@@ -8,9 +8,11 @@ must prove a completed turn with no tool calls before a decision can be returned
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import base64
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import struct
@@ -279,18 +281,72 @@ def build_visual_prompt(observation: VisualObservation, image: dict, manual: str
     return manual + "\n\nDECISION INPUT\n" + json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
+def _cli_bytes(value):
+    return value if isinstance(value, bytes) else (value or "").encode("utf-8")
+
+
+def _redact_cli_credentials(raw):
+    patterns = (rb"(?i)(\b(?:authorization\s*:\s*)?(?:bearer|basic)\s+)[A-Za-z0-9._~+/=-]+",
+                rb"(?i)(\b(?:api[_-]?key|access[_-]?token)\s*(?:\\?[\"'])?\s*[:=]\s*(?:\\?[\"'])?)[A-Za-z0-9._~+/=-]+",
+                rb"\b(?:sk-|apikey_)[A-Za-z0-9_-]+")
+    count = 0
+    for pattern in patterns:
+        raw, matches = re.subn(pattern, lambda match: (match.group(1) if match.lastindex else b"") + b"[REDACTED]", raw)
+        count += matches
+    return raw, count
+
+
+def _cli_diagnostic_text(value, limit):
+    if not isinstance(value, str):
+        value = "<" + type(value).__name__ + ">"
+    return _redact_cli_credentials(value.encode("utf-8"))[0][:limit].decode("utf-8", errors="ignore")
+
+
+def _cli_failure(kind, stdout=None, stderr=None, *, partial=False, error=None):
+    """Retain bounded private diagnostic bytes independently of temporary files."""
+    result = {"kind": kind, "partial": partial}
+    for name, value, limit in (("stdout", stdout, 2 * 1024 * 1024), ("stderr", stderr, 64 * 1024)):
+        raw = _cli_bytes(value)
+        redacted, redaction_count = _redact_cli_credentials(raw)
+        retained = redacted[:limit]
+        try:
+            raw.decode("utf-8")
+            valid = True
+        except UnicodeError:
+            valid = False
+        result[name] = {"available": value is not None, "representation": "original_bytes" if isinstance(value, bytes) else "utf8_encoded_text",
+                        "sha256": _sha(raw), "hash_scope": "original_bytes", "bytes": len(raw),
+                        "retained_sha256": _sha(retained), "retained_hash_scope": "redacted_retained_bytes",
+                        "redacted": redaction_count > 0, "redaction_count": redaction_count,
+                        "redacted_bytes": len(redacted), "retained_bytes": len(retained),
+                        "truncated": len(redacted) > limit, "utf8_valid": valid,
+                        "base64": base64.b64encode(retained).decode("ascii"),
+                        "text": retained.decode("utf-8", errors="replace")}
+    if error is not None:
+        result["error"] = _cli_diagnostic_text(str(error), 1024)
+    return result
+
+
 def audit_codex_events(stdout: str) -> dict:
     """Fail closed if tool activity, an unknown item, or an incomplete turn appears."""
     if not isinstance(stdout, str) or len(stdout) > 2 * 1024 * 1024:
         raise VisualProtocolError("CLI event stream is missing or too large")
     events, completed, started, messages = [], False, False, []
-    for line in stdout.splitlines():
+    for event_index, line in enumerate(line for line in stdout.splitlines() if line.strip()):
         if not line.strip():
             continue
-        event = _decode_json(line)
+        try:
+            event = _decode_json(line)
+        except VisualProtocolError as error:
+            raise VisualProtocolError(str(error), metadata={"cli_failure_context": {
+                "kind": "malformed_json", "event_index": event_index}}) from error
         if not isinstance(event, dict):
             raise VisualProtocolError("CLI event is not an object")
         kind = event.get("type")
+        if not isinstance(kind, str):
+            raise VisualProtocolError("CLI failed or emitted an unsupported event", metadata={
+                "cli_failure_context": {"kind": "unsupported_event",
+                "event_type": kind, "event_index": event_index}})
         if completed:
             raise VisualProtocolError("CLI emitted events after turn completion")
         if kind == "thread.started":
@@ -302,8 +358,11 @@ def audit_codex_events(stdout: str) -> dict:
             started = True
         elif kind in {"item.started", "item.updated", "item.completed"}:
             item = event.get("item")
-            if not started or not isinstance(item, dict) or item.get("type") not in {"reasoning", "agent_message"}:
-                raise VisualProtocolError("CLI tool use or unknown activity invalidates this decision")
+            if not started or not isinstance(item, dict) or not isinstance(item.get("type"), str) or item.get("type") not in {"reasoning", "agent_message"}:
+                raise VisualProtocolError("CLI tool use or unknown activity invalidates this decision",
+                    metadata={"cli_failure_context": {"kind": "unsupported_activity",
+                              "event_type": kind, "event_index": event_index,
+                              "item_type": item.get("type") if isinstance(item, dict) else None}})
             if kind == "item.completed" and item.get("type") == "agent_message":
                 messages.append(item.get("text"))
         elif kind == "turn.completed":
@@ -311,7 +370,9 @@ def audit_codex_events(stdout: str) -> dict:
                 raise VisualProtocolError("CLI completion lacks an audited agent message")
             completed = True
         else:
-            raise VisualProtocolError("CLI failed or emitted an unsupported event")
+            raise VisualProtocolError("CLI failed or emitted an unsupported event",
+                                      metadata={"cli_failure_context": {"kind": "unsupported_event",
+                                                "event_type": kind, "event_index": event_index}})
         events.append(event)
     if not completed:
         raise VisualProtocolError("CLI event stream did not complete")
@@ -405,19 +466,29 @@ class CodexVisualAgent:
                        "-c", f"model_reasoning_effort={self.reasoning_effort}", "-m", self.model, "-"]
             started = time.monotonic()
             try:
-                result = subprocess.run(command, input=prompt, cwd=staging, capture_output=True,
-                                        text=True, encoding="utf-8", errors="strict", timeout=self.timeout_seconds)
+                result = subprocess.run(command, input=prompt.encode("utf-8"), cwd=staging, capture_output=True,
+                                        timeout=self.timeout_seconds)
             except (OSError, UnicodeError, subprocess.TimeoutExpired) as error:
                 metadata["latency_seconds"] = round(time.monotonic() - started, 3)
+                metadata["cli_failure"] = _cli_failure(
+                    "timeout" if isinstance(error, subprocess.TimeoutExpired) else "request_failure",
+                    getattr(error, "output", None), getattr(error, "stderr", None),
+                    partial=isinstance(error, subprocess.TimeoutExpired))
                 raise VisualBackendError("Codex visual request failed or timed out", metadata=metadata) from error
             metadata["latency_seconds"] = round(time.monotonic() - started, 3)
             metadata["cli_exit_code"] = result.returncode
-            metadata["event_stream_sha256"] = _sha((result.stdout or "").encode("utf-8"))
+            metadata["event_stream_sha256"] = _sha(_cli_bytes(result.stdout))
             if result.returncode:
+                metadata["cli_failure"] = _cli_failure("nonzero_exit", result.stdout, result.stderr)
                 raise VisualBackendError(f"Codex visual request failed (exit {result.returncode})", metadata=metadata)
+            phase = "event_stream"
             try:
-                audit = audit_codex_events(result.stdout)
+                stdout = _cli_bytes(result.stdout).decode("utf-8")
+                if len(_cli_bytes(result.stdout)) > 2 * 1024 * 1024:
+                    raise VisualProtocolError("CLI event stream is missing or too large")
+                audit = audit_codex_events(stdout)
                 metadata.update({key: value for key, value in audit.items() if key != "last_message"})
+                phase = "final_answer"
                 # Never recover an absent final answer from mixed logs or switch to text.
                 answer = answer_path.read_text(encoding="utf-8")
                 if not isinstance(audit["last_message"], str) or answer.strip() != audit["last_message"].strip():
@@ -426,8 +497,19 @@ class CodexVisualAgent:
                     raise VisualProtocolError("attached screenshot changed during the decision")
                 parsed = parse_decision(answer, image["width"], image["height"])
             except (OSError, UnicodeError) as error:
+                metadata["cli_failure"] = _cli_failure("invalid_utf8" if phase == "event_stream" else "unreadable_final_answer", result.stdout, result.stderr, error=error)
+                metadata.pop("events", None)
                 raise VisualBackendError("Codex final answer or staged image is unreadable", metadata=metadata) from error
             except VisualProtocolError as error:
+                context = error.metadata.get("cli_failure_context", {})
+                kind = context.get("kind") or ("invalid_final_answer" if phase == "final_answer" else
+                       "malformed_json" if "JSON" in str(error) else "invalid_event_stream")
+                metadata["cli_failure"] = _cli_failure(kind, result.stdout, result.stderr, error=error)
+                for field in ("event_type", "item_type"):
+                    if field in context:
+                        context[field] = _cli_diagnostic_text(context[field], 256)
+                metadata["cli_failure"].update(context)
+                metadata.pop("events", None)
                 raise VisualProtocolError(str(error), metadata=metadata) from error
             metadata["answer_sha256"] = _sha(answer.encode("utf-8"))
             return VisualDecision(parsed.actions, parsed.advance_frames, parsed.intent, parsed.memory, metadata)

@@ -35,16 +35,28 @@ collection and v2 freezes have passed, followed by live admission of the first
 Sol/image combat child. That trial completed its task, but a legacy-receipt check
 falsely excluded it from the saved rollup. The prospective reporter fix retains
 its original outcome and exclusion. Fresh admission of source `078a5e2` and new
-cohort freezes now pass. At 2026-10-11 06:55 UTC, current Sol/image combat repeat
-one finished at the idle budget after 33 decisions: task success false, evidence
-eligible with no exclusions. Repeat two also finished at the idle budget after
-27 decisions, with independently reviewed eligible evidence and task success
-false. Repeat three succeeded after 12 decisions with independently verified
-cleanup: current combat totals are 1/3 task successes and 3/3 eligible trials.
-The next six Sol/image fire and repair cells have started. Earlier cohorts are
-not pooled, and fixture-free native-ending full games remain 0/4. Full-game
-child admission and completed comparisons remain WIP. Neither an offline test
-nor an admission receipt establishes general determinism.
+cohort freezes now pass. At 2026-10-11 07:22 UTC, all nine current Sol/image cells
+are finished: six task successes, two idle-budget failures and one technical
+exclusion; eight have
+eligible evidence. Combat is 1/3 successes, fire/recovery 3/3, and repair/escape
+2/3 with its third attempt excluded for a retained CLI protocol failure. Its
+full-repair predicate correctly remained false: before jumping, engines were
+still at 1/2 health with one damaged bar and `needs_repair: true`, despite 85/85
+drive charge and native `can_jump: true`. This saved model mistake is distinct
+from the unknown subsequent CLI error. Recorded cleanup
+passed for every cell, with a final current seven-save/bridge/runtime/source check
+at the repair batch gap. Earlier cohorts remain separate; native-ending full games
+remain 0/4 and completed comparisons remain WIP.
+
+The next model batch is held for a prospective failure-only CLI evidence change.
+It retains bounded stdout/stderr diagnostics, raw-byte and redacted-content hashes,
+counts, truncation and timeout partial-output metadata. It preserves fail-closed
+error/tool rejection, no retries or fallback, and successful decision semantics.
+The old failed call's exit zero and stream hash do not identify its underlying
+unretained event. Do not relabel or retry that attempt. Actor source changes require
+fresh diagnostics, independent review, admission and new cohorts; existing matrix
+and full-game archives remain intact. See [current status](NEXT.md). Neither an
+offline test nor an admission receipt establishes general determinism.
 
 A separate viewer checkout repairs mixed ISO/numeric run-timestamp ordering that
 caused HTTP 500. It preserves recorded metadata and reads the frozen evaluation
