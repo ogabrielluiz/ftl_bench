@@ -6,8 +6,9 @@ import shutil
 import subprocess
 
 import pytest
+from ftl_bench.cli import _bench_root
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = _bench_root()
 SCRIPT = ROOT / "scripts/setup_pc.sh"
 
 

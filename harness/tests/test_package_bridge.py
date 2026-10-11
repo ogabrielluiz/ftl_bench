@@ -10,9 +10,10 @@ import sys
 import zipfile
 
 import pytest
+from ftl_bench.cli import _bench_root
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = _bench_root()
 SCRIPT = ROOT / "scripts" / "package_bridge.py"
 spec = importlib.util.spec_from_file_location("package_bridge", SCRIPT)
 packager = importlib.util.module_from_spec(spec)

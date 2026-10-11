@@ -7,10 +7,11 @@ import shutil
 import subprocess
 
 import pytest
+from ftl_bench.cli import _bench_root
 
 
 def helper():
-    path = Path(__file__).resolve().parents[2] / "scripts/archive_native_build.py"
+    path = _bench_root() / "scripts/archive_native_build.py"
     spec = importlib.util.spec_from_file_location("archive_native_build", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

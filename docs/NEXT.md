@@ -200,6 +200,11 @@ helper/input checks plus 22 staging checks), real `bash -n`, and two byte-identi
 bridge CLI packages with all five exact loader/metadata members. Packaging receipt:
 `dist/setup-package-check-20261011T094805465729Z/receipt.json` in the isolated setup
 checkout. The current 78 frozen executable source pins remained unchanged.
+The first setup publication passed all four Windows/Linux harness CI jobs but
+failed the unpacked-source smoke: three new test modules assumed repository
+siblings instead of the shipped `_bundled/` tree. Those tests now use the CLI's
+existing source/package resolver. The full source-release smoke remains the
+validation gate for this packaging correction.
 No fresh native Docker build, installation or full clean-install validation has
 run, and no new runtime was installed. Fresh source-bound diagnostics, independent
 review and admission are still required for a newly built runtime.
