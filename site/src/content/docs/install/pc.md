@@ -20,6 +20,17 @@ docker image inspect "$DEVCONTAINER" --format '{{.Id}} {{json .RepoDigests}}'
 STAGES="repos build" bash scripts/setup_pc.sh
 ```
 
+Run the script from the benchmark revision you intend to build. It selects its
+own real repository root by default, including a Git worktree whose `.git` is a
+file. `FTLB_ROOT=/absolute/path/to/checkout` explicitly selects another root;
+`PROJ` separately chooses the native checkout location. Existing benchmark HEAD
+and local edits are preserved: `repos` never pulls, resets or checks out a new
+benchmark revision. Record and review `git rev-parse HEAD` and `git status` before
+setup. A standalone copied bootstrap without its repository falls back to
+`$PROJ/ftl_bench`, cloning there only when no Git checkout exists; clone failure
+is fatal. Select the intended cloned benchmark revision before a build-only
+invocation.
+
 `native/manifest.json` declares the native repository, exact base commit and cumulative patch hash. Fresh native clones check out that commit in detached mode. An existing checkout at another commit is refused; the script does not reset it or discard local edits. Compatible local changes at the declared base remain recorded in the source diff and file hashes, so that alone does not establish an exact accepted source tree.
 
 The build uses the supplied immutable image reference directly, bypassing the upstream wrapper's mutable tag. It applies the complete patch selected by the manifest, currently `native/patches/0003-visual-io.patch`. This retains structured protocol-5 controls and adds visual I/O, fixed clock 2 at 1/60 second per update, and fresh-start seed contract v3. Do not stack the historical `0001` or structured-only `0002` patches onto it.
@@ -51,6 +62,71 @@ python3 scripts/stage_native_artifacts.py stage --dll /path/Hyperspace.dll --pro
 ```
 
 Other setup stages do not require `DEVCONTAINER`. `bash scripts/setup_pc.sh build` starts at build and continues through installation and deployment; use `STAGES="build"` for a build/stage-only run. Review the selected stages before running them.
+
+## Package and patch data mods in WSL
+
+A fresh clone has no generated bridge `.ftl`. The `datamod` stage now invokes
+`scripts/package_bridge.py` to produce `dist/ftl_bench_bridge.ftl` deterministically
+from tracked bridge data and metadata. The external development Lua remains a
+separate deployment input. Python 3, Git, `zip`, `sha256sum`, `realpath`, `mktemp`
+and Windows/WSL interop are required for these stages; the native source checkout
+and its `build-windows-release` directory must already exist.
+
+Supply a Linux FTLMan executable obtained and reviewed separately, plus its exact
+SHA-256. Setup does not acquire FTLMan from the network or select a latest release.
+A hash pins supplied bytes; it does not establish publisher trust. Replace the
+placeholders with your local executable and independently checked digest:
+
+```bash
+export PROJ="$HOME/projects"
+export FTLMAN='/absolute/path/to/ftlman'
+# Optional non-default install: use its WSL-mounted path (GAME is an alias).
+export FTL_GAME_DIR='/mnt/d/SteamLibrary/steamapps/common/FTL Faster Than Light'
+export FTLMAN_SHA256='<64-hex-SHA256-of-that-executable>'
+sha256sum -- "$FTLMAN"
+STAGES="datamod" bash scripts/setup_pc.sh
+# After loader/native installation, with Windows FTL closed:
+STAGES="locate patch" bash scripts/setup_pc.sh
+```
+
+The patch stage refuses a missing/non-executable tool, missing or mismatched hash,
+active `FTLGame.exe`, or an unavailable Windows process check before invoking
+FTLMan. It records tool path/hash/size, both data-mod hashes and pre-patch data
+identity in a unique `dist/setup-patch-inputs.*.json` receipt. This records inputs,
+not successful installation or live acceptance. Review the receipt and patch
+command result; the patcher retains `ftl.dat.vanilla` for its own re-patching flow.
+Only the patch stage needs `FTLMAN` and `FTLMAN_SHA256`.
+
+To package the bridge without other setup stages, run
+`python3 scripts/package_bridge.py --output dist/ftl_bench_bridge.ftl` from the
+repository root. The archive retains `data/hyperspace.xml.append` and the runtime
+Lua files with fixed ZIP metadata and sorted paths. Identical repeats leave the
+output untouched; changed inputs replace it atomically. Packaging neither
+installs the mod nor establishes native acceptance. An explicit
+`FTL_GAME_DIR` (or `GAME` alias) must contain `FTLGame.exe`; an invalid override
+fails instead of searching unrelated installations. Omit it for default C-drive
+discovery. The printed WSL observation check passes the Windows save folder
+observation filename explicitly, rather than the verifier's historical macOS
+default.
+
+The build stage also reserves an exclusive
+`dist/native-build-evidence/build-<UTC>-<process>-<random>/` archive before Docker
+compilation. `archive_native_build.py prepare` retains the original patched
+source bytes; provenance is written directly to that archive rather than
+replacing an original record in the reusable native build directory. `finish`
+requires unchanged before/after sources and matching provenance/DLL identity,
+retains the artifact bytes and emits `build-origin.json` with hashed fresh-origin
+references relative to the benchmark repository root. A failed build leaves its
+preparation evidence intact; use a new archive for a later attempt.
+
+Use the benchmark repository root as the single `--evidence-root` for build
+origin, source proof, startup/timing collection and admission references; keep
+the complete referenced evidence and original build archive. Its generated build origin
+is an input to the [portable admission workflow](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/native-acceptance.md),
+not a passing admission by itself: collect source-bound startup and nine timing
+probes, retain their producer descriptors and obtain independent review with
+eight rejected mutations. Staging/setup never manufactures review or production
+acceptance, and local evidence is not included in a fresh clone.
 
 ## Install a locally built DLL
 

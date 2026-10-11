@@ -17,7 +17,7 @@ export default function TrialResult({ trial }: { trial: DashboardState["visual_t
   return <section className="visual-replay" aria-label="Trial result">
     <div className="visual-title"><div>
       <h2>{trial.operator_recovery ? "Trial interrupted; recovery verified" : labels[result] || result.replace(/_/g, " ")}</h2>
-      <p>{trial.challenge?.replace(/-/g, " ") || "Full-game trial"}
+      <p>{trial.challenge?.replace(/-/g, " ") || "Visual trial"}
         {trial.repetition ? ` · Repetition ${trial.repetition}` : ""}
         {trial.model ? ` · ${trial.model}` : ""}{trial.mode ? ` · ${trial.mode}` : ""}</p>
     </div></div>

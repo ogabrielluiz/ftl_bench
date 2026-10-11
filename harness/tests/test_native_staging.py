@@ -110,7 +110,7 @@ def test_build_stage_uses_pinned_commands_and_stages_visual_pair_only(tmp_path, 
     dll.parent.mkdir(parents=True)
     dll.write_bytes(b"synthetic build output")
     trace = tmp_path / "calls.txt"
-    env = dict(os.environ, PROJ=str(project), STAGES="build", DEVCONTAINER=image,
+    env = dict(os.environ, PROJ=str(project), FTLB_ROOT=str(project / "ftl_bench"), STAGES="build", DEVCONTAINER=image,
                TEST_TRACE=str(trace), TEST_FAILURE=failure)
     script = r'''
 docker() { printf 'docker'; printf ' [%s]' "$@"; printf '\n';
@@ -135,6 +135,12 @@ source "$1"
         assert f"[{image}] [bash] [-c]" in calls
         assert "[--require-base]" in calls and "[--require-immutable-image]" in calls
         assert "native-build.visual-v1.json" in calls and "] [stage] [--dll]" in calls
+        assert "archive_native_build.py] [prepare]" in calls
+        assert "archive_native_build.py] [finish]" in calls
+        assert calls.index("archive_native_build.py] [prepare]") < calls.index("docker [run]")
+        assert calls.index("archive_native_build.py] [finish]") < calls.index("] [stage] [--dll]")
+        assert "/artifacts/Hyperspace.visual-v1.dll] [--provenance]" in calls
+        assert "/artifacts/native-build.visual-v1.json]" in calls
         assert "native-build.protocol5.json" not in calls and "build-releaseonly-from-docker.sh" not in calls
     else:
         assert "] [stage]" not in calls and "write_native_provenance.py" not in calls
@@ -159,7 +165,7 @@ def test_repo_stage_pins_fresh_checkout_and_never_rewrites_an_existing_native_he
     native = project / "FTL-Hyperspace"
     if existing != "fresh": (native / ".git").mkdir(parents=True)
     trace = tmp_path / "calls.txt"
-    env = dict(os.environ, PROJ=str(project), STAGES="repos", DEVCONTAINER="",
+    env = dict(os.environ, PROJ=str(project), FTLB_ROOT=str(project / "ftl_bench"), STAGES="repos", DEVCONTAINER="",
                TEST_TRACE=str(trace), TEST_EXISTING=existing)
     script = r'''
 python3() { printf 'https://example.invalid/native.git\n1111111111111111111111111111111111111111\n'; }

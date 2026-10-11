@@ -39,10 +39,19 @@ set -uo pipefail
 PROJ="${PROJ:-$HOME/projects}"
 FTLB_REPO="https://github.com/ogabrielluiz/ftl_bench.git"
 DEVCONTAINER="${DEVCONTAINER:-}" # explicit immutable registry digest; build stage only
-FTLMAN_VER="${FTLMAN_VER:-}"   # empty = latest
+FTLMAN="${FTLMAN:-}"            # caller-supplied Linux executable; no acquisition
+FTLMAN_SHA256="${FTLMAN_SHA256:-}" # required exact executable SHA-256
 WIN_USER="${WIN_USER:-}"        # auto-detected if empty
 
-FTLB="$PROJ/ftl_bench"
+SCRIPT_FILE="$(realpath -- "${BASH_SOURCE[0]}")" || { echo "cannot resolve bootstrap script" >&2; exit 1; }
+SCRIPT_ROOT="$(cd -- "$(dirname -- "$SCRIPT_FILE")/.." && pwd -P)" || exit 1
+if [ -n "${FTLB_ROOT:-}" ]; then
+  FTLB="$(realpath -m -- "$FTLB_ROOT")" || exit 1
+elif [ -e "$SCRIPT_ROOT/.git" ] && [ -f "$SCRIPT_ROOT/native/manifest.json" ]; then
+  FTLB="$SCRIPT_ROOT"
+else
+  FTLB="$PROJ/ftl_bench"
+fi
 HS="$PROJ/FTL-Hyperspace"
 
 log()  { printf '\n\033[1;36m== %s\033[0m\n' "$*"; }
@@ -121,10 +130,16 @@ fi
 # STAGE repos — clone/update both repos
 # ===========================================================================
 if want repos; then
-  log "repos: clone/update ftl_bench; prepare the declared native base"
+  log "repos: preserve selected ftl_bench revision; prepare the declared native base"
   mkdir -p "$PROJ"
-  if [ -d "$FTLB/.git" ]; then (cd "$FTLB" && git pull --ff-only) && ok "ftl_bench updated"
-  else git clone "$FTLB_REPO" "$FTLB" && ok "ftl_bench cloned"; fi
+  if [ -e "$FTLB/.git" ]; then
+    git -C "$FTLB" rev-parse --verify HEAD >/dev/null \
+      || die "selected benchmark checkout has no valid HEAD: $FTLB"
+    ok "benchmark checkout preserved (HEAD and local edits): $FTLB"
+  else
+    git clone "$FTLB_REPO" "$FTLB" || die "could not clone benchmark into $FTLB"
+    ok "ftl_bench cloned; select the intended revision before building"
+  fi
   load_native_pins
   if [ -e "$HS/.git" ]; then
     [ "$(git -C "$HS" rev-parse HEAD)" = "$HS_COMMIT" ] \
@@ -152,6 +167,11 @@ if want build; then
   load_native_pins
   python3 "$FTLB/scripts/apply_native_patch.py" --source "$HS" --require-base || die "native base/patch conflicts; existing source changes were preserved"
   docker pull --platform linux/amd64 "$DEVCONTAINER" || die "declared immutable toolchain image unavailable"
+  BUILD_EVIDENCE_ROOT="$FTLB"
+  BUILD_ARCHIVE="$FTLB/dist/native-build-evidence/build-$(date -u +%Y%m%dT%H%M%S%NZ)-$$-$RANDOM"
+  python3 -B "$FTLB/scripts/archive_native_build.py" prepare --source "$HS" --source-root "$FTLB" \
+    --evidence-root "$BUILD_EVIDENCE_ROOT" --output "$BUILD_ARCHIVE" \
+    || die "could not exclusively archive original native build sources"
   # Bypass the upstream Docker wrapper, which selects a mutable v2 tag.
   BUILD_CMD=(docker run --rm --platform linux/amd64
     -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/workspaces/FTL-Hyperspace \
@@ -161,14 +181,20 @@ if want build; then
   printf -v BUILD_COMMAND '%q ' "${BUILD_CMD[@]}"
   DLL="$HS/build-windows-release/Hyperspace.dll"
   [ -f "$DLL" ] || die "expected $DLL, not produced"
-  PROVENANCE="$HS/build-windows-release/native-build.visual-v1.json"
+  PROVENANCE="$BUILD_ARCHIVE/native-build.visual-v1.json"
   python3 "$FTLB/scripts/write_native_provenance.py" --source "$HS" --dll "$DLL" --output "$PROVENANCE" \
     --image "$DEVCONTAINER" --require-base --require-immutable-image \
     --build-command "$BUILD_COMMAND" \
     || die "could not record native build provenance"
-  python3 "$FTLB/scripts/stage_native_artifacts.py" stage --dll "$DLL" --provenance "$PROVENANCE" \
+  python3 -B "$FTLB/scripts/archive_native_build.py" finish --source "$HS" --source-root "$FTLB" \
+    --evidence-root "$BUILD_EVIDENCE_ROOT" --output "$BUILD_ARCHIVE" \
+    --dll "$DLL" --provenance "$PROVENANCE" \
+    || die "native build source/provenance archive verification failed"
+  python3 "$FTLB/scripts/stage_native_artifacts.py" stage \
+    --dll "$BUILD_ARCHIVE/artifacts/Hyperspace.visual-v1.dll" \
+    --provenance "$BUILD_ARCHIVE/artifacts/native-build.visual-v1.json" \
     || die "could not stage the visual DLL/provenance pair"
-  ok "built and staged visual-v1 DLL/provenance; live acceptance is still required"
+  ok "built and staged visual-v1 DLL/provenance; original build origin: $BUILD_ARCHIVE/build-origin.json; live acceptance is still required"
 fi
 
 # ===========================================================================
@@ -178,22 +204,28 @@ if want datamod; then
   log "datamod: package Hyperspace.ftl from Mod Files/ (matches the built DLL)"
   command -v zip >/dev/null 2>&1 || { sudo apt-get install -y zip; }
   ( cd "$HS/Mod Files" && rm -f Hyperspace.ftl && zip -rq ../build-windows-release/Hyperspace.ftl . -x Hyperspace.ftl ) \
-    && ok "Hyperspace.ftl packaged ($(du -h "$HS/build-windows-release/Hyperspace.ftl" | cut -f1))"
-  # bench bridge mod is in the ftl_bench dist (platform-independent)
-  [ -f "$FTLB/dist/ftl_bench_bridge.ftl" ] && ok "ftl_bench_bridge.ftl present (reused)" \
-    || warn "dist/ftl_bench_bridge.ftl missing — re-run its packaging in ftl_bench"
+    && ok "Hyperspace.ftl packaged ($(du -h "$HS/build-windows-release/Hyperspace.ftl" | cut -f1))" \
+    || die "Hyperspace data-mod packaging failed"
+  python3 -B "$FTLB/scripts/package_bridge.py" --source-root "$FTLB" \
+    --output "$FTLB/dist/ftl_bench_bridge.ftl" || die "bridge data-mod packaging failed"
+  ok "ftl_bench_bridge.ftl packaged from tracked bridge inputs"
 fi
 
 # ===========================================================================
 # STAGE locate — find the Windows FTL game dir + data file
 # ===========================================================================
-GAME=""; FTLDAT=""; SAVE=""
+GAME="${FTL_GAME_DIR:-${GAME:-}}"; FTLDAT=""; SAVE=""
 locate_game() {
   local cands=(
     "/mnt/c/Program Files (x86)/Steam/steamapps/common/FTL Faster Than Light"
     "/mnt/c/Program Files/Steam/steamapps/common/FTL Faster Than Light"
   )
-  for d in "${cands[@]}"; do [ -d "$d" ] && { GAME="$d"; break; }; done
+  if [ -n "$GAME" ]; then
+    [ -d "$GAME" ] && [ -f "$GAME/FTLGame.exe" ] \
+      || die "explicit FTL_GAME_DIR/GAME is not a Windows FTL install: $GAME"
+  else
+    for d in "${cands[@]}"; do [ -d "$d" ] && { GAME="$d"; break; }; done
+  fi
   [ -z "$GAME" ] && GAME="$(find /mnt/c -maxdepth 6 -type d -name 'FTL Faster Than Light' 2>/dev/null | head -1)"
   [ -n "$GAME" ] || return 1
   # FTL 1.6.x: ftl.dat lives in the game root (post-downgrade 1.6.9 too)
@@ -205,7 +237,7 @@ locate_game() {
 }
 if want locate; then
   log "locate: Windows FTL install + data + save dir"
-  locate_game || die "FTL install not found under /mnt/c. Set GAME=... and re-run."
+  locate_game || die "FTL install not found under /mnt/c. Set FTL_GAME_DIR to its WSL path and re-run."
   ok "game:   $GAME"
   ok "ftl.dat:$FTLDAT  $( [ -n "$FTLDAT" ] || echo '(not found yet — appears after downgrade)')"
   ok "save:   $SAVE  $( [ -d "$SAVE" ] && echo '(exists)' || echo '(will be created on first launch)')"
@@ -278,20 +310,39 @@ if want patch; then
   done
   [ -n "$FTLDAT" ] || die "ftl.dat not found under $GAME — run the install/downgrade first."
   DATADIR="$(dirname "$FTLDAT")"
-  # get FTLMan (Linux) once
-  FM="$HOME/.local/bin/ftlman"
-  if [ ! -x "$FM" ]; then
-    mkdir -p "$HOME/.local/bin"
-    url="$(curl -fsSL https://api.github.com/repos/afishhh/ftlman/releases/latest \
-            | grep -oE 'https://[^"]*x86_64[^"]*linux[^"]*\.tar\.gz' | head -1)"
-    [ -n "$url" ] || die "could not resolve FTLMan linux download URL"
-    curl -fsSL "$url" -o /tmp/ftlman.tgz && tar -xzf /tmp/ftlman.tgz -C /tmp
-    f="$(find /tmp -maxdepth 2 -name ftlman -type f 2>/dev/null | head -1)"
-    cp "$f" "$FM" && chmod +x "$FM" && ok "FTLMan installed -> $FM"
-  fi
+  [ -n "$FTLMAN" ] && [ -f "$FTLMAN" ] && [ -x "$FTLMAN" ] \
+    || die "set FTLMAN to a caller-provided executable Linux FTLMan file"
+  [[ "$FTLMAN_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] \
+    || die "set FTLMAN_SHA256 to the exact executable SHA-256"
+  FM="$(realpath -- "$FTLMAN")" || die "cannot resolve FTLMan input"
+  fm_actual="$(sha256sum -- "$FM")" || die "cannot hash FTLMan input"
+  fm_actual="${fm_actual%% *}"
+  [ "$fm_actual" = "${FTLMAN_SHA256,,}" ] || die "FTLMan SHA-256 mismatch; no patch performed"
+  live_processes="$(/mnt/c/Windows/System32/tasklist.exe /fi 'imagename eq FTLGame.exe' 2>/dev/null)" \
+    || die "cannot verify FTL is closed; no patch performed"
+  case "${live_processes,,}" in *ftlgame.exe*) die "close FTL before patching data";; esac
   HSFTL="$HS/build-windows-release/Hyperspace.ftl"
   BRIDGE="$FTLB/dist/ftl_bench_bridge.ftl"
   [ -f "$HSFTL" ] && [ -f "$BRIDGE" ] || die "missing data mods ($HSFTL / $BRIDGE) — run 'datamod'."
+  mkdir -p "$FTLB/dist" || die "cannot create patch-input receipt directory"
+  INPUT_RECEIPT="$(mktemp "$FTLB/dist/setup-patch-inputs.XXXXXXXX.json")" \
+    || die "cannot reserve patch-input receipt"
+  python3 - "$INPUT_RECEIPT" "$FM" "$fm_actual" "$HSFTL" "$BRIDGE" "$FTLDAT" <<'PY'
+import hashlib, json, pathlib, sys
+receipt, tool, expected, hs, bridge, data = sys.argv[1:]
+def identity(name):
+    path = pathlib.Path(name)
+    raw = path.read_bytes()
+    return {"path": str(path.resolve()), "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}
+inputs = {"ftlman": identity(tool), "hyperspace_mod": identity(hs),
+          "bridge_mod": identity(bridge), "ftl_dat_before": identity(data)}
+if inputs["ftlman"]["sha256"] != expected:
+    raise SystemExit("FTLMan changed after verification; no patch performed")
+pathlib.Path(receipt).write_text(json.dumps({"contract": "setup-patch-inputs-v1",
+    "inputs": inputs, "scope": "Pinned inputs before patch; not installation or live acceptance."}, indent=2) + "\n")
+PY
+  [ "$?" = 0 ] || die "cannot record verified patch inputs; no patch performed"
+  ok "pinned patch inputs: $INPUT_RECEIPT"
   "$FM" patch "$HSFTL" "$BRIDGE" -d "$DATADIR" \
     && ok "ftl.dat patched (FTLMan keeps ftl.dat.vanilla for idempotent re-patch)" \
     || die "FTLMan patch failed"
@@ -326,7 +377,7 @@ if want verify; then
   echo "NEXT (on the PC):"
   echo "  1. Launch FTL from Steam (or run FTLGame.exe). The xinput1_4.dll proxy injects Hyperspace."
   echo "     (GUI needs WSLg or a Windows-side launch; from WSL: cmd.exe /c start \"\" \"\$(wslpath -w \"$GAME\")\\FTLGame.exe\")"
-  echo "  2. From WSL:  source $FTLB/.env.pc && bash $FTLB/scripts/verify_observation.sh"
+  echo "  2. From WSL:  source $FTLB/.env.pc && bash $FTLB/scripts/verify_observation.sh \"$SAVE/ftl_agent_observation.json\""
   echo "  3. Run a scripted game and compare crash rate to macOS:"
   echo "     source $FTLB/.env.pc && python3 $FTLB/adapter/run_benchmark.py --agent scripted ..."
 fi

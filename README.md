@@ -26,8 +26,11 @@ native-ending full games remain **0/4**. The comparison is unqualified while Lun
 is unstarted, and the retained image/fire repeat-one exclusion will leave that
 four-condition pair incomplete even after the remaining cells finish.
 
-After this boundary, the Sol/image sector pilot launched and is underway;
-no pilot result or new native full-game completion is claimed.
+At 2026-10-11 09:50 UTC, the Sol/image sector pilot has completed in native
+defeat in sector index 0: 53 decisions, 54 PNGs and score 20. Saved integrity,
+admission, recorded restoration, current cleanup and rendered UI reviews passed.
+The pilot contributes zero full-game completions; all four full-game conditions
+remain planned and native-ending completion remains **0/4**.
 
 An audit import created an extra bytecode cache inside frozen-source; the next
 controller rejected it before game/model launch or a new ledger trial. All 78
@@ -60,7 +63,13 @@ trial settings before model calls, retaining accepted and rejected gates in
 replay artifacts. The full-game dashboard checks saved child admission before
 showing verified completion. Raw runs, native binaries and local acceptance
 artifacts are not shipped in Git; controllers require the complete local
-evidence chain and matching runtime. Fresh-checkout setup remains WIP.
+evidence chain and matching runtime. Fresh-checkout setup remains WIP. The tested
+[Windows/WSL recipe](site/src/content/docs/install/pc.md) now packages the bridge
+from runtime files, requires a caller-supplied hash-pinned patcher, retains
+exclusive original native build/source archives, and preserves the selected
+checkout. Offline setup checks passed (67 passed; five Windows symlink skips),
+shell syntax and two identical bridge archives. No fresh Docker build, native
+installation or complete clean-install validation has run; no runtime was changed.
 
 A separate corrected viewer fixes an HTTP 500 caused by mixed ISO and numeric
 run timestamps. Its rendered current-cohort outcome and replay check passed

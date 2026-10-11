@@ -1,13 +1,16 @@
 # Current validation and next work
 
-**WIP / alpha. Snapshot: 2026-10-11 09:25 UTC (06:25 in São Paulo).**
-The admitted `2174cc9` matrix has all 18 Sol cells finished and 18 Luna cells
-remaining: **17 eligible, 12 task successes, five budget failures and one
+**WIP / alpha. Snapshot: 2026-10-11 09:50 UTC (06:50 in São Paulo).**
+At the 09:25 UTC challenge boundary, the admitted `2174cc9` matrix has all 18
+Sol cells finished and 18 Luna cells remaining: **17 eligible, 12 task successes, five budget failures and one
 preserved technical exclusion**. All five full-game/pilot entries were planned
 at this boundary; fixture-free native-ending completion remains **0/4**.
-After this boundary, the Sol/image sector pilot launched and is underway;
-no pilot result or new native full-game completion is claimed.
-Usage covers 198/199 calls, so complete token totals remain unknown. The
+At 2026-10-11 09:50 UTC, the Sol/image sector pilot has completed in native
+defeat in sector index 0: 53 decisions, 54 PNGs and score 20. Saved integrity,
+admission, recorded restoration, current cleanup and rendered UI reviews passed.
+The pilot contributes zero full-game completions; all four full-game conditions
+remain planned and native-ending completion remains **0/4**.
+Challenge usage covers 198/199 calls, so complete token totals remain unknown. The
 comparison is incomplete and unqualified; the retained image/fire repeat-one
 exclusion also prevents that four-condition pair from qualifying after Luna
 finishes. The static admission recheck passed after the frozen-source bytecode
@@ -30,7 +33,7 @@ runs remain historical; see the [store-arrival diagnosis](native-store-arrival.m
 | Repeatable setup | Nine no-model fixture-6 probes passed measured starting-state and step equality across three wall delays. This covers the tested inputs, not every hidden RNG stream or full-game determinism. |
 | Protected lifecycle | Save backups, exact restoration, runtime identities and terminal evidence are recorded. Cooperative-stop probes passed before the actor and during one real CLI request; the returned cancelled response was retained and its actions discarded. |
 | Challenges | Frozen 36-cell controller, versioned public tasks, outcome audits, retained failures and exact replays. All 18 current Sol cells are finished; the separate historical nine-cell results are below. |
-| Full-game support | Fixture-free startup and the five-cell controller are implemented. Startup preserves the opening choice. The historical pilot ended in audited native defeat after 78 decisions; its subsequent Sol/image full-game attempt was interrupted by a confirmed harness store-arrival defect. The current pilot is underway. |
+| Full-game support | Fixture-free startup and the five-cell controller are implemented. Startup preserves the opening choice. The historical pilot ended in audited native defeat after 78 decisions; its subsequent Sol/image full-game attempt was interrupted by a confirmed harness store-arrival defect. The current pilot completed in audited native defeat after 53 decisions; all four full-game conditions remain planned. |
 | Dashboard | Saved challenge/full-game overviews, exact screenshots and inputs, outcome reasons, task identities and saved cleanup receipts. The dashboard is read-only. |
 
 The visual track is `visual-v1`; historical structured runs retain runner/ruleset
@@ -60,7 +63,7 @@ protocol identities and hashes of the complete `protocol.json` bytes differ:
 | Cohort | Embedded protocol SHA-256 | Protocol file SHA-256 | Snapshot |
 | --- | --- | --- | --- |
 | `matrix-main-2174cc9-20261011` | `14b187e91c25d675f3f9e1c532f4dfa6ec75d137334dc62e122f9a254118b613` | `b04b9dab9e7f85b24c092f9b53117238506dd5cc5a75f66e4b8368a94ac2910e` | 18 finished, 18 Luna remaining |
-| `fullgame-main-2174cc9-20261011` | `0714ba2975bc1b1fa37ff09a0be85087fda35037e237cc3a15ca4631b590935d` | `53b5b6cac94aef5b9177381b1a103abc14b6b991e656bebe296a71ceeb4288ac` | Pilot plus four conditions planned, zero finished |
+| `fullgame-main-2174cc9-20261011` | `0714ba2975bc1b1fa37ff09a0be85087fda35037e237cc3a15ca4631b590935d` | `53b5b6cac94aef5b9177381b1a103abc14b6b991e656bebe296a71ceeb4288ac` | Pilot native defeat; four full-game conditions planned |
 
 ### Current results and retained failure
 
@@ -85,7 +88,7 @@ Independent boundary cleanup passed at 09:26:01 UTC, followed by the actual
 browser UI review. Their local receipts are
 `dist/store-warp-diagnosis-20261011/2174-main-sol-challenges-current-cleanup-review.json`
 and `dist/store-warp-diagnosis-20261011/2174-main-sol-challenges-ui-review.json`.
-These dated reviews precede the separately running pilot.
+These dated reviews precede the separately completed pilot.
 
 The saved comparison file SHA-256 is
 `d99b098399ce91e4450b2c4c276710f0b6fe333e6315b89b0bd892c47ce9c243`,
@@ -157,6 +160,49 @@ hybrid combat trial, this completes the nine-cell Sol/hybrid boundary.
 
 Frozen executable files must remain unchanged. Later actor source changes require
 another fresh diagnostic collection, independent review and new admission/cohorts.
+
+## Current pilot and prospective setup recipe
+
+The Sol/image sector pilot in `fullgame-main-2174cc9-20261011` completed with
+`native_game_over`: native defeat, sector index 0, score 20, 53 decisions and
+54 PNGs. Independent saved outcome/admission/input/frame and seven recorded
+restoration checks passed at 09:48:01 UTC. Current cleanup passed at 09:48:17:
+seven original saves, prior bridge and six-file runtime matched, with no FTL
+process remaining. The rendered dashboard review at 09:49:40 confirms the
+GAME OVER / SCORE: 20 image, pilot exclusion, one finished entry and four planned
+full-game conditions. This pilot is not one of the required four native endings.
+The replay's generic fallback label now reads "Visual trial" instead of
+"Full-game trial"; cohort classification was already correct. All 18 dashboard
+tests and its build passed for that display change, outside the 78 frozen pins.
+
+Usage is complete for 53/53 pilot calls: input 1,000,280 (cached subset 686,080),
+output 17,131 (reasoning subset 8,640). Recorded model latency totals 1,058.864
+seconds, median 20.509. Requested Sol/medium is retained; resolved backend weights
+remain unavailable. Exact local receipts under `dist/store-warp-diagnosis-20261011/`:
+`2174-main-pilot-final-review.json`, `2174-main-pilot-current-cleanup-review.json`
+and `2174-main-pilot-ui-review.json`.
+
+The [Windows/WSL setup recipe](../site/src/content/docs/install/pc.md) now creates
+`dist/ftl_bench_bridge.ftl` deterministically from runtime data and mod
+metadata; the external Lua is still deployed separately. It uses the caller's
+selected checkout (or explicit `FTLB_ROOT`) without an implicit pull, honors an
+explicit game path, and passes the Windows observation path to the printed
+verification command. Data patching requires a supplied Linux FTLMan executable
+and matching SHA-256, checks FTL is closed, and retains unique patch-input receipts;
+it does not download a mutable latest patcher.
+
+Before a native build, setup exclusively archives the original patched source
+inputs. After the build, unchanged-source/provenance/DLL joins retain original
+records and emit fresh build-origin references under the same evidence root.
+It does not infer compiler identity or manufacture independent review. Offline
+setup checks passed: 67 passed and five Windows symlink-creation skips (45 new
+helper/input checks plus 22 staging checks), real `bash -n`, and two byte-identical
+bridge CLI packages with all five exact loader/metadata members. Packaging receipt:
+`dist/setup-package-check-20261011T094805465729Z/receipt.json` in the isolated setup
+checkout. The current 78 frozen executable source pins remained unchanged.
+No fresh native Docker build, installation or full clean-install validation has
+run, and no new runtime was installed. Fresh source-bound diagnostics, independent
+review and admission are still required for a newly built runtime.
 
 ## Preserved `078a5e2` cohorts and results
 
@@ -621,8 +667,8 @@ documentation snapshot, and no new release is published.
 
 ## Remaining work
 
-1. Run the planned Sol/image sector pilot and two Sol native-ending full-game
-   conditions after the verified 18-Sol challenge boundary and cleanup review.
+1. Run the two planned Sol native-ending full-game conditions after the verified
+   18-Sol challenge boundary and completed pilot/cleanup reviews.
    Keep pilot and budget outcomes distinct from the four required native endings.
 2. Complete the remaining 18 Luna challenge cells and two Luna full-game conditions
    sequentially. Preserve every attempted outcome, including the image/fire
