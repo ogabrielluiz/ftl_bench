@@ -7,16 +7,26 @@ An agent benchmark that drives the real **FTL: Faster Than Light** engine throug
 ## Status: work in progress
 
 The visual benchmark is an **alpha implementation with partial live validation**.
-At 2026-10-11 07:44 UTC (04:44 in São Paulo), fresh source-bound admission at
-`2174cc9` passed scoped startup, nine timing probes and eight independent rejection
-checks. New challenge and full-game cohorts are frozen; all 36 challenge cells
-and five full-game/pilot entries are planned, with Sol first prospectively.
+At 2026-10-11 08:31 UTC (05:31 in São Paulo), the frozen `2174cc9` matrix has
+four finished cells and 32 planned. All three Sol/image combat trials are eligible:
+two successes and one decision-budget failure. Fire repeat one is technically
+excluded after three completed decisions; its fourth CLI call retained a workspace
+routing discovery failure. Failed-call usage is unknown. Continuation is held;
+the failed trial is preserved without retry. All five full-game/pilot entries
+remain planned. Scoped admission passed startup, nine timing probes and eight
+independent rejection checks; the latest current cleanup audit passed.
 The separate preserved `078a5e2` cohort has nine completed Sol/image cells:
 six task successes, two idle-budget failures and one technical exclusion, with
 eight eligible trials. Its failed call's usage remains unknown. Failures are not
 silently retried or relabelled, and cohorts are not pooled. Fixture-free
 native-ending full games remain **0/4**, with no qualified model/observation
 comparison. See the exact cohort identities and remaining [WIP](docs/NEXT.md).
+
+After that snapshot, a separate text-only connectivity diagnostic succeeded at
+08:31:50 UTC using the frozen CLI, Sol and medium reasoning (11.071 seconds,
+strict audited JSON with no tools). It is outside the benchmark and establishes
+no image/gameplay acceptance. Following review, the next unstarted cell, fire
+repeat two, began prospectively at about 08:33 UTC; fire repeat one was not retried.
 
 Screenshot play, conservative image-derived HUD summaries, protected saves,
 frozen challenge/full-game controllers and exact dashboard replays are

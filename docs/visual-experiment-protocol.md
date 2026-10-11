@@ -1,17 +1,10 @@
 # Visual benchmark acceptance and comparison protocol
 
-Status: WIP. At 2026-10-11 04:52 UTC, nine of 36 challenge cells were complete,
-the sector pilot had ended in audited native defeat, and Sol/image full-game was
-cooperatively interrupted at 276 decisions after a confirmed harness store-arrival
-stall. The other three full-game cells remain unstarted. Original saves were
-verified restored. No complete model/observation comparison or fixture-free
-full-game ending is established. The failed cohort stays frozen; native repairs
-require new prospective cohorts and fresh validation. The replacement DLL passed
-the protected natural store/Continue/CLOSE regression at 05:28 UTC. Fresh startup,
-nine timing probes and independent local admission subsequently passed; replacement
-v2 cohorts were frozen at 05:41 UTC with all model cells planned.
-See [current results and remaining work](NEXT.md) for the dated status and
-[validation history](validation-history-2026-10-11.md) for superseded evidence.
+Status: WIP. See [current results and remaining work](NEXT.md) for the dated
+`2174cc9` cohort status, retained failures and prospective continuation. Earlier
+cohorts remain separate; no complete model/observation comparison or fixture-free
+full-game ending is established. The [validation history](validation-history-2026-10-11.md)
+retains superseded evidence.
 
 ## Portable controller protocols
 
@@ -35,7 +28,8 @@ collection and v2 freezes have passed, followed by live admission of the first
 Sol/image combat child. That trial completed its task, but a legacy-receipt check
 falsely excluded it from the saved rollup. The prospective reporter fix retains
 its original outcome and exclusion. Fresh admission of source `078a5e2` and new
-cohort freezes now pass. At 2026-10-11 07:22 UTC, all nine current Sol/image cells
+cohort freezes passed. In the preserved historical `078a5e2` cohort, at
+2026-10-11 07:22 UTC all nine Sol/image cells
 are finished: six task successes, two idle-budget failures and one technical
 exclusion; eight have
 eligible evidence. Combat is 1/3 successes, fire/recovery 3/3, and repair/escape
@@ -48,8 +42,8 @@ passed for every cell, with a final current seven-save/bridge/runtime/source che
 at the repair batch gap. Earlier cohorts remain separate; native-ending full games
 remain 0/4 and completed comparisons remain WIP.
 
-The next model batch is held for a prospective failure-only CLI evidence change.
-It retains bounded stdout/stderr diagnostics, raw-byte and redacted-content hashes,
+That historical batch was held for the failure-only CLI evidence change, now
+completed and accepted through fresh `2174cc9` admission and new cohorts. It retains bounded stdout/stderr diagnostics, raw-byte and redacted-content hashes,
 counts, truncation and timeout partial-output metadata. It preserves fail-closed
 error/tool rejection, no retries or fallback, and successful decision semantics.
 The old failed call's exit zero and stream hash do not identify its underlying
