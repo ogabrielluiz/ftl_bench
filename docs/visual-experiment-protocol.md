@@ -8,6 +8,14 @@ retains superseded evidence.
 
 ## Portable controller protocols
 
+The prospective [CLI recovery policy](cli-recovery.md) is an executable-source
+and actor-identity change. It requires fresh diagnostics, independent review,
+admission and newly frozen cohorts. The `2174cc9` full-game call-47 failure and
+matrix fire exclusion remain recorded under their original strict policy.
+Completed-turn usage from a recovered call does not establish complete usage
+across its aborted internal requests. The harness makes one CLI invocation per
+decision and retains the CLI's own bounded recovery evidence.
+
 `ftl-visual-challenge-matrix-v2` and `ftl-fullgame-experiment-v2` retain the v1
 tasks, order, budgets and completion rules while selecting explicit portable
 admission evidence at freeze time. The [admission workflow](native-acceptance.md)

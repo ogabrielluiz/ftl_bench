@@ -1,6 +1,6 @@
 # Current validation and next work
 
-**WIP / alpha. Snapshot: 2026-10-11 09:50 UTC (06:50 in São Paulo).**
+**WIP / alpha. Snapshot: 2026-10-11 10:19 UTC (07:19 in São Paulo).**
 At the 09:25 UTC challenge boundary, the admitted `2174cc9` matrix has all 18
 Sol cells finished and 18 Luna cells remaining: **17 eligible, 12 task successes, five budget failures and one
 preserved technical exclusion**. All five full-game/pilot entries were planned
@@ -10,6 +10,14 @@ defeat in sector index 0: 53 decisions, 54 PNGs and score 20. Saved integrity,
 admission, recorded restoration, current cleanup and rendered UI reviews passed.
 The pilot contributes zero full-game completions; all four full-game conditions
 remain planned and native-ending completion remains **0/4**.
+At 10:08 UTC, Sol/image full-game attempt one ended with `visual_model_error`
+after 46 decisions. Call 47 recovered inside Codex CLI and exited zero, but the
+frozen parser rejected its preceding reconnect notification. This is a preserved
+technical interruption, not a native ending; full-game continuation is held by
+the controller and three later conditions remain planned. See the
+[recovery policy and evidence](cli-recovery.md). Fresh admission/new cohorts
+are required for the changed actor and reporter; no old trial is retried or
+retroactively accepted.
 Challenge usage covers 198/199 calls, so complete token totals remain unknown. The
 comparison is incomplete and unqualified; the retained image/fire repeat-one
 exclusion also prevents that four-condition pair from qualifying after Luna
@@ -33,7 +41,7 @@ runs remain historical; see the [store-arrival diagnosis](native-store-arrival.m
 | Repeatable setup | Nine no-model fixture-6 probes passed measured starting-state and step equality across three wall delays. This covers the tested inputs, not every hidden RNG stream or full-game determinism. |
 | Protected lifecycle | Save backups, exact restoration, runtime identities and terminal evidence are recorded. Cooperative-stop probes passed before the actor and during one real CLI request; the returned cancelled response was retained and its actions discarded. |
 | Challenges | Frozen 36-cell controller, versioned public tasks, outcome audits, retained failures and exact replays. All 18 current Sol cells are finished; the separate historical nine-cell results are below. |
-| Full-game support | Fixture-free startup and the five-cell controller are implemented. Startup preserves the opening choice. The historical pilot ended in audited native defeat after 78 decisions; its subsequent Sol/image full-game attempt was interrupted by a confirmed harness store-arrival defect. The current pilot completed in audited native defeat after 53 decisions; all four full-game conditions remain planned. |
+| Full-game support | Fixture-free startup and the five-cell controller are implemented. Startup preserves the opening choice. The historical pilot ended in audited native defeat after 78 decisions; its subsequent Sol/image full-game attempt was interrupted by a confirmed harness store-arrival defect. The current pilot completed in audited native defeat after 53 decisions. The Sol/image full-game attempt then stopped with a preserved CLI protocol error after 46 decisions; three later conditions remain planned, and native-ending full games remain 0/4. |
 | Dashboard | Saved challenge/full-game overviews, exact screenshots and inputs, outcome reasons, task identities and saved cleanup receipts. The dashboard is read-only. |
 
 The visual track is `visual-v1`; historical structured runs retain runner/ruleset
@@ -63,7 +71,7 @@ protocol identities and hashes of the complete `protocol.json` bytes differ:
 | Cohort | Embedded protocol SHA-256 | Protocol file SHA-256 | Snapshot |
 | --- | --- | --- | --- |
 | `matrix-main-2174cc9-20261011` | `14b187e91c25d675f3f9e1c532f4dfa6ec75d137334dc62e122f9a254118b613` | `b04b9dab9e7f85b24c092f9b53117238506dd5cc5a75f66e4b8368a94ac2910e` | 18 finished, 18 Luna remaining |
-| `fullgame-main-2174cc9-20261011` | `0714ba2975bc1b1fa37ff09a0be85087fda35037e237cc3a15ca4631b590935d` | `53b5b6cac94aef5b9177381b1a103abc14b6b991e656bebe296a71ceeb4288ac` | Pilot native defeat; four full-game conditions planned |
+| `fullgame-main-2174cc9-20261011` | `0714ba2975bc1b1fa37ff09a0be85087fda35037e237cc3a15ca4631b590935d` | `53b5b6cac94aef5b9177381b1a103abc14b6b991e656bebe296a71ceeb4288ac` | Pilot native defeat; Sol/image technical interruption; three conditions planned |
 
 ### Current results and retained failure
 
@@ -162,6 +170,26 @@ Frozen executable files must remain unchanged. Later actor source changes requir
 another fresh diagnostic collection, independent review and new admission/cohorts.
 
 ## Current pilot and prospective setup recipe
+
+The later full-game technical interruption retained 47 PNGs and 47 call records,
+including 46 accepted decisions. Last native state: sector index 0, three jumps,
+four beacons, hull 28/30, three crew, score 91, no victory and no game over.
+Independent saved image/input/frame/admission/restoration checks passed. Current
+seven-save inventory, previous Lua bridge, six runtime files and no-game-process
+check also passed. The rendered UI confirms zero native full-game completions,
+one incomplete full-game attempt, the separate pilot defeat and three planned
+conditions. Local receipts are `2174-main-fullgame-sol-image-final-review.json`,
+`2174-main-fullgame-sol-image-current-cleanup-review.json`,
+`2174-main-fullgame-sol-image-cli-failure-review.json` and
+`2174-main-fullgame-sol-image-ui-review.json` under
+`dist/store-warp-diagnosis-20261011/`.
+
+Stored usage covers 46/47 calls: input 862,951 (cached subset 612,224), output
+10,009 (reasoning subset 2,654). Raw call-47 completion separately reports input
+20,030, cached 19,968, output 239 and reasoning 82. These are diagnostic retained
+counts, not a replacement for the frozen report's missing usage. Usage from the
+CLI's aborted internal requests is unknown. All 47 request latencies total
+691.097 seconds; elapsed trial time was 821.622 seconds.
 
 The Sol/image sector pilot in `fullgame-main-2174cc9-20261011` completed with
 `native_game_over`: native defeat, sector index 0, score 20, 53 decisions and
@@ -672,17 +700,17 @@ documentation snapshot, and no new release is published.
 
 ## Remaining work
 
-1. Run the two planned Sol native-ending full-game conditions after the verified
-   18-Sol challenge boundary and completed pilot/cleanup reviews.
-   Keep pilot and budget outcomes distinct from the four required native endings.
-2. Complete the remaining 18 Luna challenge cells and two Luna full-game conditions
-   sequentially. Preserve every attempted outcome, including the image/fire
-   technical exclusion, and stop for new technical failures or ambiguous cleanup.
+1. Collect fresh startup/timing diagnostics, independent review and admission for
+   the changed CLI recovery sources. Freeze new challenge and full-game cohorts;
+   preserve the original failed Sol/image attempt and all old cohort outcomes.
+2. Run the new cohort's Sol challenges, pilot and two full-game conditions first,
+   followed by Luna's challenges and two full-game conditions, sequentially.
+   Retain every attempted outcome; stop for technical failures or ambiguous cleanup.
+   Keep pilots and budget outcomes distinct from the four required native endings.
 3. Report matched conditions with denominators, exclusions, outcome reasons,
-   latency and available usage. Keep incomplete games distinct from native endings.
-   The excluded fire repetition prevents three complete paired repetitions;
-   resolve that gap through a separately declared balanced cohort, preserving
-   this cohort and reporting its results separately.
+   latency and available usage. A fresh 36-cell challenge cohort can supply the
+   declared three repeats per condition; never pool it with the preserved cohorts
+   or silently retry failed cells to fill a comparison gap.
 4. Make native acceptance/evidence setup reproducible from a fresh checkout,
    validate the merged headless runtime, and revalidate any
    changed implementation and rebuild packages before release.

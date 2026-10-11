@@ -14,6 +14,11 @@ needs the matching runtime and evidence described in the
 
 ## Running a local visual attempt
 
+The [versioned CLI recovery policy](cli-recovery.md) handles only recognized
+connection notices followed by a fully validated completed response. It does not
+retry a benchmark call. Historical strict-policy failures remain failures, and
+new executable sources require fresh admission before frozen experiments.
+
 Close FTL first. From the harness environment, start a protected run in a new output directory:
 
 ```powershell

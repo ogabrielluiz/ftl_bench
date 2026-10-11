@@ -223,6 +223,91 @@ def test_usage_missing_is_unknown_and_cache_is_not_added_to_input():
     assert report["response_model_identity"]["status"] == "not_reported"
 
 
+def recovered_run(directory):
+    rows = saved_run(directory)
+    model = rows[2]["model"]
+    events = model["events"]
+    events.insert(2, {"type": "error", "message": "Reconnecting... 2/5 (stream disconnected before completion: websocket closed by server before response.completed)"})
+    stream = "\n".join(json.dumps(e) for e in events) + "\n"
+    audit = agent.audit_codex_events(stream)
+    model.update({k: v for k, v in audit.items() if k != "last_message"})
+    model["cli_recovery"] = {**agent._cli_failure("recovered_reconnect", stream.encode(), b"internal reconnect"),
+        "notices": deepcopy(audit["reconnect_notices"]), "usage_scope": "completed_turn_only",
+        "aborted_sampling_usage": "unavailable"}
+    save_rows(directory, rows)
+    return rows
+
+
+def test_recovered_saved_decision_is_audited_with_honest_usage_scope(tmp_path):
+    directory = tmp_path / "recovered"
+    recovered_run(directory)
+    audit = reporting.audit_visual_run(directory)
+    assert audit["complete"], audit["issues"]
+    assert audit["cli_event_policies"] == [agent.CLI_EVENT_POLICY]
+    summary = audit["model_calls"]
+    assert summary["usage"]["completed_turn_totals"]["input_tokens"] == 101
+    assert summary["usage"]["complete_totals"]["input_tokens"] is None
+    assert summary["transport_recovery"]["recorded_calls"] == 1
+    ordinary = reporting.summarize_model_calls([{"model": {"usage": {"input_tokens": 9}, "latency_seconds": 2}}])
+    combined = reporting._combine_call_summaries([summary, ordinary])
+    assert combined["usage"]["observed_totals"]["input_tokens"] == 110
+    assert combined["usage"]["completed_turn_totals"]["input_tokens"] == 110
+    assert combined["usage"]["complete_totals"]["input_tokens"] is None
+    assert combined["transport_recovery"] == {"recorded_calls": 1, "recorded_notices": 1,
+                                               "aborted_sampling_usage": "unavailable"}
+
+
+@pytest.mark.parametrize("damage", ["notice", "raw_text", "raw_hash", "raw_events", "stream_hash", "policy", "manifest_policy", "missing", "scope"])
+def test_recovered_saved_evidence_must_join_the_audited_events(tmp_path, damage):
+    directory = tmp_path / damage
+    rows = recovered_run(directory)
+    model = rows[2]["model"]
+    evidence = model["cli_recovery"]
+    if damage == "notice":
+        evidence["notices"][0]["attempt"] = 3
+    elif damage == "raw_text":
+        evidence["stdout"]["text"] = "different"
+    elif damage == "raw_hash":
+        evidence["stderr"]["retained_sha256"] = "0" * 64
+    elif damage == "raw_events":
+        stream = evidence["stdout"]["text"].replace("Reconnecting... 2/5", "Reconnecting... 3/5").encode()
+        evidence["stdout"] = agent._cli_failure("recovered_reconnect", stream)["stdout"]
+        model["event_stream_sha256"] = evidence["stdout"]["sha256"]
+    elif damage == "stream_hash":
+        model["event_stream_sha256"] = "0" * 64
+    elif damage == "policy":
+        model.pop("cli_event_policy")
+    elif damage == "manifest_policy":
+        manifest = json.loads((directory / "run.json").read_text())
+        manifest["actor_identity"]["cli_event_policy"] = agent.LEGACY_CLI_EVENT_POLICY
+        write(directory / "run.json", manifest)
+    elif damage == "missing":
+        model.pop("cli_recovery")
+    elif damage == "scope":
+        evidence["aborted_sampling_usage"] = "zero"
+    save_rows(directory, rows)
+    audit = reporting.audit_visual_run(directory)
+    assert not audit["complete"] and audit["issues"]
+
+
+def test_saved_historical_policy_remains_strict_and_auditable(tmp_path):
+    directory = tmp_path / "legacy"
+    rows = saved_run(directory)
+    rows[0]["meta"]["actor_identity"].pop("cli_event_policy")
+    rows[2]["model"].pop("cli_event_policy")
+    rows[2]["model"].pop("reconnect_notices")
+    manifest = json.loads((directory / "run.json").read_text())
+    manifest["actor_identity"].pop("cli_event_policy")
+    write(directory / "run.json", manifest)
+    save_rows(directory, rows)
+    audit = reporting.audit_visual_run(directory)
+    assert audit["complete"], audit["issues"]
+    assert audit["cli_event_policies"] == [agent.LEGACY_CLI_EVENT_POLICY]
+    rows[2]["model"]["events"].insert(2, {"type": "error", "message": "Reconnecting... 2/5 (stream disconnected before completion: websocket closed by server before response.completed)"})
+    save_rows(directory, rows)
+    assert not reporting.audit_visual_run(directory)["complete"]
+
+
 def test_complete_paired_challenges_include_native_losses_as_valid_outcomes(tmp_path):
     directories = []
     for model in protocol()["models"]:

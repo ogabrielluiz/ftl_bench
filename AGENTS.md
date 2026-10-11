@@ -134,8 +134,14 @@ do not silently retry or overwrite started cells.
 Failure-only actor diagnostics are executable source changes: collect fresh
 startup/timing evidence and obtain new review/admission/cohorts before model calls.
 Keep failed CLI output bounded and redacted, retaining raw-byte and retained-content
-hashes, byte counts, truncation and timeout partial-output metadata. Error/tool
-rejection stays fail closed; do not add retries or fallback. Missing usage is
+hashes, byte counts, truncation and timeout partial-output metadata. Unknown errors,
+failed turns and all tool activity fail closed. Only the versioned, narrowly
+recognized recovered transport notices in `docs/cli-recovery.md` are permitted.
+They require a complete, no-tool
+turn and all final-answer/image checks; never suppress arbitrary errors or add
+harness retries/fallback. Historical missing policies retain strict rejection.
+Preserve recovery streams and notices, and report completed-turn usage separately
+from unavailable aborted-request usage. Missing usage is
 unknown, not zero. Preserve prior cohorts and their technical exclusions.
 
 Use one game/controller at a time. Paused experiments resume only on request;

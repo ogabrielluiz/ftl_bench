@@ -29,6 +29,12 @@ MAX_MEMORY_CHARS = 1200
 MAX_INTENT_CHARS = 240
 MAX_HISTORY = 8
 PROMPT_VERSION = "ftl-visual-v2"
+CLI_EVENT_POLICY = "ftl-codex-cli-reconnect-v1"
+LEGACY_CLI_EVENT_POLICY = "ftl-codex-cli-strict-v1"
+_RECONNECT = re.compile(
+    r"Reconnecting\.\.\. ([1-5])/5 \(stream disconnected before completion: "
+    r"(?:websocket closed by server before response\.completed|"
+    r"IO error: An existing connection was forcibly closed by the remote host\. \(os error 10054\))\)")
 PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "ftl_visual_v2.md"
 HUD_INTS = {"hull_current", "hull_max", "fuel", "scrap", "missiles", "drone_parts"}
 KEYS = tuple("abcdefghijklmnopqrstuvwxyz0123456789") + (
@@ -327,10 +333,14 @@ def _cli_failure(kind, stdout=None, stderr=None, *, partial=False, error=None):
     return result
 
 
-def audit_codex_events(stdout: str) -> dict:
+def audit_codex_events(stdout: str, *, policy: str = CLI_EVENT_POLICY) -> dict:
     """Fail closed if tool activity, an unknown item, or an incomplete turn appears."""
     if not isinstance(stdout, str) or len(stdout) > 2 * 1024 * 1024:
         raise VisualProtocolError("CLI event stream is missing or too large")
+    if not isinstance(policy, str) or policy not in {CLI_EVENT_POLICY, LEGACY_CLI_EVENT_POLICY}:
+        raise VisualProtocolError("Unknown CLI event policy")
+    modern = policy == CLI_EVENT_POLICY
+    notices, thread_started, agent_message_started = [], False, False
     events, completed, started, messages = [], False, False, []
     for event_index, line in enumerate(line for line in stdout.splitlines() if line.strip()):
         if not line.strip():
@@ -352,6 +362,7 @@ def audit_codex_events(stdout: str) -> dict:
         if kind == "thread.started":
             if started or events:
                 raise VisualProtocolError("CLI started an unexpected extra thread")
+            thread_started = True
         elif kind == "turn.started":
             if started:
                 raise VisualProtocolError("CLI started an unexpected extra turn")
@@ -363,12 +374,27 @@ def audit_codex_events(stdout: str) -> dict:
                     metadata={"cli_failure_context": {"kind": "unsupported_activity",
                               "event_type": kind, "event_index": event_index,
                               "item_type": item.get("type") if isinstance(item, dict) else None}})
+            if item.get("type") == "agent_message":
+                agent_message_started = True
             if kind == "item.completed" and item.get("type") == "agent_message":
                 messages.append(item.get("text"))
         elif kind == "turn.completed":
             if not started or not messages:
                 raise VisualProtocolError("CLI completion lacks an audited agent message")
+            if modern and (not thread_started or len(messages) != 1):
+                raise VisualProtocolError("CLI completion requires one thread and exactly one final message")
             completed = True
+        elif kind == "error" and modern:
+            message = event.get("message")
+            match = _RECONNECT.fullmatch(message) if isinstance(message, str) else None
+            if (set(event) != {"type", "message"} or not match or not started
+                    or not thread_started or agent_message_started or len(notices) >= 5
+                    or (notices and int(match.group(1)) <= notices[-1]["attempt"])):
+                raise VisualProtocolError("CLI failed or emitted an unsupported event", metadata={
+                    "cli_failure_context": {"kind": "unsupported_event",
+                    "event_type": kind, "event_index": event_index}})
+            notices.append({"event_index": event_index, "attempt": int(match.group(1)),
+                            "max_attempts": 5, "message": message})
         else:
             raise VisualProtocolError("CLI failed or emitted an unsupported event",
                                       metadata={"cli_failure_context": {"kind": "unsupported_event",
@@ -387,7 +413,8 @@ def audit_codex_events(stdout: str) -> dict:
                               (item.get("model"), "item.model")):
             if isinstance(value, str) and value.strip():
                 identities.append({"event_index": index, "field": source, "model": value})
-    return {"events": events, "event_stream_sha256": _sha(stdout.encode("utf-8")),
+    return {"cli_event_policy": policy, "reconnect_notices": notices,
+            "events": events, "event_stream_sha256": _sha(stdout.encode("utf-8")),
             "tool_use": False, "usage": usage, "last_message": messages[-1],
             "response_model_identity": {
                 "status": "reported" if identities else "not_reported",
@@ -427,6 +454,7 @@ class CodexVisualAgent:
 
     def instruction_identity(self) -> dict:
         return {"contract": CONTRACT, "prompt_version": PROMPT_VERSION,
+                "cli_event_policy": CLI_EVENT_POLICY,
                 "manual_sha256": _sha(self._manual_bytes), "task": self.task,
                 "task_sha256": _sha(self.task.encode("utf-8")),
                 "instructions_sha256": _sha(self._instructions.encode("utf-8"))}
@@ -441,6 +469,7 @@ class CodexVisualAgent:
         executable = _codex_executable(self.codex_bin)
         metadata = {"provider": "codex", "model": self.model, "reasoning_effort": self.reasoning_effort,
                     "contract": CONTRACT, "prompt_version": PROMPT_VERSION,
+                    "cli_event_policy": CLI_EVENT_POLICY,
                     "mode": observation.mode, "frame_id": observation.frame_id,
                     "image": image, "prompt_sha256": _sha(prompt.encode("utf-8")),
                     "manual_sha256": _sha(self._manual_bytes), "prompt": prompt, "schema": schema,
@@ -511,5 +540,11 @@ class CodexVisualAgent:
                 metadata["cli_failure"].update(context)
                 metadata.pop("events", None)
                 raise VisualProtocolError(str(error), metadata=metadata) from error
+            if audit["reconnect_notices"]:
+                metadata["cli_recovery"] = {
+                    **_cli_failure("recovered_reconnect", result.stdout, result.stderr),
+                    "notices": audit["reconnect_notices"],
+                    "usage_scope": "completed_turn_only",
+                    "aborted_sampling_usage": "unavailable"}
             metadata["answer_sha256"] = _sha(answer.encode("utf-8"))
             return VisualDecision(parsed.actions, parsed.advance_frames, parsed.intent, parsed.memory, metadata)

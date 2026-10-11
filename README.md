@@ -32,6 +32,15 @@ admission, recorded restoration, current cleanup and rendered UI reviews passed.
 The pilot contributes zero full-game completions; all four full-game conditions
 remain planned and native-ending completion remains **0/4**.
 
+At 10:08 UTC, the first Sol/image full-game attempt stopped after 46 decisions
+with a CLI protocol error. The CLI recovered from a connection interruption and
+completed call 47, but the frozen reject-all-errors policy refused its reconnect
+notification. No call-47 action was delivered. Saved and current restoration
+checks passed; the attempt remains incomplete and the three later full-game
+conditions remain planned. A [prospective recovery policy](docs/cli-recovery.md)
+adds narrow validation and inspectable diagnostics; it requires fresh admission
+and new cohorts before benchmark use. Previous trials and exclusions stay intact.
+
 An audit import created an extra bytecode cache inside frozen-source; the next
 controller rejected it before game/model launch or a new ledger trial. All 78
 pinned executable files remained unchanged. After preserving the extra file and

@@ -443,3 +443,119 @@ def test_non_scalar_event_type_still_rejects_without_untrusted_context(monkeypat
         visual.CodexVisualAgent(codex_bin=executable).decide(observation)
     assert error.value.metadata["cli_failure"]["event_type"] == "<dict>"
     assert "privateToken" not in json.dumps(error.value.metadata)
+
+RECONNECT_MESSAGE = "Reconnecting... 2/5 (stream disconnected before completion: websocket closed by server before response.completed)"
+
+
+def test_reconnect_policy_retains_exact_successful_stream_and_legacy_rejects():
+    stream = event_stream(json.dumps(answer()), extra=[{"type": "error", "message": RECONNECT_MESSAGE}])
+    audited = visual.audit_codex_events(stream)
+    assert audited["cli_event_policy"] == visual.CLI_EVENT_POLICY
+    assert audited["reconnect_notices"] == [{"event_index": 2, "attempt": 2, "max_attempts": 5, "message": RECONNECT_MESSAGE}]
+    assert audited["events"][2]["message"] == RECONNECT_MESSAGE
+    assert audited["event_stream_sha256"] == visual._sha(stream.encode())
+    with pytest.raises(visual.VisualProtocolError):
+        visual.audit_codex_events(stream, policy=visual.LEGACY_CLI_EVENT_POLICY)
+
+
+@pytest.mark.parametrize("message", [
+    "workspace routing discovery failed", RECONNECT_MESSAGE.replace("2/5", "0/5"),
+    RECONNECT_MESSAGE.replace("2/5", "6/5"), RECONNECT_MESSAGE.replace("2/5", "2/6"),
+    RECONNECT_MESSAGE + " extra", RECONNECT_MESSAGE.replace("websocket closed by server before response.completed", "unknown failure"),
+])
+def test_reconnect_unknown_or_unbounded_messages_reject(message):
+    with pytest.raises(visual.VisualProtocolError):
+        visual.audit_codex_events(event_stream(json.dumps(answer()), extra=[{"type": "error", "message": message}]))
+
+
+@pytest.mark.parametrize("extra", [
+    [{"type": "error", "message": RECONNECT_MESSAGE}, {"type": "error", "message": RECONNECT_MESSAGE}],
+    [{"type": "error", "message": RECONNECT_MESSAGE}, {"type": "error", "message": RECONNECT_MESSAGE.replace("2/5", "1/5")}],
+    [{"type": "turn.failed", "error": {"message": "workspace routing discovery failed"}}],
+    [{"type": "thread.started"}], [{"type": "turn.started"}],
+    [{"type": "error", "message": RECONNECT_MESSAGE, "code": "unknown"}],
+    [{"type": "item.completed", "item": {"type": "agent_message", "text": "{}"}}],
+])
+def test_reconnect_policy_rejects_terminal_or_extra_activity(extra):
+    with pytest.raises(visual.VisualProtocolError):
+        visual.audit_codex_events(event_stream(json.dumps(answer()), extra=extra))
+
+
+@pytest.mark.parametrize("phase", ["started", "updated", "completed"])
+def test_reconnect_after_any_agent_message_rejects(phase):
+    extra = [{"type": "item." + phase, "item": {"type": "agent_message", "text": "{}"}},
+             {"type": "error", "message": RECONNECT_MESSAGE}]
+    with pytest.raises(visual.VisualProtocolError):
+        visual.audit_codex_events(event_stream(json.dumps(answer()), extra=extra))
+
+
+def test_reconnect_after_completion_and_unknown_policy_reject():
+    stream = event_stream(json.dumps(answer()))
+    with pytest.raises(visual.VisualProtocolError):
+        visual.audit_codex_events(stream + '\n' + json.dumps({"type": "error", "message": RECONNECT_MESSAGE}))
+    with pytest.raises(visual.VisualProtocolError):
+        visual.audit_codex_events(stream, policy="future")
+
+
+@pytest.mark.parametrize("fault", [None, "missing", "mismatch", "image", "schema", "nonzero", "usage"])
+def test_decide_reconnect_preserves_final_answer_and_image_guards(monkeypatch, observation, executable, fault):
+    calls = []
+    def run(command, **kwargs):
+        calls.append(command)
+        reply = json.dumps(answer(advance_frames=601) if fault == "schema" else answer())
+        final = Path(command[command.index("-o") + 1])
+        if fault != "missing":
+            final.write_text("{}" if fault == "mismatch" else reply)
+        if fault == "image":
+            Path(command[command.index("--image") + 1]).write_bytes(b"changed")
+        stream = event_stream(reply, extra=[{"type": "error", "message": RECONNECT_MESSAGE}])
+        if fault == "usage":
+            stream = stream.replace('"input_tokens": 101', '"input_tokens": -1')
+        return SimpleNamespace(returncode=1 if fault == "nonzero" else 0,
+                               stdout=stream.encode(), stderr=b"Bearer secret-token")
+    monkeypatch.setattr(visual.subprocess, "run", run)
+    actor = visual.CodexVisualAgent(codex_bin=executable)
+    assert actor.instruction_identity()["cli_event_policy"] == visual.CLI_EVENT_POLICY
+    if fault:
+        with pytest.raises((visual.VisualProtocolError, visual.VisualBackendError)) as raised:
+            actor.decide(observation)
+        assert "cli_failure" in raised.value.metadata
+        assert "cli_recovery" not in raised.value.metadata
+    else:
+        decision = actor.decide(observation)
+        recovery = decision.metadata["cli_recovery"]
+        assert recovery["kind"] == "recovered_reconnect"
+        assert recovery["notices"] == decision.metadata["reconnect_notices"]
+        assert recovery["usage_scope"] == "completed_turn_only"
+        assert recovery["aborted_sampling_usage"] == "unavailable"
+        assert recovery["stdout"]["sha256"] == decision.metadata["event_stream_sha256"]
+        assert recovery["stderr"]["redacted"]
+        assert "secret-token" not in json.dumps(recovery)
+        assert "cli_failure" not in decision.metadata
+    assert len(calls) == 1
+
+
+def test_legacy_multiple_messages_preserved_but_modern_rejects():
+    stream = event_stream(json.dumps(answer()), extra=[{"type": "item.completed", "item": {"type": "agent_message", "text": "{}"}}])
+    assert visual.audit_codex_events(stream, policy=visual.LEGACY_CLI_EVENT_POLICY)["last_message"] == json.dumps(answer())
+    with pytest.raises(visual.VisualProtocolError):
+        visual.audit_codex_events(stream)
+
+
+def test_reconnect_before_turn_or_without_thread_rejects():
+    notice = json.dumps({"type": "error", "message": RECONNECT_MESSAGE})
+    with pytest.raises(visual.VisualProtocolError):
+        visual.audit_codex_events(notice + '\n' + event_stream(json.dumps(answer())))
+    with pytest.raises(visual.VisualProtocolError):
+        visual.audit_codex_events('\n'.join(event_stream(json.dumps(answer()), extra=[{"type": "error", "message": RECONNECT_MESSAGE}]).splitlines()[1:]))
+
+
+def test_bounded_five_reconnects_allow_reasoning_but_require_final_completion():
+    extras = [{"type": "item.completed", "item": {"type": "reasoning", "text": "thinking"}}]
+    extras += [{"type": "error", "message": RECONNECT_MESSAGE.replace("2/5", str(attempt) + "/5")} for attempt in range(1, 6)]
+    stream = event_stream(json.dumps(answer()), extra=extras)
+    assert len(visual.audit_codex_events(stream)["reconnect_notices"]) == 5
+    with pytest.raises(visual.VisualProtocolError):
+        visual.audit_codex_events('\n'.join(stream.splitlines()[:-2]))
+    with pytest.raises(visual.VisualProtocolError):
+        visual.audit_codex_events(event_stream(json.dumps(answer()), extra=extras + [{"type": "error", "message": RECONNECT_MESSAGE}]))

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import VisualReplay from "./VisualReplay";
 import TrialResult from "./TrialResult";
 import ComparisonOverview from "./ComparisonOverview";
+import ModelRequestDetails from "./ModelRequestDetails";
 import type {
   ActionView,
   DashboardState,
@@ -294,12 +295,7 @@ export function TimelineItem({ item }: { item: FeedItem }) {
             : <span className="action-chip other">{interference ? "Delivery unverified" : "advance"}</span>}
         </div>
         <StatePills state={item.state} />
-        {item.model ? <details className="muted">
-          <summary>{item.collapsed ? "Latest model request" : "Model request"}: {item.model.model || item.model.provider || "identity unavailable"}
-            {item.model.latency_seconds !== undefined ? ` · ${item.model.latency_seconds.toFixed(2)}s` : ""}</summary>
-          <p>Input tokens {display(item.model.usage?.input_tokens)} · Output tokens {display(item.model.usage?.output_tokens)}</p>
-          <p>Request {item.model.request_id || item.model.client_request_id || "unavailable"}</p>
-        </details> : null}
+        {item.model ? <ModelRequestDetails model={item.model} latest={!!item.collapsed} /> : null}
       </div>
     </article>
   );

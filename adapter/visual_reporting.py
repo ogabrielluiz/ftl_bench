@@ -8,6 +8,7 @@ separate evidence required by the frozen experiment protocol.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+import base64
 import hashlib
 import json
 import math
@@ -59,10 +60,17 @@ def summarize_model_calls(records: list[dict]) -> dict:
                  if type(c.get("latency_seconds")) in (int, float)
                  and math.isfinite(c["latency_seconds"]) and c["latency_seconds"] >= 0]
     reported = sorted({model for c in calls for model in _reported_models(c)})
+    recovered = [c for c in calls if c.get("cli_recovery")]
+    completed_turn_totals = {k: v if counts[k] == len(calls) and calls else None for k, v in totals.items()}
     return {"calls": len(calls), "usage": {
         "source": "codex_turn_completed", "observed_totals": totals, "reported_calls": counts,
-        "complete_totals": {k: v if counts[k] == len(calls) and calls else None for k, v in totals.items()},
+        "completed_turn_totals": completed_turn_totals,
+        "complete_totals": {k: None if recovered else v for k, v in completed_turn_totals.items()},
+        "scope": "reported completed turns; usage from aborted internal requests is unavailable",
         "missing_means": "unavailable, not zero; cached tokens are a subset of input tokens"},
+        "transport_recovery": {"recorded_calls": len(recovered),
+            "recorded_notices": sum(len(c.get("reconnect_notices", [])) for c in recovered),
+            "aborted_sampling_usage": "unavailable" if recovered else "no_recovery_recorded"},
         "latency_seconds": {"reported_calls": len(latencies),
             "observed_total": round(sum(latencies), 3) if latencies else None,
             "total": round(sum(latencies), 3) if calls and len(latencies) == len(calls) else None,
@@ -88,8 +96,15 @@ def _combine_call_summaries(summaries: list[dict]) -> dict:
     observed = {k: sum(s["usage"]["observed_totals"].get(k) or 0 for s in summaries) if counts[k] else None for k in keys}
     latency_count = sum(s["latency_seconds"]["reported_calls"] for s in summaries)
     latency = sum(s["latency_seconds"]["observed_total"] or 0 for s in summaries)
+    recovered = sum(_object(s.get("transport_recovery")).get("recorded_calls", 0) for s in summaries)
+    completed_turn_totals = {k: v if calls and counts[k] == calls else None for k, v in observed.items()}
     return {"calls": calls, "usage": {"observed_totals": observed, "reported_calls": counts,
-            "complete_totals": {k: v if calls and counts[k] == calls else None for k, v in observed.items()}},
+            "completed_turn_totals": completed_turn_totals,
+            "complete_totals": {k: None if recovered else v for k, v in completed_turn_totals.items()},
+            "scope": "reported completed turns; usage from aborted internal requests is unavailable"},
+            "transport_recovery": {"recorded_calls": recovered,
+                "recorded_notices": sum(_object(s.get("transport_recovery")).get("recorded_notices", 0) for s in summaries),
+                "aborted_sampling_usage": "unavailable" if recovered else "no_recovery_recorded"},
             "latency_seconds": {"reported_calls": latency_count,
                 "observed_total": round(latency, 3) if latency_count else None,
                 "total": round(latency, 3) if calls and latency_count == calls else None,
@@ -104,6 +119,53 @@ def _require(condition, message):
 def _decimal(value):
     _require(isinstance(value, str) and value.isascii() and value.isdecimal(), "invalid native decimal counter")
     return int(value)
+
+
+def _audit_cli_recovery(model: dict, audit: dict) -> None:
+    """Join recovered-turn metadata to bounded retained CLI bytes, never retry it."""
+    from visual_agent import _redact_cli_credentials
+    notices = audit["reconnect_notices"]
+    _require(model.get("reconnect_notices", []) == notices, "CLI reconnect notices differ from events")
+    recovery = model.get("cli_recovery")
+    if not notices:
+        _require(recovery is None, "CLI recovery evidence without reconnect notices")
+        return
+    _require(isinstance(recovery, dict) and recovery.get("kind") == "recovered_reconnect"
+             and recovery.get("partial") is False and recovery.get("notices") == notices
+             and recovery.get("usage_scope") == "completed_turn_only"
+             and recovery.get("aborted_sampling_usage") == "unavailable", "CLI recovery scope or notices mismatch")
+    retained = {}
+    for name, limit in (("stdout", 2 * 1024 * 1024), ("stderr", 64 * 1024)):
+        stream = _object(recovery.get(name))
+        data = base64.b64decode(stream.get("base64", ""), validate=True)
+        _require(stream.get("available") is True and len(data) <= limit
+                 and len(data) == stream.get("retained_bytes")
+                 and hashlib.sha256(data).hexdigest() == stream.get("retained_sha256")
+                 and data.decode("utf-8", errors="replace") == stream.get("text"), "CLI recovery retained stream mismatch: " + name)
+        _require(type(stream.get("bytes")) is int and stream["bytes"] >= 0
+                 and type(stream.get("redacted_bytes")) is int and stream["redacted_bytes"] >= len(data)
+                 and type(stream.get("truncated")) is bool
+                 and stream["truncated"] == (stream["redacted_bytes"] > len(data)), "CLI recovery byte counts mismatch: " + name)
+        _require(type(stream.get("redacted")) is bool
+                 and type(stream.get("redaction_count")) is int and stream["redaction_count"] >= 0
+                 and stream["redacted"] == (stream["redaction_count"] > 0), "CLI recovery redaction metadata mismatch: " + name)
+        _require(stream.get("hash_scope") == "original_bytes"
+                 and stream.get("retained_hash_scope") == "redacted_retained_bytes"
+                 and isinstance(stream.get("sha256"), str) and len(stream["sha256"]) == 64
+                 and all(c in "0123456789abcdef" for c in stream["sha256"]), "CLI recovery hash scope mismatch: " + name)
+        if stream.get("redacted") is False:
+            _require(stream["redacted_bytes"] == stream["bytes"], "CLI recovery unredacted size mismatch")
+            if not stream["truncated"]:
+                _require(stream.get("sha256") == stream.get("retained_sha256"), "CLI recovery original hash mismatch")
+        retained[name] = data
+    stdout = recovery["stdout"]
+    _require(stdout.get("truncated") is False and stdout.get("utf8_valid") is True
+             and stdout.get("sha256") == model.get("event_stream_sha256"), "CLI recovery event stream identity mismatch")
+    raw_events = [json.loads(line) for line in retained["stdout"].decode("utf-8").splitlines() if line.strip()]
+    def redacted_events(events):
+        data = json.dumps(events, ensure_ascii=False).encode("utf-8")
+        return json.loads(_redact_cli_credentials(data)[0])
+    _require(redacted_events(raw_events) == redacted_events(model["events"]), "CLI recovery retained events differ")
 
 
 def runtime_identity(runtime: dict) -> dict:
@@ -152,7 +214,7 @@ def audit_visual_run(directory: str | Path, *, require_terminal: bool = True,
     run's originals. Backup hashes and the recorded restoration receipt are always
     required for a final audit. Missing or corrupt artifacts fail closed.
     """
-    from visual_agent import (CONTRACT, _visible_hud, audit_codex_events, decision_schema,
+    from visual_agent import (CONTRACT, LEGACY_CLI_EVENT_POLICY, _visible_hud, audit_codex_events, decision_schema,
                               parse_decision, read_screenshot)
     from visible_hud import extract_visible_hud
     directory = Path(directory).resolve()
@@ -160,6 +222,7 @@ def audit_visual_run(directory: str | Path, *, require_terminal: bool = True,
     rows, meta, manifest, runtime, report, terminal = [], {}, {}, {}, {}, {}
     instruction_hashes, schema_hashes, manual_hashes, tasks = set(), set(), set(), set()
     clock_versions = set()
+    event_policies = set()
     history, memory, prior_after, prior_obs = [], "", None, None
 
     def problem(scope, error, **extra):
@@ -318,14 +381,22 @@ def audit_visual_run(directory: str | Path, *, require_terminal: bool = True,
                 declared = meta.get("actor_identity") or {}
                 _require(key not in declared or declared[key] == actual, "declared actor identity mismatch: " + key)
             _require(not meta.get("prompt_sha256") or meta["prompt_sha256"] == model["manual_sha256"], "run manual identity mismatch")
+            event_policy = model.get("cli_event_policy", LEGACY_CLI_EVENT_POLICY)
+            declared_policy = _object(meta.get("actor_identity")).get("cli_event_policy", LEGACY_CLI_EVENT_POLICY)
+            _require(declared_policy == _object(manifest.get("actor_identity")).get("cli_event_policy", LEGACY_CLI_EVENT_POLICY),
+                     "CLI event policy differs between manifest and trajectory")
+            _require(event_policy == declared_policy, "CLI event policy differs from declared actor")
+            event_policies.add(event_policy)
+            _require(len(event_policies) == 1, "CLI event policy changed during run")
             if kind == "model_error":
                 # The recorded failure remains ineligible for comparison even when
                 # its input envelope is intact; do not pretend it was a decision.
                 check.update(passed=True, response_audited=False)
                 checked.append(check)
                 continue
-            audit = audit_codex_events("\n".join(json.dumps(e) for e in model["events"]))
+            audit = audit_codex_events("\n".join(json.dumps(e) for e in model["events"]), policy=event_policy)
             _require(model.get("tool_use") is False and model.get("cli_exit_code") == 0, "CLI audit did not succeed")
+            _audit_cli_recovery(model, audit)
             _require(model.get("usage") == audit["usage"], "recorded usage differs from native CLI event")
             if "response_model_identity" in model:
                 _require(model["response_model_identity"] == audit["response_model_identity"], "reported model evidence mismatch")
@@ -436,9 +507,11 @@ def audit_visual_run(directory: str | Path, *, require_terminal: bool = True,
                 "declared_elapsed_seconds": {"numerator": prior_after["simulated_updates"], "denominator": 60}
                     if clock_versions == {2} and prior_after is not None else None},
             "manual_sha256": sorted(manual_hashes), "schema_sha256": sorted(schema_hashes), "tasks": sorted(tasks),
+            "cli_event_policies": sorted(event_policies),
             "model_calls": summarize_model_calls(rows),
             "outcome_category": outcome_category(terminal.get("reason"), terminal.get("status")),
-            "limitations": ["Audits recorded event objects; original CLI stdout and staged attachments are not retained.",
+            "limitations": ["Ordinary successful calls retain events; recovery diagnostics additionally retain bounded redacted CLI streams. Staged attachments are temporary.",
+                            "Retained diagnostic bytes are rehashed; original digests of redacted or truncated streams remain producer-recorded claims.",
                             "Pixel identity does not establish UI fidelity; independent native acceptance is required.",
                             "Historical save restoration relies on the recorded receipt and original backup hashes."]}
 
@@ -468,6 +541,7 @@ def aggregate_visual_runs(directories, protocol: dict | None = None, *, admissio
                         "initial_gameplay_sha256")}
             identity.update(runtime=audit["runtime_identity"], manual=audit["manual_sha256"],
                             instructions=audit["instruction_sha256"], schema=audit["schema_sha256"],
+                            cli_event_policies=audit["cli_event_policies"],
                             reasoning_effort=manifest.get("reasoning_effort"))
             required = ("protocol", "scenario", "seed", "task_sha256", "fixture_sha256", "fixture_version", "budgets",
                         "initial_gameplay_sha256")

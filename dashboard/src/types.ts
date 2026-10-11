@@ -123,6 +123,23 @@ export interface ModelTrace {
   client_request_id?: string;
   latency_seconds?: number;
   usage?: { input_tokens?: number; output_tokens?: number };
+  cli_exit_code?: number;
+  cli_failure?: { kind?: string; partial?: boolean; error?: string; event_type?: string; event_index?: number; item_type?: string; stdout?: CliDiagnosticStream; stderr?: CliDiagnosticStream };
+  cli_event_policy?: string;
+  reconnect_notices?: { event_index: number; attempt: number; max_attempts: number; message: string }[];
+  cli_recovery?: { kind?: string; notices?: { event_index: number; attempt: number; max_attempts: number; message: string }[]; usage_scope?: string; aborted_sampling_usage?: string; stdout?: CliDiagnosticStream; stderr?: CliDiagnosticStream };
+}
+
+export interface CliDiagnosticStream {
+  available?: boolean;
+  bytes?: number;
+  retained_bytes?: number;
+  sha256?: string;
+  retained_sha256?: string;
+  truncated?: boolean;
+  redacted?: boolean;
+  utf8_valid?: boolean;
+  text?: string;
 }
 
 export interface ModelUsage {
