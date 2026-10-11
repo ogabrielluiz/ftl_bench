@@ -1,13 +1,22 @@
 # Current validation and next work
 
-**WIP / alpha. Snapshot: 2026-10-11 04:52 UTC (01:52 in São Paulo).**
+**WIP / alpha. Snapshot: 2026-10-11 05:28 UTC (02:28 in São Paulo).**
 Nine of 36 challenge cells are finished. The sector pilot ended in native defeat;
 Sol/image full-game was cooperatively stopped at 276 decisions after a confirmed
 native store-arrival blocker froze warp. Three full-game cells remain unstarted.
-All seven original saves and all 15 baseline paths match after cleanup. No
+The original failed run restored all seven saves and its 15 baseline paths. No
 fixture-free full-game ending or complete model comparison has been established.
 The original checkout and failed cohort remain frozen; development continues on
-`main`. See [store-arrival diagnosis](native-store-arrival.md).
+`main`.
+
+The replacement DLL passed the protected natural store-arrival regression at
+05:28 UTC: 243 frames to arrival, one frame to resolve Continue, zero simulation
+updates at the visible store, and a successful native CLOSE click. Independent
+review checked 110 archived artifacts, all input packets, the new six-file runtime
+and exact restoration of all seven saves, with no game left running. This covers
+the reproduced defect only. Fresh startup/timing admission and replacement model
+cohorts remain required. See [store-arrival diagnosis](native-store-arrival.md).
+
 ## Implemented and verified scope
 
 | Area | Evidence and limits |

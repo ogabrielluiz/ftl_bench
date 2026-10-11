@@ -14,15 +14,19 @@ defeat after 78 decisions. Sol's first full-game attempt was cooperatively
 stopped after 276 decisions because a harness defect froze store arrival during
 warp. All seven original saves were restored. The remaining 27 challenge trials
 and three full-game conditions are unstarted; no full-game completion is claimed.
-The [store-arrival diagnosis](docs/native-store-arrival.md) records the prospective
-fix and its validation limits. Failed runs and their original sources remain preserved.
+The repaired native runtime passed a protected store-arrival check at 05:28 UTC:
+warp finished, Continue opened the store, and CLOSE worked with exact save
+restoration. The [diagnosis](docs/native-store-arrival.md) records both defects,
+the retained failures and the limited validation scope. New runtime admission
+and replacement cohorts are still required.
 
 Screenshot play, conservative image-derived HUD summaries, protected saves,
 frozen experiment controllers and dashboard replays are implemented. A complete
 model/observation comparison and fixture-free native-ending full games remain
 unproven. CI passes on Windows and Linux with Python 3.11 and 3.13. The merged
-bridge also passed protected startup and nine measured timing probes. These
-checks establish their documented scopes, not completion of the benchmark plan.
+bridge previously passed protected startup and nine measured timing probes;
+those checks must be refreshed for the repaired native runtime. These checks
+establish their documented scopes, not completion of the benchmark plan.
 
 Read [current results, evidence and remaining work](docs/NEXT.md), the
 [experiment protocol](docs/visual-experiment-protocol.md), and

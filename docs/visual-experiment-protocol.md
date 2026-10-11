@@ -6,7 +6,9 @@ cooperatively interrupted at 276 decisions after a confirmed harness store-arriv
 stall. The other three full-game cells remain unstarted. Original saves were
 verified restored. No complete model/observation comparison or fixture-free
 full-game ending is established. The failed cohort stays frozen; native repairs
-require new prospective cohorts and fresh validation.
+require new prospective cohorts and fresh validation. The replacement DLL passed
+the protected natural store/Continue/CLOSE regression at 05:28 UTC; startup and
+timing admission still need refreshing.
 See [current results and remaining work](NEXT.md) for the dated status and
 [validation history](validation-history-2026-10-11.md) for superseded evidence.
 
