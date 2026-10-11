@@ -19,13 +19,17 @@ class TrajectoryRecorder:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.n = 0
+        self.closed = False
         # Start fresh; first line is a meta header.
         header = {"i": -1, "t": round(time.time(), 3), "kind": "meta",
                   "meta": meta or {}}
         self.path.write_text(json.dumps(header) + "\n", encoding="utf-8")
 
     def record(self, kind: str, actions: Iterable[dict[str, Any]] | None, obs,
-               thought: str | None = None) -> None:
+               thought: str | None = None, model: dict[str, Any] | None = None, *,
+               pre_obs=None, decision_obs=None, visual: dict[str, Any] | None = None) -> None:
+        if self.closed:
+            raise RuntimeError("cannot append to a finished trajectory")
         rec = {
             "i": self.n,
             "t": round(time.time(), 3),
@@ -38,9 +42,34 @@ class TrajectoryRecorder:
         # every consumer that reads records via .get() is unaffected.
         if thought:
             rec["thought"] = thought
+        if model:
+            rec["model"] = model
+        if visual is not None:
+            rec["visual"] = visual
+        # Optional provenance snapshots are additive. The resulting observation remains `obs`,
+        # so scoring and older consumers keep their existing behavior.
+        for name, snapshot in (("pre_obs", pre_obs), ("decision_obs", decision_obs)):
+            if snapshot is not None:
+                rec[name] = snapshot if isinstance(snapshot, dict) else getattr(snapshot, "raw", None)
         with self.path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec) + "\n")
         self.n += 1
+
+    def finish(self, *, status: str = "completed", reason: str = "agent_returned",
+               error: str | None = None, **details: Any) -> None:
+        """Append one terminal lifecycle marker, without replacing the final game state."""
+        if self.closed:
+            return
+        if status not in ("completed", "error", "interrupted"):
+            raise ValueError(f"unsupported trajectory status: {status}")
+        rec = {**details, "i": self.n, "t": round(time.time(), 3), "kind": "end", "obs": None,
+               "actions": [], "status": status, "reason": reason}
+        if error:
+            rec["error"] = error
+        with self.path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec) + "\n")
+        self.n += 1
+        self.closed = True
 
 
 def load_trajectory(path: Path | str) -> list[dict[str, Any]]:

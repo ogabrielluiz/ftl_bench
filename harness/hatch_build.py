@@ -21,7 +21,7 @@ from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
 # repo top-level entries to vendor under src/ftl_bench/_bundled/ (preserving names so each
 # module's own `REPO = __file__.parent.parent` path logic keeps resolving them).
-_VENDOR = ["adapter", "scenarios", "prompts", "mod", "scripts", "README.md", "LICENSE"]
+_VENDOR = ["adapter", "scenarios", "prompts", "mod", "scripts", "native", "README.md", "LICENSE"]
 _IGNORE = shutil.ignore_patterns(
     "__pycache__", "*.pyc", "runs", "dist", "build", ".venv", "node_modules", "*.log"
 )
@@ -36,6 +36,15 @@ class CustomBuildHook(BuildHookInterface):
         bundled = root / "src" / "ftl_bench" / "_bundled"
 
         if (repo / "adapter").is_dir():
+            expected_parent = root.resolve() / "src" / "ftl_bench"
+            if bundled.is_symlink() or bundled.resolve().parent != expected_parent:
+                raise RuntimeError("ftl_bench build: unsafe vendored output path")
+            ui = repo / "dashboard" / "dist"
+            if not (ui / "index.html").is_file():
+                raise RuntimeError(
+                    "ftl_bench build: compiled dashboard missing; run npm ci and "
+                    "npm run build in dashboard/ before building distributions."
+                )
             # building from the repo working tree: refresh a clean vendored copy
             if bundled.exists():
                 shutil.rmtree(bundled)
@@ -46,9 +55,13 @@ class CustomBuildHook(BuildHookInterface):
                     shutil.copytree(src, dst, ignore=_IGNORE)
                 elif src.is_file():
                     shutil.copy2(src, dst)
+            # Ship the compiled, read-only UI, without npm dependencies or source tooling.
+            shutil.copytree(ui, bundled / "dashboard" / "dist")
         elif not (bundled / "adapter" / "run_benchmark.py").exists():
             # not in the repo and nothing was pre-vendored: cannot produce a runnable package
             raise RuntimeError(
                 "ftl_bench build: neither the repo data dirs nor a pre-vendored "
                 "src/ftl_bench/_bundled/ are present — build from the repo or a complete sdist."
             )
+        if not (bundled / "dashboard" / "dist" / "index.html").is_file():
+            raise RuntimeError("ftl_bench build: source package is missing the compiled dashboard")

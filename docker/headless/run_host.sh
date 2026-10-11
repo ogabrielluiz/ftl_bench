@@ -22,6 +22,21 @@ CODEX_BIN="${CODEX_BIN:-/mnt/c/Users/Pichau/AppData/Local/Programs/OpenAI/Codex/
 CODEX_TMPDIR="${CODEX_TMPDIR:-/mnt/c/Users/Pichau/AppData/Local/Temp/ftlbench}"
 [ -n "${FTL_DIR:-}" ] || { echo "ERROR: set FTL_DIR=/path/to/linux/FTL"; exit 1; }
 
+# One output path drives both the harness and dashboard, including user overrides.
+HARNESS_ARGS=("$@")
+OUT_DIR="${FTL_BENCH_OUT:-$FTLB_DIR/harness/runs/benchmark}"
+HAS_OUT=0
+for ((i=0; i<${#HARNESS_ARGS[@]}; i++)); do
+  case "${HARNESS_ARGS[$i]}" in
+    --out) i=$((i + 1)); [ "$i" -lt "${#HARNESS_ARGS[@]}" ] || { echo "--out requires a directory"; exit 1; }
+           OUT_DIR="${HARNESS_ARGS[$i]}"; HAS_OUT=1 ;;
+    --out=*) OUT_DIR="${HARNESS_ARGS[$i]#--out=}"; HAS_OUT=1 ;;
+  esac
+done
+[ -n "$OUT_DIR" ] || { echo "--out requires a directory"; exit 1; }
+[ "$HAS_OUT" = "1" ] || HARNESS_ARGS+=(--out "$OUT_DIR")
+case "$OUT_DIR" in /*) ;; *) OUT_DIR="$FTLB_DIR/$OUT_DIR" ;; esac
+
 PROFILE_DIR="${FTL_PROFILE_DIR-/mnt/c/Users/Pichau/Documents/My Games/FasterThanLight}"
 PROFILE_ARGS=()
 [ -n "$PROFILE_DIR" ] && [ -d "$PROFILE_DIR" ] && PROFILE_ARGS=(-v "$PROFILE_DIR:/profile:ro")
@@ -61,12 +76,12 @@ done
 if [ "$DASHBOARD" = "1" ]; then
   DASH_PY="${DASH_PY:-/mnt/c/Users/Pichau/Projects/ftl_bench/harness/.venv/Scripts/python.exe}"
   DASH_APP="${DASH_APP:-/mnt/c/Users/Pichau/Projects/ftl_bench/adapter/ftl_live.py}"
-  mkdir -p "$FTLB_DIR/runs/benchmark"
+  mkdir -p "$OUT_DIR"
   if [ -f "$DASH_PY" ] && [ -f "$DASH_APP" ]; then
     echo "== launching dashboard -> http://127.0.0.1:8765 =="
     # Windows python.exe needs Windows-form argv paths (WSL only translates WSLENV env vars).
     DASH_APP_WIN="$(wslpath -w "$DASH_APP" 2>/dev/null || echo "$DASH_APP")"
-    WSLENV="FTL_BENCH_DIR/p" FTL_BENCH_DIR="$FTLB_DIR/runs/benchmark" \
+    WSLENV="FTL_BENCH_DIR/p" FTL_BENCH_DIR="$OUT_DIR" \
       nohup "$DASH_PY" "$DASH_APP_WIN" >/tmp/ftl_dashboard.log 2>&1 &
   else
     echo "(dashboard requested but $DASH_PY / $DASH_APP not found — launch ftl_live manually)"
@@ -79,4 +94,4 @@ FTL_SAVE_DIR="$SAVE_DIR" \
 FTL_BENCH_ASSUME_ALIVE=1 \
 CODEX_BIN="$CODEX_BIN" \
 CODEX_TMPDIR="$CODEX_TMPDIR" \
-  python3 adapter/run_benchmark.py "$@"
+  python3 adapter/run_benchmark.py "${HARNESS_ARGS[@]}"

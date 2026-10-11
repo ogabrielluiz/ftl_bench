@@ -1,0 +1,173 @@
+#include "Benchmark_Visual.h"
+#include <functional>
+#include <iostream>
+#include <string>
+#include <vector>
+#define CHECK(value) do { if (!(value)) { std::cerr << "failed: " #value "\n"; return 1; } } while (0)
+// Only the platform-independent extracted input wrappers use these defines.
+#define _WIN32 1
+#define __i386__ 1
+using SDLKey = int;
+std::string trace;
+bool forceWait=false;
+struct ShipManager { bool bJumping=false; int fuel_count=16; } manager;
+struct CompleteShip { ShipManager* shipManager=&manager; } ship;
+struct StarMap {
+    bool bOpen=false,bChoosingNewSector=false,readyToTravel=false,outOfFuel=false;
+    bool waitActive=true,waitHover=false,endActive=false,beacon=false,bossLevel=false;
+    void* potentialLoc=nullptr;
+    struct { bool running=false; } waiting;
+    unsigned loops=0,sector_commits=0,danger_steps=0;
+    void OnLoop() {
+        trace+='R'; ++loops;
+        // The relevant actual CustomMap::OnLoop branches are modelled here.
+        // If the shipped guard lets either pending state through, this double
+        // deliberately commits it, making an unsafe refresh fail the tests.
+        if (!bOpen) return;
+        outOfFuel=manager.fuel_count<1 || forceWait;
+        if (bChoosingNewSector) { ++sector_commits; readyToTravel=true; }
+        if (waiting.running) ++danger_steps;
+        waitActive=outOfFuel || bossLevel;
+        endActive=!outOfFuel && !bossLevel && beacon;
+    }
+    void MouseMove(int x,int y) {
+        trace+='H';
+        if (!bOpen || waiting.running) return;
+        // EXE5d688b/5d6dcd: normal non-boss input consults cached outOfFuel.
+        // A visible active Wait button alone does not make its hover run.
+        if (outOfFuel || bossLevel) waitHover=x>800 && x<900 && y>560 && y<610;
+    }
+    void MouseClick() {
+        if (bOpen && waitActive && waitHover) waiting.running=true;
+    }
+};
+struct WorldManager { bool bStartedGame=true; CompleteShip* playerShip=&ship; StarMap starMap; } world;
+struct CommandGui {
+    bool gameover=false,alreadyWon=false;
+    void MouseMove(int x,int y) { world.starMap.MouseMove(x,y); }
+} gui;
+struct Point { int x,y; };
+struct Window { bool bOpen=false; void MouseMove(int,int) {} };
+struct CApp {
+    CommandGui* gui=&::gui;
+    WorldManager* world=&::world;
+    bool shift_held=false,lCtrl=false;
+    Window langChooser,menu;
+    void OnMouseMove(int,int,int,int,bool,bool,bool) { trace+='M'; }
+    Point TranslateMouse(int x,int y) { return {x,y}; }
+    void OnLButtonDown(int,int) { trace+='D'; world->starMap.MouseClick(); }
+    void OnLButtonUp(int,int) { trace+='U'; }
+    void OnRButtonDown(int,int) { trace+='d'; }
+    void OnRButtonUp(int,int) { trace+='u'; }
+    void OnKeyDown(SDLKey key) {
+        trace+='K';
+        if (key=='j') { world->starMap.bOpen=true; world->starMap.potentialLoc=nullptr; }
+    }
+    void OnKeyUp(SDLKey) { trace+='k'; }
+} app;
+namespace BenchmarkVisualEngine {
+    BenchmarkVisual::FrameClock frame_clock;
+    BenchmarkVisual::ExternalInputGuard external_input;
+    int injected_modifiers=-1;
+    bool input_available=true;
+    using ModifierScope = BenchmarkVisual::ModifierScope<CApp>;
+    CApp* input_app() { return input_available ? &app : nullptr; }
+    bool point(int x,int y) { return BenchmarkVisual::point_valid(x,y,1280,720); }
+    void clear_pointer_tooltip() {} // independently covered by the actual tooltip helper test
+    void refresh_pointer_hover(CApp*) {} // independently covered by the actual tooltip/key helper test
+    @REFRESH_IDLE_MAP_UI@
+}
+@INPUT_WRAPPERS@
+void reset() {
+    manager=ShipManager(); ship=CompleteShip(); world=WorldManager();
+    gui=CommandGui(); app=CApp(); forceWait=false; trace.clear();
+    BenchmarkVisualEngine::frame_clock=BenchmarkVisual::FrameClock();
+    BenchmarkVisualEngine::frame_clock.control(true,false);
+    BenchmarkVisualEngine::external_input=BenchmarkVisual::ExternalInputGuard();
+    BenchmarkVisualEngine::input_available=true;
+}
+int main()
+{
+    using namespace BenchmarkVisualEngine;
+    reset(); manager.fuel_count=0;
+    // Reproduce the old native failure without the refresh: J opens a map whose
+    // ordinary cached fuel mode is false; normal hover+Down cannot start Wait.
+    app.OnKeyDown('j'); app.OnKeyUp('j');
+    BenchmarkVisual::mouse_click(app,847,588,0);
+    CHECK(world.starMap.bOpen && world.starMap.waitActive);
+    CHECK(!world.starMap.outOfFuel && !world.starMap.waiting.running);
+
+    reset(); manager.fuel_count=0;
+    CHECK(hs_benchmark_key_press("j",0));
+    CHECK(trace=="KkR" && world.starMap.loops==1 && world.starMap.outOfFuel);
+    trace.clear();
+    CHECK(hs_benchmark_mouse_click(847,588,0,0));
+    CHECK(trace=="RMHDU" && world.starMap.waiting.running);
+    CHECK(world.starMap.loops==2 && world.starMap.danger_steps==0);
+    CHECK(frame_clock.world_updates==0 && external_input.synthetic_depth==0);
+    CHECK(!app.shift_held && !app.lCtrl && injected_modifiers==-1);
+
+    // Each actual shipped wrapper refreshes before input and after input while
+    // idle. Once a click starts waiting, its post-input refresh is excluded.
+    reset(); world.starMap.bOpen=true; manager.fuel_count=0;
+    CHECK(hs_benchmark_mouse_move(10,10));
+    CHECK(trace=="RMHR" && world.starMap.loops==2);
+    trace.clear();
+    CHECK(hs_benchmark_mouse_click(10,10,0,3));
+    CHECK(trace=="RMHDUR" && world.starMap.loops==4);
+    trace.clear();
+    CHECK(hs_benchmark_mouse_drag(10,10,11,11,0,0));
+    CHECK(trace.front()=='R' && trace.back()=='R' && world.starMap.loops==6);
+    trace.clear();
+    CHECK(hs_benchmark_key_press("f",0));
+    CHECK(trace=="RKkR" && world.starMap.loops==8);
+    CHECK(frame_clock.world_updates==0 && world.starMap.danger_steps==0);
+
+    // Invalid input must not invoke even a harmless native UI refresh.
+    trace.clear(); const unsigned before_invalid=world.starMap.loops;
+    CHECK(!hs_benchmark_mouse_move(-1,10));
+    CHECK(!hs_benchmark_mouse_click(10,10,2,0));
+    CHECK(!hs_benchmark_mouse_click(10,10,0,4));
+    CHECK(!hs_benchmark_mouse_drag(10,10,1280,10,0,0));
+    CHECK(!hs_benchmark_key_press("invalid",0));
+    CHECK(!hs_benchmark_key_press(nullptr,0));
+    CHECK(!hs_benchmark_key_press("j",4));
+    input_available=false;
+    CHECK(!hs_benchmark_mouse_move(10,10));
+    CHECK(!hs_benchmark_key_press("j",0));
+    CHECK(trace.empty() && world.starMap.loops==before_invalid);
+
+    // Native forceWait remains authoritative even with fuel in inventory.
+    reset(); world.starMap.bOpen=true; forceWait=true;
+    CHECK(hs_benchmark_mouse_move(847,588));
+    CHECK(world.starMap.outOfFuel && world.starMap.waitActive);
+    CHECK(manager.fuel_count==16 && frame_clock.world_updates==0);
+
+    // Exercise the actual helper against every context/pending-state guard.
+    std::vector<std::function<void()>> exclude={
+        [](){ frame_clock.owned=false; }, [](){ frame_clock.advancing=true; },
+        [](){ app.gui=nullptr; }, [](){ app.world=nullptr; },
+        [](){ world.bStartedGame=false; }, [](){ gui.gameover=true; },
+        [](){ gui.alreadyWon=true; }, [](){ world.playerShip=nullptr; },
+        [](){ ship.shipManager=nullptr; }, [](){ manager.bJumping=true; },
+        [](){ world.starMap.bOpen=false; }, [](){ world.starMap.bChoosingNewSector=true; },
+        [](){ world.starMap.readyToTravel=true; }, [](){ world.starMap.waiting.running=true; },
+        [](){ world.starMap.potentialLoc=&manager; }
+    };
+    for (const auto& block : exclude) {
+        reset(); world.starMap.bOpen=true; manager.fuel_count=0; block();
+        refresh_idle_map_ui(&app);
+        CHECK(world.starMap.loops==0 && world.starMap.sector_commits==0);
+        CHECK(world.starMap.danger_steps==0 && frame_clock.world_updates==0);
+    }
+    reset(); refresh_idle_map_ui(nullptr); CHECK(world.starMap.loops==0);
+    // Queue guards must also hold when reached through exported input wrappers.
+    reset(); world.starMap.bOpen=true; world.starMap.bChoosingNewSector=true;
+    CHECK(hs_benchmark_mouse_move(10,10)); CHECK(world.starMap.loops==0);
+    CHECK(world.starMap.sector_commits==0);
+    reset(); world.starMap.bOpen=true; world.starMap.waiting.running=true;
+    CHECK(hs_benchmark_mouse_click(10,10,0,0)); CHECK(world.starMap.loops==0);
+    CHECK(world.starMap.danger_steps==0 && frame_clock.world_updates==0);
+    std::cout << "actual idle-map UI helper and four input wrappers passed\n";
+    return 0;
+}

@@ -1,50 +1,42 @@
 ---
 title: Benchmark protocol
-description: "The canonical ftl_bench evaluation contract: suites, modes, tiers, metrics, and reporting rules."
+description: Suites, verified setup, native protocol, run modes and comparable reporting.
 ---
 
-This page is the source of truth for reporting an `ftl_bench` number.
+The environment runs the real FTL engine. Agents decide policy through paused observation/action turns; the harness applies commands, records outcomes and scores observed evidence.
 
-## Canonical question
+## Supported setup and native protocol
 
-Evaluate the agent's ability to play FTL from seeded starts through the standard
-observe/act interface. The agent decides all in-game policy. The harness only
-sets up the run, applies commands, records the trajectory, and scores the result.
+The automatic setup is **Kestrel A on easy**. Other ships/difficulties are rejected. After reset, the runner checks the actual seed, `PLAYER_SHIP_HARD` blueprint and difficulty `0`.
 
-## Suites
+Native protocol **5** is required: reliable manual weapon control, setup and victory/score getters, plus exact system/reactor upgrades and native out-of-fuel recovery. The runner checks native and Lua capabilities; full-run scenarios require victory reporting. See [PC installation](/install/pc/) for the checked patch and provenance.
 
-| Suite | Use it for | Notes |
-|---|---|---|
-| `scenarios/full_game.json` | The pure play-the-game track | The agent is told to win FTL. Progress is measured toward 8 sectors plus 3 flagship phases. |
-| `scenarios/suite_v1.json` | Fast probes, baselines, and regression testing | Mixed seeded instances: survival, sector reach, healthy sector reach, and full-run progress. This is the runner default today. |
+Runner/ruleset **v7** also requires Lua `crew_control_guard` and `crew_ownership` capabilities. The `owned-player-crew-v1` contract exposes only player-owned crew, preserves their original native IDs and rejects movement when native controllability or positive health is absent. Own boarders retain player ownership; hostile boarders are separate intruders. Applied/rejected crew moves include explicit feedback.
 
-If you are reporting a headline model result, prefer `full_game.json` unless
-you explicitly state you are reporting `suite_v1`.
+`native-economy-and-fuel-recovery-v1` requires `upgrade_rules` and `fuel_recovery`. Upgrade prices, caps, affordability and UI legality come from the game. Missing cost is unknown/unavailable, never free. `waitfuel` requests the native Wait turn, including normal encounters/fleet movement; a following advance resolves it. `distress on|off` uses the native toggle. Frame waits alone do not request recovery or guarantee fuel.
 
-## Run modes
+`native-sector-neighbors-v1` requires `economy.sector_navigation_version: 1` and Lua `sector_navigation: true`. Native sector exit selects an actual neighboring-sector vector index; sector type values are not route indices. Acceptance/refusal remains explicit, and travel credit still requires observed movement. The API protocol remains 5, so the routing marker must also be verified.
 
-| Mode | Meaning |
+`native-beacon-readiness-v1` also requires `economy.beacon_navigation_version: 1` and Lua `beacon_navigation: true`. Ordinary jumps and sector exit obey native button, full FTL timer, system, fuel and context readiness; a destroyed flag alone does not authorize travel. Rejections report explicit feedback, and charged combat fleeing retains normal native legality. `economy.navigation.can_jump` is authoritative. `enemy_defeat_pending` signals possible unprocessed defeat/rewards; it does not prohibit an otherwise legal charged jump. Continuing normal simulation lets cleanup/rewards resolve, while jumping away can forgo them.
+
+`native-enemy-hostility-v1` requires Lua `enemy_hostility: true`. A surrendered ship can retain positive hull, weapons and a native ship pointer; combat and targeting use the native `_targetable.hostile` flag. Non-hostile, destroyed, jumping or unknown-state enemy targets reject enemy-directed weapon requests and clear queued enemy fire. Dispatch feedback records `enemy_hostile`, `enemy_targetable` and accepted queue state. `targetable` and compact `active` never become true from hull or equipment alone. Friendly ships do not independently block a charged native-legal sector exit.
+
+Event observations include native choice availability and keyboard timing/settings. Type 1 is disabled. The bridge preserves input delay and refuses requests while another choice is pending; applied feedback proves queued native selection, not a completed event branch.
+
+## Suites and modes
+
+| Suite / mode | Purpose |
 |---|---|
-| `--mode gameover` | Default for the LLM track. Play until a real win, death, or stall. Best for full-game reporting. |
-| `--mode budget` | Stop within the instance jump budget. Useful for cheaper probes and fast regressions. |
+| `scenarios/full_game.json` | Full-game track: win FTL; progress toward eight sectors plus three completed flagship phases |
+| `scenarios/suite_v1.json` | Default mixed probe suite for survival, sector reach and full-run progress |
+| `--mode gameover` | Canonical full-game mode: continue beyond jump budget until victory, loss, stall or safety cap |
+| `--mode budget` | Bounded jump-budget probe; report separately from full-game rows |
 
-The mode is recorded in the manifest and agent label, so gameover and budget
-runs are never silently mixed.
+All agent modes use the same scorer. A budget stop is not a win. A stall, concession, model/transport error or interruption stays unsolved even if partial progress was achieved.
 
 ## Agent contract
 
-The agent receives:
-
-- a system prompt containing the versioned interface manual, currently
-  `prompts/ftl_agent_v5.md`;
-- the objective and evaluation rules;
-- a compact JSON observation;
-- recent action history.
-
-The agent returns a brief reason plus an `ACTION:` block. In v5 the block may
-contain multiple paused commands and should end with `advance <frames>`.
-`giveup` is the one exception: it must be sent alone and concedes the instance
-as unsolved.
+The v5 interface manual describes observations and actuators without prescribing strategy. Each turn supplies the manual, objective, compact state and recent history. Text backends return a brief reason and a paused plan:
 
 ```text
 ACTION:
@@ -54,77 +46,22 @@ ACTION:
   advance 150
 ```
 
-The v5 observation surface is intended to avoid hidden-interface failures:
-systems include `broken` and `repair_room` when power alone cannot fix them,
-player `rooms` expose oxygen/fire/breach facts when available, `doors` expose
-room topology and open/locked/hacked state, and event choices preserve indices
-plus optional blue/disabled metadata when the bridge can read it.
+Plans have at most 12 commands and one bounded advance. Each fire/beam command queues one release, including a charging weapon. `giveup` must stand alone and records an unsolved harness concession.
 
-Changing the prompt manual changes the agent identity. Report the prompt
-version, model, backend, suite, mode, tier, and retry setting with every result.
+The OpenAI Responses backend generates the equivalent strict JSON plan. Jev uses the distinct `jev-actuator-choice-v1` contract: independent typed choices over observed actuator settings, at most 255 options per question and 12 commands per plan. Report this contract with its rows.
 
-## Tiers
+## Scoring and reporting
 
-| Tier | Purpose |
-|---|---|
-| `public` | Tune and debug against these seeds. |
-| `semi_private` | Report this number. Treat these seeds as held out. |
+FTL's native score is reported alongside strict goal solve rate and partial progress. Full-run solve requires explicit native `victory: true`. Raw flagship phase/stage counters and ordinary game over do not prove victory. The current bridge confirms the completed three phases at victory, without guessing intermediate completion.
 
-Report public results only as development numbers. A comparable benchmark row
-should use `--tier semi_private`.
+Travel credit requires observed beacon/sector transitions; rejected jumps and resets earn none. **Pre-v7 rows are not comparable.** V7 retains the corrected crew/economy/routing/beacon boundaries and adds native enemy hostility. The preceding v6 trial was stopped after accepted surrender left a friendly ship marked targetable. The preceding v5 trial was stopped after ordinary jumps bypassed native charging and enemy-death reward cleanup. The preceding v4 trial was stopped after a sector type/index mismatch and is diagnostic. Sol's v3 fuel-zero concession at score 329 is diagnostic because that interface lacked complete event/economy/recovery controls. Earlier Jev score 59 remains historical v2 score/reset evidence.
 
-## Metrics
+Use `public` for development and `semi_private` for held-out reports. Identify runner/ruleset, control/economy/routing/beacon/hostility contracts, suite, tier, mode, backend/model/decision contract, prompt/hash, retries, date/commit, native DLL/bridge hashes, setup and outcome artifacts. Retry rows are separate conditions and retain every attempt. Diagnostic runs retain evidence but are excluded from comparison metrics.
 
-| Metric | Definition |
-|---|---|
-| `FTL score` | Mean of FTL's native run score over the evaluated instances, with seed standard error. |
-| `Solve / win rate` | Fraction of instances that met the goal. For full-game runs, this means beating the flagship. |
-| `Efficiency` | Jumps or turns per instance. |
-| `Breakdowns` | Per-type and per-tier aggregates for diagnosing strengths and failures. |
-| `gave_up` | Diagnostic flag set when the agent explicitly used `giveup`. It does not make the instance solved or add score. |
+Each invocation creates a unique directory under `--out`, containing run metadata, JSONL attempt trajectories, terminal records and summary JSON. Failed attempts remain visible with their last valid state and error reason.
 
-Every run writes a trajectory and manifest under `runs/benchmark/`.
-
-## Baselines
-
-Report model rows next to reference floors:
-
-| Agent | Purpose |
-|---|---|
-| `random` | Legal-move floor. |
-| `scripted` | Heuristic floor for navigation, events, fleeing, and simple combat. |
-| human reference | Planned row for sanity-checking instance quality and efficiency. |
-
-## Recommended reporting command
-
-From the repository checkout:
-
-```bash
-cd harness
-uv run python ../adapter/run_benchmark.py \
-  --agent llm \
-  --backend <anthropic|claude-cli|codex> \
-  --model <model-id> \
-  --suite ../scenarios/full_game.json \
-  --tier semi_private \
-  --mode gameover \
-  --prompt-version v5
+```powershell
+ftlbench --env-file "C:\Projects\.env.txt" run --agent llm --backend openai --model <model-id> --suite <full_game.json-path> --tier semi_private --mode gameover --prompt-version v5
 ```
 
-For retries, include `--retries N` and report it as a separate row. Retry runs
-score the best attempt and also emit a solve@k learning curve.
-
-## Minimum report
-
-A complete row should include:
-
-- model and backend;
-- suite path;
-- tier;
-- mode;
-- prompt version;
-- retry count;
-- FTL score with standard error;
-- solve/win rate;
-- date and commit hash;
-- link or path to the saved summary JSON.
+See [scoring](/introduction/scoring/) and [running/results](/evaluate/running/).

@@ -1,0 +1,14 @@
+{
+  "repository": "https://github.com/ogabrielluiz/FTL-Hyperspace.git",
+  "base_commit": "d85d6df9626c13343d28b60f43b37d6eadcc7f1d",
+  "native_protocol": 5,
+  "patch": "native/patches/0003-visual-io.patch",
+  "patch_sha256": "e1aeaf1bcafd40454048cf94e22cae687e7b035863facd9489e94d31168c49f5",
+  "visual_io_version": 1,
+  "visual_clock_version": 2,
+  "fixed_step_numerator": 1,
+  "fixed_step_denominator": 60,
+  "fresh_start_seed": true,
+  "fresh_seed_contract_version": 3,
+  "fresh_seed_contract": "fresh-start-seed-v3"
+}

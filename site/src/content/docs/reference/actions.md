@@ -34,7 +34,10 @@ event <choice_index>             resolve a blocking event or popup
 leave                            cross into the next sector at the exit beacon
 crew <crew_id> <room>            move crew to repair, fight fires, or fight boarders
 buy <i> / sell <i>               store transactions
-upgrade <sys_id>                 raise a system's max power at a store
+upgrade <sys_id>                 buy one level at the native system price
+reactor                          buy one level at the native reactor price
+waitfuel                         request a native out-of-fuel recovery turn
+distress <on|off>                toggle the native out-of-fuel distress beacon
 cloak                            activate cloak
 battery                          activate backup battery
 hack <enemy_sys>                 launch hacking at an enemy system
@@ -68,18 +71,37 @@ wait [frames]                    CLI-compatible wait command
 
 ## Interface quirks
 
+- **Crew ownership is checked before movement.** `crew` commands address original native
+  IDs for owned, living, controllable player crew. Hostile boarders cannot be moved;
+  mind-controlled friendly crew are temporarily uncontrollable. Own boarders remain
+  player-owned. `action_feedback` reports applied/rejected moves and reasons.
 - **Most commands are one-time sets.** Repeating `power`, `crew`, `doors`, or a
-  weapon target that is already in effect usually does nothing. Read the
+  setting that is already in effect usually does nothing. Read the
   observation and choose the next useful change.
 - **Power does not repair damage.** A system with `damage > 0`,
   `needs_repair: true`, or `on_fire: true` is broken. Send crew to that
   system's `room`; do not keep adding power.
 - **Powering a weapon does not fire it.** Use `fire <slot> <enemy_room>` or
-  `beam <slot> ...` to set a target.
-- **Events freeze the simulation.** If `event` is non-null, resolve it with
-  `event <choice_index>` before expecting combat, repairs, or jumps to continue.
+  `beam <slot> ...` to queue one release. A charging weapon keeps the request pending;
+  another cycle needs another command. Beam endpoints remain distinct.
+- **Events preserve native choice IDs and delay.** Type 1 choices are disabled.
+  Feedback distinguishes disabled choices, keyboard delay/settings, refused
+  selection and a pending selection. Applied means queued native selection;
+  advance to resolve it before requesting another branch.
+- **Upgrades use native rules.** Read `economy` costs and `can_upgrade`.
+  Missing cost is unknown/unavailable, never free. Native actions refuse illegal,
+  capped or unaffordable upgrades and charge only a successful level increase.
+- **Fuel recovery is a game turn.** `waitfuel` activates native Wait when legal;
+  `distress on|off` uses its toggle. Advance resolves normal encounters and fleet
+  movement. Ordinary `wait`/`advance` passes frames and does not guarantee fuel.
 - **Jump and leave are different.** `jump` moves between beacons. `leave`
-  crosses to the next sector and only works when `map.at_exit` is true.
+  crosses to the next sector and only works when `map.at_exit` is true. Native
+  routing chooses an actual neighboring-sector vector index, with explicit
+  acceptance/refusal feedback; a sector type is not a route index.
+- **Travel readiness is native.** Early jump/leave requests are rejected when
+  native travel readiness is incomplete. A retained
+  destroyed flag alone does not prove travel is legal; charged combat fleeing
+  remains available under normal native rules.
 - **Targetability matters.** If `enemy.targetable` is false, the enemy is gone or
   warping out; firing will not help.
 - **Shot feedback is diagnostic.** Use `shots.missed` and

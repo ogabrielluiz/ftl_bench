@@ -34,7 +34,8 @@ def _se(xs: list[float]) -> float:
 def _retry_curve(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Learning curve over retries: for each attempt budget k = 1..maxk, the mean & median
     best-so-far FTL score and the cumulative solve rate (solved within k tries). Instances that
-    solved early and stopped keep their solved value for all larger k (best-so-far is monotone)."""
+    solved early and stopped keep their solved value for all larger k. Selection matches
+    the runner: solved attempts first, then the highest native score within that group."""
     per = [(r.get("attempt_ftl_scores") or [r.get("ftl_score", 0)],
             r.get("attempt_solved") or [bool(r.get("solved"))]) for r in results]
     maxk = max(len(scores) for scores, _ in per)
@@ -44,7 +45,9 @@ def _retry_curve(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         bests, solves = [], 0
         for scores, flags in per:
             kk = min(k, len(scores))               # early-stopped instances clamp to their last
-            bests.append(max(scores[:kk]))
+            chosen = max(range(kk), key=lambda index: (
+                bool(flags[index]) if index < len(flags) else False, scores[index]))
+            bests.append(scores[chosen])
             solves += 1 if any(flags[:kk]) else 0
         curve.append({
             "k": k,
@@ -60,7 +63,11 @@ def aggregate(results: list[dict[str, Any]], scenarios: list) -> dict[str, Any]:
     """results: list of score_instance() dicts (in retry mode, each is the BEST attempt and also
     carries `attempt_ftl_scores`/`attempt_solved`). scenarios: the Scenario objects (for tier)."""
     if not results:
-        return {"ftl_score_mean": None, "ftl_score_median": None, "solve_rate": "0/0", "instances": 0}
+        return {"ftl_score_mean": None, "ftl_score_median": None, "ftl_score_SE": 0.0,
+                "headline": "No benchmark instances", "solve_rate": "0/0", "solve_pct": 0.0,
+                "instances": 0, "failed": 0, "interrupted": 0,
+                "attempt_failures": 0,
+                "median_jumps_per_instance": None, "by_type": {}, "by_tier": {}}
     ftl_scores = [r.get("ftl_score", 0) for r in results]
     solved = sum(1 for r in results if r["solved"])
     n = len(results)
@@ -90,6 +97,12 @@ def aggregate(results: list[dict[str, Any]], scenarios: list) -> dict[str, Any]:
         "solve_rate": f"{solved}/{n}",
         "solve_pct": round(100 * solved / n, 1),
         "instances": n,
+        # Failed attempts remain in the denominator; surface them rather than silently
+        # removing infrastructure failures and making the reported solve rate optimistic.
+        "failed": sum(r.get("status") in ("error", "failed") for r in results),
+        "interrupted": sum(r.get("status") == "interrupted" for r in results),
+        "attempt_failures": sum(r.get("attempt_failures", int(r.get("status") in ("error", "failed")))
+                                for r in results),
         "median_jumps_per_instance": round(statistics.median(jumps_used), 1) if jumps_used else None,
         "by_type": group(lambda r: r["type"]),
         "by_tier": group(lambda r: tier_by_id.get(r["scenario"], "?")),

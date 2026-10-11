@@ -137,15 +137,24 @@ button {
 
 .side-section {
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.side-section:last-of-type {
+.latest-section {
+  flex: 0 0 auto;
+  max-height: 30vh;
+}
+
+.history-section {
   flex: 1;
   overflow: hidden;
 }
 
 .side-heading {
   display: flex;
+  flex-shrink: 0;
   justify-content: space-between;
   padding: 0 2px 8px;
   color: var(--muted);
@@ -156,6 +165,7 @@ button {
 
 .instance-list {
   display: flex;
+  min-height: 0;
   max-height: 100%;
   flex-direction: column;
   gap: 8px;
@@ -969,3 +979,73 @@ button {
   color: #ff8a8a;
   font-weight: 600;
 }
+
+.visual-replay {
+  margin-top: 16px;
+  border: 1px solid rgba(95, 200, 255, 0.4);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 18px;
+}
+.visual-title, .replay-controls, .visual-frame figcaption, .visual-facts {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.visual-title { justify-content: space-between; }
+.visual-title h2 { margin: 0; font-size: 20px; }
+.visual-title p, .visual-title > span { color: var(--muted); font-size: 13px; }
+.replay-controls { margin: 12px 0; flex-wrap: wrap; }
+.replay-controls > input[type="range"] { flex: 1; min-width: 90px; accent-color: var(--info); }
+.replay-controls button {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  padding: 7px 11px;
+  cursor: pointer;
+}
+.replay-controls button:disabled { opacity: .4; cursor: default; }
+.replay-controls button[aria-pressed="true"], .replay-controls button.active { border-color: var(--info); color: var(--info); }
+.replay-controls label { margin-left: auto; font-size: 12px; color: var(--muted); }
+.visual-frame { margin: 0 auto; }
+.visual-canvas { position: relative; background: #000; border-radius: 6px; overflow: hidden; }
+.visual-canvas img { display: block; width: 100%; height: auto; }
+.input-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.input-marker { stroke: #ffe660; stroke-width: 2; fill: rgba(0, 0, 0, .65); }
+.input-marker.rejected { stroke: #ff6b7a; stroke-dasharray: 4 3; }
+.input-marker text { fill: white; stroke: none; font: bold 15px system-ui; }
+.visual-frame figcaption { flex-wrap: wrap; margin-top: 8px; color: #aebbd0; font-size: 12px; }
+.visual-frame figcaption a { margin-left: auto; color: var(--info); }
+.visual-missing { padding: 50px 20px; text-align: center; color: var(--muted); }
+.visual-facts { flex-wrap: wrap; margin: 14px 0; font-size: 12px; }
+.visual-facts span { border-radius: 6px; padding: 7px 9px; background: var(--panel-3); }
+.visual-thought { color: #c4cedd; line-height: 1.45; }
+.visual-inputs { margin: 12px 0 0; padding-left: 26px; }
+.visual-inputs li { padding: 6px 0; font-size: 13px; }
+.visual-inputs strong { margin-left: 14px; color: var(--info); font-size: 12px; }
+.visual-inputs .rejected { color: var(--danger); }
+.visual-inputs small { display: block; margin-top: 4px; color: var(--muted); }
+.visual-outcome { margin: 14px 0 0; padding: 12px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+.visual-outcome p { color: #aebbd0; margin: 7px 0 0; }
+.visual-summary { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .visual-replay { padding: 12px; }
+  .visual-title { align-items: flex-start; }
+  .replay-controls label { margin-left: 0; }
+}
+/* Saved challenge matrix overview; no derived leaderboard ordering. */
+.comparison-overview { margin-bottom: 20px; }
+.comparison-counts { display: flex; flex-wrap: wrap; gap: 18px; margin: 14px 0; }
+.comparison-counts span { display: flex; flex-direction: column; gap: 3px; }
+.comparison-counts b { font-size: 1.35rem; }
+.comparison-table-wrap { overflow-x: auto; }
+.comparison-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.comparison-table caption { text-align: left; padding: 12px 0; }
+.comparison-table th, .comparison-table td { text-align: left; vertical-align: top; padding: 10px; border-bottom: 1px solid #293547; }
+.comparison-table small, .comparison-trials small { display: block; opacity: .72; margin-top: 5px; }
+.comparison-trials { margin: 18px 0; }
+.comparison-trials ul { list-style: none; padding: 0; }
+.comparison-trials li { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 12px 0; border-bottom: 1px solid #293547; }
+.comparison-trials a { flex-shrink: 0; }
+.comparison-overview select { max-width: 340px; color: inherit; background: #172131; padding: 7px; border: 1px solid #42536b; border-radius: 5px; }
+.comparison-overview code { overflow-wrap: anywhere; }

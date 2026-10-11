@@ -255,14 +255,15 @@ def test_read_latest_propagates_validation_error_from_from_dict(tmp_path):
 # ObservationClient.read_latest — transient read-retry loop
 # --------------------------------------------------------------------------- #
 def _patch_read_text_failing_then_ok(monkeypatch, exceptions, payload):
-    """Make Path.read_text raise each item in `exceptions`, then return JSON.
+    """Make the platform read boundary raise each exception, then return JSON.
 
     Returns a one-element list holding the call count, plus patches
     time.sleep (in the observation module) to a no-op so the test is fast.
     """
     calls = {"n": 0}
     good_text = json.dumps(payload)
-    real_read_text = Path.read_text
+    import ftl_bench.observation as obs_mod
+    real_read_text = obs_mod._read_observation_text
 
     def fake_read_text(self, *args, **kwargs):
         idx = calls["n"]
@@ -271,10 +272,8 @@ def _patch_read_text_failing_then_ok(monkeypatch, exceptions, payload):
             raise exceptions[idx]
         return good_text
 
-    monkeypatch.setattr(Path, "read_text", fake_read_text)
+    monkeypatch.setattr(obs_mod, "_read_observation_text", fake_read_text)
     # Don't actually sleep between retries.
-    import ftl_bench.observation as obs_mod
-
     monkeypatch.setattr(obs_mod.time, "sleep", lambda *_a, **_k: None)
     return calls, real_read_text
 

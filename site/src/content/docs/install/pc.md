@@ -1,67 +1,60 @@
 ---
-title: Install on a PC (native x86)
-description: Set up FTL + Hyperspace on Windows. Runs natively (no WSL needed for runs); native x86 avoids the macOS/Rosetta freeze class.
+title: Install on Windows
+description: Build and verify the protocol-5 benchmark native dependency, bridge and local runner.
 ---
 
-The recommended platform is **native x86 on Windows**. Native x86 avoids the address-translation
-crash class that freezes sector transitions when FTL runs under Rosetta on Apple Silicon, so
-full-length runs are stable.
+Native Windows x86 with FTL **1.6.9**, launched through Steam, is the current full-game validation target. The Python runner needs 3.11+. WSL and Docker are used for building the native dependency; they are not required for native Windows benchmark runs.
 
-There are two phases, and they are independent:
+## Build the native environment
 
-- **Install (one-time):** build the bench Hyperspace mod and patch the game. This currently uses
-  WSL + Docker (a prebuilt mod that skips the build is planned).
-- **Run:** drive the benchmark. This works on **native Windows Python with no WSL and no env
-  vars**, and also from WSL or macOS.
-
-## Install (one-time, via WSL + Docker)
-
-You need Windows with FTL installed via Steam, plus WSL (Ubuntu) with Docker available (Docker
-Desktop with WSL integration, or `docker.io`) and `python3`/`git`/`curl`. The Hyperspace build
-runs in a container, so you do not install a C++ toolchain by hand.
-
-`scripts/setup_pc.sh` does the whole install and is idempotent (safe to re-run). From WSL:
+Install FTL through Steam. The source setup script handles the Hyperspace build, loader, data mods and Lua bridge:
 
 ```bash
-bash scripts/setup_pc.sh          # run every stage
-bash scripts/setup_pc.sh build    # or run from a given stage onward
+# From the repository in WSL; review the stages before running
+bash scripts/setup_pc.sh build
 ```
 
-Stages, in order:
+This starts at the build stage and continues through data-mod packaging, locating the game, native installation, data patching, bridge deployment and checks. A full invocation also performs the script's WSL/repository setup stages.
 
-1. **durability**: keep WSL reachable (ssh on boot, disable WSL2 idle shutdown).
-2. **repos**: clone/update `ftl_bench` and the Hyperspace fork.
-3. **build**: build `Hyperspace.dll` in the Docker devcontainer (MinGW cross-compile).
-4. **datamod**: package the `Hyperspace.ftl` and `ftl_bench_bridge.ftl` data mods.
-5. **locate**: find the Windows FTL install, its `ftl.dat`, and the save folder.
-6. **install**: downgrade FTL to 1.6.9 and drop the loader (`xinput1_4.dll`, `lua-5.3.dll`) plus
-   `Hyperspace.dll` next to `FTLGame.exe`.
-7. **patch**: patch `ftl.dat` with the two data mods.
-8. **deploy**: install the dev script into the save folder.
-9. **verify**: sanity checks.
+The build applies the complete `native/patches/0002-economy-fuel-controls.patch` before Docker compilation. Protocol 5 retains reliable control/setup/score/victory and adds exact native system/reactor upgrades and out-of-fuel Wait/distress actions. An older DLL is insufficient. This full patch supersedes `0001`; do not apply both patches to one checkout.
 
-## Run (native Windows, no WSL)
-
-Once the mod is installed, run the benchmark with **native Windows Python** (for example via `uv`).
-The runner detects native Windows automatically: it finds the FTL user folder at
-`~/Documents/My Games/FasterThanLight`, so you do not set `FTL_SAVE_DIR`, and it launches and
-restarts FTL through Steam itself.
+For an existing Hyperspace source checkout:
 
 ```bash
-cd harness
-uv run python ../adapter/play_cli.py obs                       # live observation
-uv run python ../adapter/run_benchmark.py --agent scripted --max-instances 1 --budget-cap 8
+python3 scripts/apply_native_patch.py --source /path/to/FTL-Hyperspace --check
+python3 scripts/apply_native_patch.py --source /path/to/FTL-Hyperspace
 ```
 
-(Running from WSL or macOS also works; on WSL set `FTL_SAVE_DIR` to the `/mnt/c/...` user folder,
-which `setup_pc.sh` writes to `.env.pc`.)
+The helper checks the patch SHA256, recognizes an already applied patch and refuses conflicts. `native/manifest.json` pins the reference source/patch. Build provenance records the actual source commit and diff, toolchain/container image and DLL hash, even when a compatible cached checkout has a different base.
 
-## How it loads (important)
+The current local artifact pair is `dist/Hyperspace.protocol5.dll` and `dist/native-build.protocol5.json`; the source setup script also writes current provenance to the latter path. Archived protocol-4 files remain separate: `native/manifest.protocol4.json`, the `0001` patch, `dist/Hyperspace.protocol4.dll`, `dist/native-build.json` and `dist/native-build.protocol4.json`.
 
-FTL must be launched **through Steam** for Hyperspace to inject. FTL loads xinput at runtime, and
-only the Steam launch picks up the local proxy DLL that loads `Hyperspace.dll`. A direct
-`FTLGame.exe` launch loads the system xinput instead and Hyperspace never injects. The runner does
-the Steam launch (`steam.exe -applaunch 212680`) for you, clears the stale crash flag, redeploys
-the dev script, and waits for the bridge, so you do not launch the game by hand.
+## Install a locally built DLL
 
-Then head to the [Quickstart](/evaluate/quickstart/) to run your model.
+With FTL closed, install a built DLL and its matching provenance using the local native installer:
+
+```powershell
+ftlbench install-native --dll <Hyperspace.dll-path> --manifest <native-build.json-path> --game-dir "<FTL-install-directory>"
+```
+
+It verifies the DLL hash/protocol, refuses a running game and retains replaced artifacts. This installs the DLL and provenance; the loader and data mods must already be installed. The Python wheel does not contain FTL or Hyperspace.dll. `install-mod --url` only downloads a supplied asset and does not replace this setup.
+
+## Deploy and verify
+
+```powershell
+uv sync --directory harness --extra dashboard --extra dev
+uv run --directory harness ftlbench deploy-bridge
+# Launch FTL through Steam
+uv run --directory harness ftlbench doctor --live --full-game
+uv run --directory harness ftlbench play obs
+```
+
+Bridge deployment backs up the previous external Lua script. Doctor is read-only and never calls a model. Its live checks require the actual bridge capabilities; a full-game check also requires victory reporting.
+
+Runner/ruleset v7 requires current Lua crew guards plus `upgrade_rules`, `fuel_recovery`, `sector_navigation`, `beacon_navigation` and `enemy_hostility`. Deploy the current Lua script together with protocol 5. The `owned-player-crew-v1`, `native-economy-and-fuel-recovery-v1`, `native-sector-neighbors-v1`, `native-beacon-readiness-v1` and `native-enemy-hostility-v1` contracts are checked independently; passing an older installation check does not establish current compatibility.
+
+Native Windows resolves the FTL user folder automatically. Use `FTL_SAVE_DIR` to override it; on WSL point this at the Windows user folder. `FTL_GAME_DIR` can select a non-default Steam installation.
+
+The runner automatically verifies seed, ship and difficulty after reset. Only Kestrel A/easy is supported; unsupported requests fail before game setup. A valid installation check is distinct from a retained full-game win.
+
+Then follow [Quickstart](/evaluate/quickstart/).

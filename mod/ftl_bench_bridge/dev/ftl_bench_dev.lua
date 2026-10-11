@@ -105,6 +105,7 @@ end
 if not _G.ftl_bench_render_hook then
   _G.ftl_bench_render_hook = true
   local function draw_overlay()
+    if S.observation_mode == "visual-v1" then return end
     pcall(function()
       S.render_count = (S.render_count or 0) + 1   -- proves the render hook is firing
       local lines = S.action_log
@@ -159,71 +160,172 @@ local function apply_set_system_power(mgr, act)
   end
 end
 
--- Spend scrap to raise a system's MAX power by one (the Upgrade screen, available anytime).
--- UpgradeSystem only raises the cap; we deduct scrap via ModifyScrapCount so it isn't free.
--- Cost approximates FTL's escalating per-level upgrade price (indexed by the new level).
-local UPGRADE_COST = {30, 30, 40, 45, 55, 60, 70, 80, 90, 100, 110, 120, 130, 150}
-local function apply_upgrade_system(mgr, act)
-  local sys = mgr:GetSystem(act.system_id)
-  if not sys then return end
-  local cur = sys:GetMaxPower()
-  local maxlv = sys.maxLevel or 8
-  if cur >= maxlv then return end                          -- already maxed
-  local cost = UPGRADE_COST[math.min(cur + 1, #UPGRADE_COST)] or 100
-  if (mgr.currentScrap or 0) < cost then return end        -- can't afford
-  pcall(function() mgr:ModifyScrapCount(-cost, false) end)
-  pcall(function() sys:UpgradeSystem(1) end)
+local function apply_native_bool(fn, reason_prefix, ...)
+  if type(fn) ~= "function" then return false, reason_prefix .. "_unavailable" end
+  local ok, accepted = pcall(fn, ...)
+  if not ok then return false, reason_prefix .. "_failed" end
+  if accepted ~= true then return false, reason_prefix .. "_refused" end
+  return true
+end
+
+-- Native upgrade rules own the price, cap, UI legality and scrap deduction.
+-- Never approximate prices or charge scrap independently of a successful upgrade.
+local function apply_upgrade_system(act)
+  local id = act.system_id
+  if type(id) ~= "number" or id ~= math.floor(id) or id < 0 or id > 2147483647 then
+    return false, "invalid_system_id"
+  end
+  return apply_native_bool(Hyperspace.benchmark_upgrade_system, "native_upgrade", id)
+end
+
+local function apply_set_distress(act)
+  if type(act.enabled) ~= "boolean" then return false, "invalid_distress_enabled" end
+  return apply_native_bool(Hyperspace.benchmark_set_distress, "native_fuel_recovery", act.enabled)
+end
+
+local function native_economy_state()
+  if type(Hyperspace.benchmark_economy_state) ~= "function" then return nil end
+  local ok, raw = pcall(Hyperspace.benchmark_economy_state)
+  if not ok or type(raw) ~= "string" or raw == "" then return nil end
+  local decoded, state = pcall(json.decode, raw)
+  if decoded and type(state) == "table" and type(state.native_protocol) == "number" then
+    -- The existing codec omits native null costs/reactor. Missing means unknown
+    -- or unavailable; it must never imply a zero price or a free upgrade.
+    return state
+  end
+  return nil
 end
 
 local function apply_move_crew(mgr, act)
   local list = mgr.vCrewList
-  if not list then return end
+  if not list then return false, "crew_unavailable" end
   local id = act.crew_id
-  if id == nil or id < 0 or id >= list:size() then return end
+  if type(id) ~= "number" or id ~= math.floor(id) or id < 0 or id >= list:size() then
+    return false, "invalid_crew_id"
+  end
   local crew = list[id]
-  if not crew then return end
+  if not crew then return false, "crew_unavailable" end
+  -- vCrewList includes hostile boarders physically aboard the player ship. Direct
+  -- MoveToRoom bypasses the UI's controllability check, so enforce it before the
+  -- native call. Ownership stays 0 for our crew while they board the enemy.
+  if crew.iShipId ~= 0 then return false, "crew_not_player_owned" end
+  local cok, controllable = pcall(function() return crew:GetControllable() end)
+  if not cok or controllable ~= true then return false, "crew_not_controllable" end
+  local alive_ok, alive = pcall(function()
+    return not crew:IsDead() and not crew:OutOfGame() and crew.health.first > 0
+  end)
+  if not alive_ok or not alive then return false, "crew_not_alive" end
   local slot = act.slot_id
   if slot == nil then slot = -1 end
-  crew:MoveToRoom(act.room_id, slot, false)
+  local mok, moved = pcall(function() return crew:MoveToRoom(act.room_id, slot, false) end)
+  if not mok then return false, "crew_move_failed" end
+  if moved ~= true then return false, "crew_move_refused" end
+  return true
 end
 
 -- M3 actions (thin wrappers over the new C++ bindings)
--- True only when it is SAFE to initiate a jump: there's a player ship, it's not
--- already warping, and the FTL drive has finished recharging.
--- ROOT CAUSE of the seed-11 beacon-3 freeze (found via `sample` of the hung process:
--- the game-loop thread was spinning in FTL's CommandGui::OnLoop): forcing
--- starMap.readyToTravel while the FTL drive was still charging -- e.g. jumping again
--- immediately after a flee -- puts the engine in an inconsistent warp state and it
--- spins forever. jump_timer.first < jump_timer.second means "still charging".
-local function jump_ready(p)
-  if not p or p.bJumping then return false end       -- never start a jump mid-warp
-  -- The FTL-drive recharge (jump_timer) only gates jumps IN combat; out of combat the
-  -- timer sits idle (e.g. 0/85) yet you can jump freely. Gating on it out of combat
-  -- deadlocks (the jump is what charges it).
-  local enemy = Hyperspace.ships and Hyperspace.ships.enemy
-  if not enemy then return true end
-  -- A DESTROYED enemy's ship object lingers (the wreck stays until you jump), but combat is
-  -- over and its jump_timer froze mid-charge. Treating that as still-in-combat gates the jump
-  -- on a timer that will never fill -> deadlock (observed at a sun beacon after a kill: the
-  -- ship can't escape and slowly burns to death). A dead enemy means out of combat: jump
-  -- freely, same as `not enemy`. (Only bDestroyed -- NOT bJumping -- to stay clear of the
-  -- mid-warp/charging force-jump that spins CommandGui::OnLoop.)
-  local dead = false
-  pcall(function() dead = enemy.bDestroyed end)
-  if dead then return true end
-  local ready = true
-  pcall(function() ready = p.jump_timer.first >= p.jump_timer.second end)
-  return ready
+-- Navigation readiness comes from the ordinary native FTL button and timer,
+-- including outside combat. A destroyed enemy can still have a pending death
+-- event/reward; expose that fact without inventing a loot collection requirement.
+local function native_navigation_state(economy)
+  economy = economy or native_economy_state()
+  local nav = economy and economy.navigation
+  if not (economy and economy.native_protocol >= 5 and economy.beacon_navigation_version == 1
+      and type(nav) == "table" and type(nav.can_jump) == "boolean"
+      and type(nav.enemy_defeat_pending) == "boolean"
+      and type(nav.drive_current) == "number" and type(nav.drive_max) == "number") then return nil end
+  return nav
 end
 
 local function apply_jump(act)
-  local p = Hyperspace.ships and Hyperspace.ships.player
-  if not jump_ready(p) then return end       -- wait out the FTL-drive recharge
-  Hyperspace.benchmark_jump_to_beacon(act.beacon_index or 0)
+  local index = act.beacon_index
+  if type(index) ~= "number" or index < 0 or index ~= math.floor(index) then
+    return false, "invalid_beacon"
+  end
+  local nav = native_navigation_state()
+  if not nav then return false, "native_jump_unavailable" end
+  if not nav.can_jump then return false, nav.reason or "native_jump_refused" end
+  local app = Hyperspace.App
+  local sm = app and app.world and app.world.starMap
+  local ok, count = pcall(function() return sm.currentLoc.connectedLocations:size() end)
+  if ok and index >= count then return false, "invalid_beacon" end
+  return apply_native_bool(Hyperspace.benchmark_jump_to_beacon, "native_jump", index)
+end
+
+local function apply_leave_sector(mgr)
+  local app = Hyperspace.App
+  local sm = app and app.world and app.world.starMap
+  local gui = app and app.gui
+  if not mgr then return false, "player_unavailable" end
+  if mgr.bJumping then return false, "mid_warp" end
+  if sm and sm.bChoosingNewSector then return false, "transition_pending" end
+  if gui and (gui.choiceBoxOpen or (gui.choiceBox and gui.choiceBox.bOpen)) then
+    return false, "event_open"
+  end
+  if type(mgr.fuel_count) == "number" and mgr.fuel_count < 1 then return false, "no_fuel" end
+  if not sm or not sm.currentLoc or not sm.currentLoc.beacon then return false, "not_at_exit" end
+  local enemy = Hyperspace.ships and Hyperspace.ships.enemy
+  local nav = native_navigation_state()
+  if not nav then return false, "native_leave_unavailable" end
+  if not nav.can_jump then return false, nav.reason or "native_leave_refused" end
+  local hostile
+  pcall(function() hostile = enemy and enemy._targetable.hostile end)
+  if hostile == true and enemy.bDestroyed ~= true then return false, "enemy_present" end
+  return apply_native_bool(Hyperspace.benchmark_leave_sector, "native_leave")
+end
+local function native_choice_type(choice)
+  local ok, value = pcall(function() return choice.type end)
+  if ok and type(value) == "number" and value == math.floor(value) then return value end
+  return nil
+end
+
+local function selected_event_choice(cb)
+  local ok, value = pcall(function() return cb.selectedChoice end)
+  if ok and type(value) == "number" then return value end
+  return nil
 end
 
 local function apply_choose_event(act)
-  Hyperspace.benchmark_choose_event(act.choice_index or 0)
+  local gui = Hyperspace.App and Hyperspace.App.gui
+  if not (gui and gui.choiceBoxOpen and gui.choiceBox) then return false, "event_closed" end
+  local cb = gui.choiceBox
+  local queued = selected_event_choice(cb)
+  if queued ~= nil and queued >= 0 then
+    return false, "event_selection_pending", queued
+  end
+  local index = act.choice_index
+  if index == nil then index = 0 end
+  -- The native bridge sends number keys 1..9. Never renumber the choices or
+  -- dispatch an index that this input path cannot select.
+  if type(index) ~= "number" or index ~= math.floor(index) or index < 0 or index > 8 then
+    return false, "invalid_choice_index", selected_event_choice(cb)
+  end
+  local ok, choice = pcall(function()
+    local choices = cb:GetChoices()
+    if not choices or index >= choices:size() then return nil end
+    return choices[index]
+  end)
+  if not ok then return false, "event_choices_unavailable", selected_event_choice(cb) end
+  if not choice then return false, "invalid_choice_index", selected_event_choice(cb) end
+  -- ChoiceBox::KeyDown rejects exactly type 1. Other types include ordinary
+  -- and blue choices; the resolved native type already accounts for requirements.
+  if native_choice_type(choice) == 1 then
+    return false, "choice_disabled", selected_event_choice(cb)
+  end
+  local called = pcall(Hyperspace.benchmark_choose_event, index)
+  local selected = selected_event_choice(cb)
+  if not called then return false, "event_selection_failed", selected end
+  -- KeyDown's boolean can report a handled key without selecting a choice.
+  -- Only the queued native selectedChoice proves that this request was accepted.
+  if selected == index then return true, nil, selected end
+  local mode, open_time
+  pcall(function() mode = Hyperspace.Settings.dialogKeys end)
+  pcall(function() open_time = cb.openTime end)
+  if mode == 0 then return false, "event_hotkeys_disabled", selected end
+  if mode == 2 and type(open_time) == "number" and open_time < 0.3 then
+    return false, "event_input_delay", selected
+  end
+  return false, "event_selection_refused", selected
 end
 
 local function weapon_charge(pf)
@@ -238,14 +340,43 @@ local function target_ship(ship_id)
   return Hyperspace.ships and Hyperspace.ships.enemy
 end
 
-local function set_global_weapon_autofire(enabled)
-  pcall(function()
-    local cc = Hyperspace.App and Hyperspace.App.gui and Hyperspace.App.gui.combatControl
-    if cc and cc.weapControl then cc.weapControl.autoFiring = enabled end
-  end)
+-- The native enemy pointer survives accepted surrender. Hostility is the same
+-- scalar used by CombatControl::IsInCombat; absence is unknown, never hostile.
+local function native_enemy_state(enemy)
+  local state = {}
+  if not enemy then return state end
+  local function boolean(key, getter)
+    local ok, value = pcall(getter)
+    if ok and type(value) == "boolean" then state[key] = value end
+  end
+  boolean("hostile", function() return enemy._targetable.hostile end)
+  boolean("destroyed", function() return enemy.bDestroyed end)
+  boolean("jumping", function() return enemy.bJumping end)
+  return state
 end
 
-local function fill_weapon_targets(pf, target, room)
+local function enemy_target_refusal(enemy, state)
+  if not enemy then return "enemy_absent" end
+  state = state or native_enemy_state(enemy)
+  if state.hostile == false then return "enemy_not_hostile" end
+  if state.hostile ~= true then return "enemy_hostility_unknown" end
+  if state.destroyed == true then return "enemy_destroyed" end
+  if state.destroyed ~= false then return "enemy_state_unknown" end
+  if state.jumping == true then return "enemy_jumping" end
+  if state.jumping ~= false then return "enemy_state_unknown" end
+  return nil
+end
+
+local function set_global_weapon_autofire(enabled)
+  -- WeaponControl.autoFiring is immutable in SWIG. A native setter is optional;
+  -- never silently rely on assigning that field. Per-slot flags are mutable.
+  if type(Hyperspace.benchmark_set_weapon_autofire) == "function" then
+    return pcall(Hyperspace.benchmark_set_weapon_autofire, enabled)
+  end
+  return false
+end
+
+local function fill_weapon_targets(pf, target, room, room_b)
   local need = 1
   pcall(function() need = pf:NumTargetsRequired() end)
   if not need or need < 1 then need = 1 end
@@ -253,7 +384,12 @@ local function fill_weapon_targets(pf, target, room)
   if not ok or not center then return end
   pcall(function()
     while pf.targets:size() > 0 do pf.targets:pop_back() end
-    while pf.targets:size() < need do pf.targets:push_back(center) end
+    if room_b ~= nil then
+      pf.targets:push_back(center)
+      pf.targets:push_back(target:GetRoomCenter(room_b))
+    else
+      while pf.targets:size() < need do pf.targets:push_back(center) end
+    end
   end)
 end
 
@@ -287,14 +423,21 @@ local function clear_idle_weapon_fire_states()
   end)
 end
 
+local function cancel_unavailable_manual_fire()
+  for key, req in pairs(S.manual_fire or {}) do
+    if type(req) ~= "table" or ((req.ship_id or 1) ~= 0 and
+       enemy_target_refusal(target_ship(req.ship_id or 1))) then
+      clear_manual_fire_slot(tonumber(key))
+    end
+  end
+end
+
 local function arm_manual_fire_slot(slot, req)
   local pl = Hyperspace.ships and Hyperspace.ships.player
   local target = target_ship(req.ship_id or 1)
   if not (pl and target) or pl.bJumping then clear_manual_fire_slot(slot); return nil end
-  if (req.ship_id or 1) ~= 0 then
-    local destroyed = false
-    pcall(function() destroyed = target.bDestroyed end)
-    if destroyed then clear_manual_fire_slot(slot); return nil end
+  if (req.ship_id or 1) ~= 0 and enemy_target_refusal(target) then
+    clear_manual_fire_slot(slot); return nil
   end
   local wl = pl:GetWeaponList()
   local pf = wl and wl[slot]
@@ -304,7 +447,7 @@ local function arm_manual_fire_slot(slot, req)
   if not powered then clear_manual_fire_slot(slot); return nil end
 
   set_global_weapon_autofire(false)
-  fill_weapon_targets(pf, target, req.room or 0)
+  fill_weapon_targets(pf, target, req.room or 0, req.room_b)
   pcall(function() pf.autoFiring = false end)
   pcall(function() pf.fireWhenReady = true end)
   return pf
@@ -319,7 +462,26 @@ local function update_manual_fire()
     if not slot or type(req) ~= "table" then
       S.manual_fire[key] = nil
     else
-      local pf = arm_manual_fire_slot(slot, req)
+      -- Sample before rearming: the engine may reach full charge AND release in
+      -- one frame, so a previous observation of exactly full charge is not needed.
+      local pl = Hyperspace.ships and Hyperspace.ships.player
+      local wl = pl and not pl.bJumping and pl:GetWeaponList()
+      local pf = wl and wl[slot]
+      local cur, mx = weapon_charge(pf)
+      local projectile_id
+      pcall(function() projectile_id = pf.lastProjectileId end)
+      local hacked = false
+      pcall(function() hacked = (pf.iHackLevel or 0) > 0 end)
+      local released = (req.projectile_id ~= nil and projectile_id ~= nil
+        and req.projectile_id ~= projectile_id)
+        or (not hacked and type(cur) == "number" and type(req.last_charge) == "number"
+          and cur + 0.05 < req.last_charge)
+      if released then
+        clear_manual_fire_slot(slot)
+        pf = nil
+      else
+        pf = arm_manual_fire_slot(slot, req)
+      end
       if pf then
         local cur, mx = weapon_charge(pf)
         if type(cur) == "number" and type(mx) == "number" and mx > 0 then
@@ -336,6 +498,39 @@ local function update_manual_fire()
   end
 end
 
+local function fire_request_context(slot, ship_id, room_a, room_b)
+  local facts = {}
+  local function refuse(reason) return nil, reason, facts end
+  if type(slot) ~= "number" or slot < 0 or slot ~= math.floor(slot) then
+    return refuse("invalid_weapon_slot")
+  end
+  if ship_id ~= 0 and ship_id ~= 1 then return refuse("invalid_target_ship") end
+  for _, room in ipairs({room_a, room_b}) do
+    if type(room) ~= "number" or room < 0 or room ~= math.floor(room) then
+      return refuse("invalid_target_room")
+    end
+  end
+  local pl = Hyperspace.ships and Hyperspace.ships.player
+  if not pl then return refuse("player_ship_unavailable") end
+  if pl.bJumping then return refuse("player_jumping") end
+  if ship_id == 1 then
+    local enemy = target_ship(ship_id)
+    local state = native_enemy_state(enemy)
+    local reason = enemy_target_refusal(enemy, state)
+    facts.enemy_hostile = state.hostile
+    facts.enemy_targetable = reason == nil
+    if reason then return refuse(reason) end
+  end
+  local ok, weapon = pcall(function() return pl:GetWeaponList()[slot] end)
+  if not ok or not weapon then return refuse("weapon_unavailable") end
+  if weapon.powered ~= true then return refuse("weapon_unpowered") end
+  if ship_id == 0 then
+    local bomb_ok, bomb = pcall(function() return weapon.blueprint.typeName == "BOMB" end)
+    if not bomb_ok or not bomb then return refuse("self_target_unsupported") end
+  end
+  return weapon, nil, facts
+end
+
 local function apply_fire_weapon(act)
   local slot = act.weapon_slot or 0
   local ship_id = act.target_ship_id or 1
@@ -345,7 +540,11 @@ local function apply_fire_weapon(act)
   -- target state but also enables autofire; immediately turn autofire back off and keep only this
   -- slot's fireWhenReady asserted while it is pending. When the weapon charge resets, the shot or
   -- burst volley has released and the pending request is cleared.
-  Hyperspace.benchmark_fire_weapon(slot, ship_id, room)
+  local weapon, reason, facts = fire_request_context(slot, ship_id, room)
+  if not weapon then clear_manual_fire_slot(slot); return false, reason, facts end
+  local accepted, reason = apply_native_bool(Hyperspace.benchmark_fire_weapon,
+    "native_fire", slot, ship_id, room)
+  if not accepted then clear_manual_fire_slot(slot); return false, reason, facts end
   S.manual_fire[tostring(slot)] = {
     ship_id = ship_id,
     room = room,
@@ -354,6 +553,9 @@ local function apply_fire_weapon(act)
     seen_ready = false,
   }
   local pf = arm_manual_fire_slot(slot, S.manual_fire[tostring(slot)])
+  -- The old native helper enables autofire on all slots. Neutralize every idle
+  -- slot before the next simulation frame, including previously targeted guns.
+  clear_idle_weapon_fire_states()
   if pf then
     local cur, mx = weapon_charge(pf)
     if type(cur) == "number" and type(mx) == "number" and mx > 0 then
@@ -361,7 +563,9 @@ local function apply_fire_weapon(act)
       S.manual_fire[tostring(slot)].max_charge = mx
       S.manual_fire[tostring(slot)].seen_ready = cur >= mx - 0.05
     end
+    pcall(function() S.manual_fire[tostring(slot)].projectile_id = pf.lastProjectileId end)
   end
+  return pf ~= nil, pf == nil and "weapon_unavailable" or nil, facts
 end
 
 -- Fire a BEAM weapon. Unlike apply_fire_weapon (one room center repeated, correct for a burst
@@ -375,20 +579,37 @@ local function apply_fire_beam(act)
   local room_a  = act.room_a or 0
   local room_b  = act.room_b
   if room_b == nil then room_b = room_a end          -- degenerate single-point beam (safe; no chaining)
-  pcall(Hyperspace.benchmark_fire_beam, slot, ship_id, room_a, room_b)
+  local weapon, reason, facts = fire_request_context(slot, ship_id, room_a, room_b)
+  if not weapon then clear_manual_fire_slot(slot); return false, reason, facts end
+  local is_beam = false
+  pcall(function() is_beam = weapon.blueprint.typeName == "BEAM" end)
+  if not is_beam then clear_manual_fire_slot(slot); return false, "weapon_not_beam", facts end
+  local accepted, reason = apply_native_bool(Hyperspace.benchmark_fire_beam,
+    "native_fire", slot, ship_id, room_a, room_b)
+  if not accepted then clear_manual_fire_slot(slot); return false, reason, facts end
   pcall(function()
     local pl = Hyperspace.ships and Hyperspace.ships.player
     local target = (ship_id == 0) and pl or (Hyperspace.ships and Hyperspace.ships.enemy)
     if not (pl and target) then return end
     local pf = pl:GetWeaponList()[slot]
     if not pf or not pf.powered then return end
-    if pf:NumTargetsRequired() ~= 2 then return end  -- not a beam: leave it alone
+    if not pf.blueprint or pf.blueprint.typeName ~= "BEAM" then return end
     local ca = target:GetRoomCenter(room_a)
     local cb = target:GetRoomCenter(room_b)
     while pf.targets:size() > 0 do pf.targets:pop_back() end
     pf.targets:push_back(ca)
     pf.targets:push_back(cb)
+    S.manual_fire[tostring(slot)] = { ship_id = ship_id, room = room_a, room_b = room_b }
+    local cur, mx = weapon_charge(pf)
+    local req = S.manual_fire[tostring(slot)]
+    req.last_charge, req.max_charge = cur, mx
+    pcall(function() req.projectile_id = pf.lastProjectileId end)
+    req.seen_ready = type(cur) == "number" and type(mx) == "number" and cur >= mx - 0.05
+    arm_manual_fire_slot(slot, req)
   end)
+  clear_idle_weapon_fire_states()
+  local pending = S.manual_fire[tostring(slot)] ~= nil
+  return pending, not pending and "weapon_unavailable" or nil, facts
 end
 
 -- ===================== special-system actions (researched via workflow) ===============
@@ -676,6 +897,9 @@ local function fmt_action(a)
   elseif t == "store_buy" then return "buy item " .. tostring(a.index)
   elseif t == "store_sell" then return "sell item " .. tostring(a.index)
   elseif t == "upgrade_system" then return "upgrade " .. (SYS_SHORT[a.system_id] or tostring(a.system_id))
+  elseif t == "upgrade_reactor" then return "upgrade reactor"
+  elseif t == "wait_for_fuel" then return "wait for fuel"
+  elseif t == "set_distress" then return a.enabled and "distress on" or "distress off"
   elseif t == "hack_system" then return "hack sys " .. tostring(a.target_system_id)
   elseif t == "mind_control" then return "mind-control room " .. tostring(a.target_room_id)
   elseif t == "teleport_crew" then return (a.command == 2) and "recall boarders" or ("board room " .. tostring(a.target_room_id))
@@ -698,33 +922,75 @@ end
 
 local function dispatch_actions(actions)
   local mgr = Hyperspace.ships.player
-  for _, act in ipairs(actions or {}) do
+  S.action_feedback = {}
+  for action_index, act in ipairs(actions or {}) do
     pcall(record_action, act)   -- log to the on-screen overlay (never let logging break dispatch)
     if act.type == "set_system_power" then
       if mgr then apply_set_system_power(mgr, act) end
     elseif act.type == "move_crew" then
-      if mgr then apply_move_crew(mgr, act) end
+      local moved, reason = false, "player_ship_unavailable"
+      if mgr then moved, reason = apply_move_crew(mgr, act) end
+      S.action_feedback[#S.action_feedback + 1] = {
+        action_index = action_index, type = "move_crew", crew_id = act.crew_id,
+        room_id = act.room_id, status = moved and "applied" or "rejected", reason = reason,
+      }
     elseif act.type == "jump" then
-      apply_jump(act)
+      local accepted, reason = apply_jump(act)
+      S.action_feedback[#S.action_feedback + 1] = {
+        action_index = action_index, type = "jump", beacon_index = act.beacon_index,
+        status = accepted and "applied" or "rejected", reason = reason,
+      }
     elseif act.type == "choose_event" then
-      apply_choose_event(act)
+      local selected, reason, selected_choice = apply_choose_event(act)
+      S.action_feedback[#S.action_feedback + 1] = {
+        action_index = action_index, type = "choose_event", choice_index = act.choice_index or 0,
+        status = selected and "applied" or "rejected", reason = reason,
+        selected_choice = selected_choice,
+      }
     elseif act.type == "fire_weapon" then
-      apply_fire_weapon(act)
+      local accepted, reason, facts = apply_fire_weapon(act)
+      facts = facts or {}
+      S.action_feedback[#S.action_feedback + 1] = {
+        action_index = action_index, type = "fire_weapon", weapon_slot = act.weapon_slot or 0,
+        target_ship_id = act.target_ship_id or 1, target_room_id = act.target_room_id or 0,
+        status = accepted and "applied" or "rejected", reason = reason,
+        enemy_hostile = facts.enemy_hostile, enemy_targetable = facts.enemy_targetable,
+        queued = accepted == true,
+      }
     elseif act.type == "leave_sector" then
-      -- same FTL-drive guard as apply_jump: only leave when the drive is charged and
-      -- we're not already warping (forcing it mid-warp/charging spins CommandGui::OnLoop)
-      if jump_ready(mgr) then
-        pcall(Hyperspace.benchmark_leave_sector)  -- exit beacon -> next sector
-      end
+      local accepted, reason = apply_leave_sector(mgr)
+      S.action_feedback[#S.action_feedback + 1] = {
+        action_index = action_index, type = "leave_sector",
+        status = accepted and "applied" or "rejected", reason = reason,
+      }
     elseif act.type == "store_buy" then
       pcall(Hyperspace.benchmark_store_buy, act.index or 0)   -- buy store item #index
     elseif act.type == "store_sell" then
       pcall(Hyperspace.benchmark_store_sell, act.index or 0)  -- sell player item #index
     elseif act.type == "upgrade_system" then
-      -- spend scrap to raise a system's max power (the Upgrade screen, available anytime).
-      -- IncreasePower can't exceed power_max, so an upgrade is how you get e.g. a 2nd shield
-      -- layer. UpgradeSystem raises the cap; deduct the scrap so it isn't free.
-      if mgr then apply_upgrade_system(mgr, act) end
+      local accepted, reason = apply_upgrade_system(act)
+      S.action_feedback[#S.action_feedback + 1] = {
+        action_index = action_index, type = "upgrade_system", system_id = act.system_id,
+        status = accepted and "applied" or "rejected", reason = reason,
+      }
+    elseif act.type == "upgrade_reactor" then
+      local accepted, reason = apply_native_bool(Hyperspace.benchmark_upgrade_reactor, "native_upgrade")
+      S.action_feedback[#S.action_feedback + 1] = {
+        action_index = action_index, type = "upgrade_reactor",
+        status = accepted and "applied" or "rejected", reason = reason,
+      }
+    elseif act.type == "wait_for_fuel" then
+      local accepted, reason = apply_native_bool(Hyperspace.benchmark_wait_for_fuel, "native_fuel_recovery")
+      S.action_feedback[#S.action_feedback + 1] = {
+        action_index = action_index, type = "wait_for_fuel",
+        status = accepted and "applied" or "rejected", reason = reason,
+      }
+    elseif act.type == "set_distress" then
+      local accepted, reason = apply_set_distress(act)
+      S.action_feedback[#S.action_feedback + 1] = {
+        action_index = action_index, type = "set_distress", enabled = act.enabled,
+        status = accepted and "applied" or "rejected", reason = reason,
+      }
     elseif act.type == "cloak" then
       if mgr then apply_cloak(mgr, act) end           -- engage cloaking (id 10)
     elseif act.type == "set_doors" then
@@ -734,7 +1000,16 @@ local function dispatch_actions(actions)
     elseif act.type == "battery" then
       if mgr then apply_battery(mgr, act) end          -- backup battery: temp reactor power (id 12)
     elseif act.type == "fire_beam" then
-      apply_fire_beam(act)                            -- two-point beam sweep
+      local accepted, reason, facts = apply_fire_beam(act)
+      facts = facts or {}
+      S.action_feedback[#S.action_feedback + 1] = {
+        action_index = action_index, type = "fire_beam", weapon_slot = act.weapon_slot or 0,
+        target_ship_id = act.target_ship_id or 1, room_a = act.room_a or 0,
+        room_b = act.room_b ~= nil and act.room_b or (act.room_a or 0),
+        status = accepted and "applied" or "rejected", reason = reason,
+        enemy_hostile = facts.enemy_hostile, enemy_targetable = facts.enemy_targetable,
+        queued = accepted == true,
+      }
     elseif act.type == "hack_system" then
       apply_hack_system(act)                          -- deploy+arm hacking drone (id 15)
     elseif act.type == "deploy_drone" then
@@ -760,8 +1035,6 @@ local function add_m3_obs(obs)
   local world = Hyperspace.App and Hyperspace.App.world
   if not world then return end
 
-  -- jump_charged: is it safe to initiate a jump now? (recharged in combat / always OK out)
-  pcall(function() obs.jump_charged = jump_ready(Hyperspace.ships and Hyperspace.ships.player) end)
   -- diagnostics for the on-screen action-log overlay: render_count proves the render hook is
   -- firing; action_log_len shows how many lines it has to draw.
   pcall(function() obs.render_count = S.render_count end)
@@ -773,10 +1046,10 @@ local function add_m3_obs(obs)
 
   -- jump_charge_pct: the FTL-drive recharge as a scalar in [0,1], plus the raw {current,max}
   -- seconds, so the agent can reason hold-vs-flee instead of only the jump_charged bool.
-  -- jump_timer is ShipManager's std::pair<float,float> {first=current, second=max}; the same
-  -- field jump_ready() gates on (first >= second). NOTE: out of combat the timer sits idle
-  -- (e.g. 0/85) so pct reads ~0.0 even though you can jump freely -- pct is an IN-COMBAT
-  -- progress bar; gate actual jump decisions on jump_charged, not pct.
+  -- jump_timer is ShipManager's std::pair<float,float> {first=current, second=max}.
+  -- The exact native timer is separate from navigation legality. jump_charged
+  -- reflects native navigation.can_jump; never infer readiness from enemy absence.
+
   pcall(function()
     local pl = Hyperspace.ships and Hyperspace.ships.player
     if not pl or pl.bJumping then return end
@@ -843,10 +1116,11 @@ local function add_m3_obs(obs)
   pcall(function()
     local en = Hyperspace.ships and Hyperspace.ships.enemy
     if not (en and obs.enemy_ship) then return end
-    local destroyed, jumping = false, false
-    pcall(function() destroyed = en.bDestroyed end)
-    pcall(function() jumping = en.bJumping end)
-    obs.enemy_ship.targetable = (not destroyed and not jumping) and true or false
+    local native = native_enemy_state(en)
+    obs.enemy_ship.hostile = native.hostile
+    obs.enemy_ship.destroyed = native.destroyed
+    obs.enemy_ship.targetable = enemy_target_refusal(en, native) == nil
+    local jumping = native.jumping == true
     local cur, mx = 0, 0
     pcall(function() cur = en.jump_timer.first end)
     pcall(function() mx  = en.jump_timer.second end)
@@ -898,17 +1172,20 @@ local function add_m3_obs(obs)
     end
   end)
 
-  -- FTL's NATIVE run score: the game's own scoring (scrap collected, ships destroyed, beacons /
-  -- sectors explored, the flagship kill, times the difficulty multiplier). Read from the bound
-  -- ScoreKeeper (Hyperspace.Score.currentScore). This is the benchmark's headline metric for full
-  -- games: the designers' holistic, non-saturating, gaming-resistant measure, instead of a coined
-  -- one. (currentScore.score may only be final at game-over; play-to-gameover scores there.)
+  -- The native TopScore snapshot can retain the previous run until Save updates it.
+  -- Only expose the pure current-run StatTracker getter as authoritative score.
+  obs.ftl_score = nil
+  obs.ftl_score_source = nil
   pcall(function()
-    local sk = Hyperspace.Score
-    if not sk then pcall(function() sk = Hyperspace.Global.GetInstance():GetScoreKeeper() end) end
-    if sk and sk.currentScore then
-      pcall(function() obs.ftl_score = sk.currentScore.score end)
-      pcall(function() obs.ftl_score_sector = sk.currentScore.sector end)
+    local score = Hyperspace.benchmark_run_score()
+    if type(score) == "number" and score >= 0 then
+      obs.ftl_score = score
+      obs.ftl_score_source = "native_live_v1"
+      local components = Hyperspace.benchmark_score_components()
+      if type(components) == "string" and components ~= "" then
+        local ok, decoded = pcall(json.decode, components)
+        if ok and type(decoded) == "table" then obs.ftl_score_components = decoded end
+      end
     end
   end)
 
@@ -1025,7 +1302,7 @@ local function add_m3_obs(obs)
     pcall(function() h.drone_arrived = hs.drone.arrived end)     -- drone reached enemy hull
     pcall(function() h.pulse_timer   = hs.effectTimer.first end)
     pcall(function() h.pulse_max     = hs.effectTimer.second end)
-    pcall(function() h.system_locked = (hs.iLockCount ~= -1) end) -- our hacking ion-locked
+    pcall(function() h.system_locked = (hs.iLockCount ~= 0) end) -- 0 idle; -1 active lock; >0 cooldown/ion
     pcall(function() if hs.currentSystem then h.target_room = hs.currentSystem.roomId end end)
     h.ready = (h.powered == true) and (h.system_locked ~= true)
     obs.player_ship.hacking = h
@@ -1193,7 +1470,7 @@ local function add_m3_obs(obs)
         pcall(function()
           local tname = pf.blueprint and pf.blueprint.typeName or ""
           ow.weapon_type = tname                       -- "BEAM"|"LASER"|"MISSILES"|"BOMB"|"BURST"
-          ow.is_beam     = (pf:NumTargetsRequired() == 2) or (tname == "BEAM")
+          ow.is_beam     = (tname == "BEAM")
           ow.beam_length = pf.blueprint and pf.blueprint.length or 0
         end)
         -- DAMAGE PROFILE: per-shot hull damage + how many shield layers the shot ignores.
@@ -1368,9 +1645,13 @@ local function add_m3_obs(obs)
             put_scalar_if_present(choice, "blue", function() return c.blue end)
             put_scalar_if_present(choice, "blue", function() return c.bBlue end)
             put_scalar_if_present(choice, "color", function() return c.color end)
-            put_scalar_if_present(choice, "enabled", function() return c.enabled end)
-            put_scalar_if_present(choice, "available", function() return c.available end)
-            put_scalar_if_present(choice, "disabled", function() return c.disabled end)
+            local native_type = native_choice_type(c)
+            if native_type ~= nil then
+              choice.native_type = native_type
+              choice.disabled = native_type == 1
+              choice.enabled = native_type ~= 1
+              choice.available = native_type ~= 1
+            end
             put_scalar_if_present(choice, "locked", function() return c.locked end)
             put_scalar_if_present(choice, "requirements_met", function() return c.requirementMet end)
             put_scalar_if_present(choice, "cost", function() return c.cost end)
@@ -1385,6 +1666,8 @@ local function add_m3_obs(obs)
     obs.event = { text = text, choices = choices }
     put_scalar_if_present(obs.event, "selected_choice", function() return cb.selectedChoice end)
     put_scalar_if_present(obs.event, "potential_choice", function() return cb.potentialChoice end)
+    put_scalar_if_present(obs.event, "open_time", function() return cb.openTime end)
+    put_scalar_if_present(obs.event, "dialog_keys", function() return Hyperspace.Settings.dialogKeys end)
   end
 
   -- enemy room ids (for weapon targeting): system_id -> room_id
@@ -1420,7 +1703,7 @@ local function add_m3_obs(obs)
           pcall(function()
             local tname = w.blueprint and w.blueprint.typeName or ""
             e.weapon_type = tname                          -- "BEAM"|"LASER"|"MISSILES"|"BOMB"|"BURST"
-            e.is_beam     = (w:NumTargetsRequired() == 2) or (tname == "BEAM")
+            e.is_beam     = (tname == "BEAM")
           end)
           pcall(function() e.num_shots = w.numShots end)
           pcall(function()
@@ -1502,6 +1785,7 @@ local function add_m3_obs(obs)
       if sys and ps then
         local oi, ion = pcall(function() return sys:Ioned() end)
         if oi then ps.ioned = ion end
+        pcall(function() ps.ion = math.max(0, sys.iLockCount) end)
         local onr, nr = pcall(function() return sys:NeedsRepairing() end)
         if onr then ps.needs_repair = nr end
         local oh, he = pcall(function() return sys.iHackEffect end)
@@ -1532,17 +1816,28 @@ local function add_m3_obs(obs)
       end
     end
 
-    -- (b) enrich own crew with current task + species + key skills (man the right station; see
+    -- (b) filter the old base serializer's mixed physical crew list, then enrich
+    -- by ORIGINAL native id. Filtering must never change command identity.
+    -- Our boarders stay player-owned even when their intruder flag is true.
+    -- Enrich own crew with current task + species + key skills (man the right station; see
     -- who is already busy repairing/fighting). Skill ids: 0 pilot,1 engine,2 shield,3 weapon,
     -- 4 repair,5 combat (best-effort: kept only when GetSkillLevel returns a number).
     if obs.player_ship.crew then
       local cl = pl.vCrewList
       if cl then
-        for i = 0, cl:size() - 1 do
-          local c = cl[i]; local oc = obs.player_ship.crew[i + 1]
-          if c and oc then
+        local own = {}
+        for _, oc in ipairs(obs.player_ship.crew) do
+          local id = oc.id
+          local c = type(id) == "number" and id >= 0 and id < cl:size() and cl[id] or nil
+          if c and c.iShipId == 0 then
+            own[#own + 1] = oc
+            oc.owner_ship_id = c.iShipId
+            oc.current_ship_id = c.currentShipId
+            oc.player_owned = true
+            local cok, controllable = pcall(function() return c:GetControllable() end)
+            oc.controllable = cok and controllable == true
             pcall(function() oc.species = c.species end)
-            pcall(function() oc.intruder = c.intruder end)            -- true if THIS crew is boarding the enemy
+            pcall(function() oc.intruder = c.intruder end)
             pcall(function() oc.fighting = c.bFighting end)
             pcall(function() oc.repairing = c:Repairing() end)
             pcall(function() oc.on_enemy_ship = (c.currentShipId == 1) end)
@@ -1556,6 +1851,7 @@ local function add_m3_obs(obs)
             end)
           end
         end
+        obs.player_ship.crew = own
       end
     end
 
@@ -1618,15 +1914,15 @@ local function add_m3_obs(obs)
     obs.player_ship.rooms = rooms
     obs.player_ship.fires = fires
 
-    -- Door graph for venting/topology. Door ids are engine ids when exposed; `index` is the
-    -- vector index used only as a stable fallback display key.
+    -- Door graph includes outer airlocks: opening them is an exposed actuator and agents
+    -- need to see which rooms vent to space. The display index is unique across both lists.
     local doors = {}
-    if ship and ship.vDoorList then
-      local dl = ship.vDoorList
+    local function append_doors(dl, airlock)
+      if not dl then return end
       for i = 0, dl:size() - 1 do
         local door = dl[i]
         if door then pcall(function()
-          local d = { index = i }
+          local d = { index = #doors, airlock = airlock }
           put_scalar_if_present(d, "id", function() return door.iDoorId end)
           put_scalar_if_present(d, "room_a", function() return door.iRoom1 end)
           put_scalar_if_present(d, "room_b", function() return door.iRoom2 end)
@@ -1638,6 +1934,10 @@ local function add_m3_obs(obs)
         end) end
       end
     end
+    if ship then
+      append_doors(ship.vDoorList, false)
+      pcall(function() append_doors(ship.vOuterAirlocks, true) end)
+    end
     obs.player_ship.doors = doors
   end)
 end
@@ -1646,8 +1946,12 @@ end
 -- Pause (bPaused only)
 ------------------------------------------------------------------
 
+local DeterministicSetup
 local function set_frozen(frozen)
   local gui = Hyperspace.App and Hyperspace.App.gui
+  if type(Hyperspace.benchmark_visual_set_clock) == "function" then
+    pcall(Hyperspace.benchmark_visual_set_clock, S.observation_mode == "visual-v1" or (DeterministicSetup and DeterministicSetup.owns()), not frozen)
+  end
   if gui then gui.bPaused = frozen end
 end
 
@@ -1655,8 +1959,60 @@ end
 -- Observation (schema_version 2: + last_action_seq, live paused)
 ------------------------------------------------------------------
 
+-- Pausing ship simulation does not stop native GUI timers or a requested map
+-- Wait turn. Watch only stable scalars here; do not traverse ship collections on
+-- every idle tick just to discover a changed popup or completed recovery turn.
+local function idle_ui_signature(gui, world)
+  local function scalar(fn)
+    local ok, value = pcall(fn)
+    if ok and (type(value) == "number" or type(value) == "boolean" or type(value) == "string") then
+      return value
+    end
+    return "unknown"
+  end
+  local choice_open = scalar(function() return gui.choiceBoxOpen end)
+  local mode = scalar(function() return Hyperspace.Settings.dialogKeys end)
+  local key = json.encode({
+    choice_open,
+    scalar(function() return gui.gameover end),
+    scalar(function() return gui.alreadyWon end),
+    scalar(function() return world.starMap.bOpen end),
+    scalar(function() return world.starMap.bChoosingNewSector end),
+    mode,
+    choice_open == true and scalar(function() return gui.choiceBox.mainText end) or "",
+    choice_open == true and scalar(function() return gui.choiceBox.selectedChoice end) or -1,
+    choice_open == true and scalar(function()
+      return mode ~= 2 or gui.choiceBox.openTime >= 0.3
+    end) or false,
+  })
+  return key
+end
+
+local function visual_capabilities()
+  if type(Hyperspace.benchmark_visual_capabilities) ~= "function" then return nil end
+  local ok, encoded = pcall(Hyperspace.benchmark_visual_capabilities)
+  if not ok or type(encoded) ~= "string" then return nil end
+  local decoded, caps = pcall(json.decode, encoded)
+  if decoded and type(caps) == "table" and caps.visual_io_version == 1
+    and caps.capture == true and caps.input == true then return caps end
+  return nil
+end
+
+local function visual_world_updates(caps)
+  if not caps or caps.visual_clock_version ~= 2 or type(caps.world_updates) ~= "string"
+    or not caps.world_updates:match("^%d+$") or caps.fixed_step_numerator ~= 1
+    or caps.fixed_step_denominator ~= 60 or caps.simulated_updates ~= caps.world_updates then return nil end
+  local updates=tonumber(caps.world_updates)
+  if not updates or updates > 9007199254740991 then return nil end
+  return updates
+end
+
 local function write_observation()
-  local ok, err = pcall(function()
+  if S.observation_mode == "visual-v1" and not S.visual_in_render then
+    S.visual_pending = true
+    return false -- only the completed native render may acknowledge this step
+  end
+  local ok, complete, waiting = pcall(function()
     local obs = _G.ftl_bench.build_observation(S.frame_counter)
     obs.schema_version  = 3
     obs.last_action_seq = S.last_applied_seq
@@ -1667,12 +2023,117 @@ local function write_observation()
     -- for crew-death, so this is the only reliable terminal signal — the harness uses it to
     -- end/reset the episode instead of spinning no-op actions at the GAME OVER screen.
     obs.game_over = (gui ~= nil and gui.gameover) or false
-    -- M3 fields are best-effort: never let them lose the base observation.
+    obs.bridge_version = 5
+    obs.capabilities = {
+      manual_fire = true,
+      crew_control_guard = true,
+      crew_ownership = true,
+      enemy_hostility = true,
+      global_autofire_control = type(Hyperspace.benchmark_set_weapon_autofire) == "function",
+      victory = false,
+    }
+    if DeterministicSetup then obs.deterministic_setup=DeterministicSetup.observe() end
+    obs.action_feedback = S.action_feedback or {}
+    local visual_caps = visual_capabilities()
+    obs.capabilities.external_input_guard = visual_caps ~= nil and visual_caps.external_input_guard == true
+      and type(visual_caps.external_input_generation) == "string"
+      and type(visual_caps.external_input_detected) == "boolean"
+    if visual_caps and visual_world_updates(visual_caps) ~= nil
+      and type(Hyperspace.benchmark_visual_set_clock) == "function" then
+      obs.capabilities.visual_clock_version = visual_caps.visual_clock_version
+      obs.capabilities.world_updates = visual_caps.world_updates
+      obs.capabilities.fixed_step_numerator = visual_caps.fixed_step_numerator
+      obs.capabilities.fixed_step_denominator = visual_caps.fixed_step_denominator
+      obs.capabilities.simulated_updates = visual_caps.simulated_updates
+    end
+    obs.capabilities.visual_io = visual_caps ~= nil
+    if visual_caps then obs.capabilities.visual_io_version = 1 end
+    obs.observation_mode = S.observation_mode or "structured-v7"
+    if S.observation_mode == "visual-v1" then obs.visual_request_error = S.visual_request_error end
+    put_scalar_if_present(obs, "difficulty", function() return Hyperspace.benchmark_difficulty() end)
+    -- The live Windows WorldManager.currentDifficulty field can contain garbage;
+    -- use the actual game settings binding if a native getter is unavailable.
+    put_scalar_if_present(obs, "difficulty", function() return Hyperspace.Settings.difficulty end)
+    if obs.player_ship then
+      put_scalar_if_present(obs.player_ship, "blueprint", function() return Hyperspace.benchmark_player_blueprint() end)
+      put_scalar_if_present(obs.player_ship, "blueprint", function() return Hyperspace.ships.player.myBlueprint.blueprintName end)
+    end
+    -- Only expose a win when a native, explicitly bound boolean is available.
+    -- Neither sector number nor an arbitrary boss-stage value proves victory.
+    local victory = {}
+    put_scalar_if_present(victory, "value", function() return Hyperspace.benchmark_victory() end)
+    put_scalar_if_present(victory, "value", function() return Hyperspace.Score.currentScore.victory end)
+    put_scalar_if_present(victory, "value", function() return gui.alreadyWon end)
+    if type(victory.value) == "boolean" then
+      obs.victory = victory.value
+      obs.capabilities.victory = true
+    end
+    if type(Hyperspace.benchmark_capabilities) == "function" then
+      local cok, cjson = pcall(Hyperspace.benchmark_capabilities)
+      if cok and type(cjson) == "string" and cjson ~= "" then
+        local dok, caps = pcall(json.decode, cjson)
+        if dok and type(caps) == "table" then
+          for k, v in pairs(caps) do obs.capabilities[k] = v end
+        end
+      end
+    end
+    obs.economy = native_economy_state()
+    local economy = obs.economy
+    local protocol5 = economy ~= nil and economy.native_protocol >= 5
+    obs.capabilities.sector_navigation = protocol5 and economy.sector_navigation_version == 1
+      and type(Hyperspace.benchmark_leave_sector) == "function"
+    local navigation = native_navigation_state(economy)
+    obs.capabilities.beacon_navigation = navigation ~= nil
+      and type(Hyperspace.benchmark_jump_to_beacon) == "function"
+    obs.jump_charged = obs.capabilities.beacon_navigation and navigation.can_jump or false
+    obs.capabilities.upgrade_rules = protocol5
+      and type(economy.upgrade_available) == "boolean" and type(economy.systems) == "table"
+      and type(Hyperspace.benchmark_upgrade_system) == "function"
+      and type(Hyperspace.benchmark_upgrade_reactor) == "function"
+    local fuel = economy and economy.fuel_recovery
+    obs.capabilities.fuel_recovery = protocol5 and type(fuel) == "table"
+      and type(fuel.out_of_fuel) == "boolean" and type(fuel.distress_on) == "boolean"
+      and type(fuel.can_wait) == "boolean" and type(fuel.waiting) == "boolean"
+      and type(Hyperspace.benchmark_wait_for_fuel) == "function"
+      and type(Hyperspace.benchmark_set_distress) == "function"
+    obs.capabilities.event_choice_state = type(Hyperspace.benchmark_choose_event) == "function"
+    -- Individual optional probes are best-effort inside add_m3_obs. A whole
+    -- snapshot failure must not publish a partial action acknowledgement.
     local m3ok, m3err = pcall(add_m3_obs, obs)
-    if not m3ok then log_err("m3 obs error: " .. tostring(m3err)) end
-    Hyperspace.write_json_observation(json.encode(obs))
+    if not m3ok then
+      log_err("m3 obs error: " .. tostring(m3err))
+      return false
+    end
+    if S.observation_mode == "visual-v1" then
+      local encoded = Hyperspace.benchmark_write_visual_observation(json.encode(obs),
+        S.last_applied_seq or -1, S.frame_counter, S.visual_requested_frames or 0,
+        S.adv_elapsed or 0, json.encode(S.visual_feedback or {}))
+      if type(encoded) ~= "string" or encoded == "" then error("native visual writer refused snapshot") end
+      local metadata = json.decode(encoded)
+      if type(metadata) ~= "table" or type(metadata.capture_id) ~= "string"
+        or metadata.visual_io_version ~= 1 or metadata.paused ~= true
+        or visual_world_updates(metadata) == nil
+        or metadata.world_updates ~= visual_caps.world_updates then
+        error("invalid native capture acknowledgement")
+      end
+      S.visual_capture = metadata
+      S.visual_pending = false
+    else
+      local written = Hyperspace.write_json_observation(json.encode(obs))
+      if written ~= true then error("native observation writer refused snapshot") end
+    end
+    return m3ok, type(fuel) == "table" and fuel.waiting == true
   end)
-  if not ok then log_err("observation error: " .. tostring(err)) end
+  if not ok then log_err("observation error: " .. tostring(complete)) end
+  if not ok or complete ~= true then return false end
+  local gui = Hyperspace.App and Hyperspace.App.gui
+  local world = Hyperspace.App and Hyperspace.App.world
+  S.observed_ui_signature = idle_ui_signature(gui, world)
+  S.observed_frame = S.frame_counter
+  -- StarMap.waiting is not exposed in SWIG. The native economy getter is the
+  -- authoritative signal; keep polling at a bounded rate until it completes.
+  S.observed_native_waiting = waiting == true
+  return true
 end
 
 ------------------------------------------------------------------
@@ -1721,7 +2182,8 @@ local function danger_snapshot()
   local s = { enemy = false, hull = nil, intruders = 0, fires = 0, event = false }
   pcall(function()
     local en = Hyperspace.ships and Hyperspace.ships.enemy
-    s.enemy = (en ~= nil) and (not en.bDestroyed)
+    local native = native_enemy_state(en)
+    s.enemy = native.hostile == true and native.destroyed == false
     local gui = Hyperspace.App and Hyperspace.App.gui
     s.event = (gui ~= nil) and gui.choiceBoxOpen or false
     local pl = Hyperspace.ships and Hyperspace.ships.player
@@ -1741,7 +2203,10 @@ local function check_critical(base, elapsed)
     local gui = Hyperspace.App and Hyperspace.App.gui
     if gui and gui.choiceBoxOpen and not base.event then reason = "event"; return end
     local en = Hyperspace.ships and Hyperspace.ships.enemy
-    if (en ~= nil) and (not en.bDestroyed) and (not base.enemy) then reason = "combat_started"; return end
+    local native = native_enemy_state(en)
+    if native.hostile == true and native.destroyed == false and not base.enemy then
+      reason = "combat_started"; return
+    end
     if base.hull then
       local h = nil
       pcall(function() h = pl.ship.hullIntegrity.first end)
@@ -1756,12 +2221,567 @@ local function check_critical(base, elapsed)
   return reason
 end
 
+
+-- Visual-v1 input transport. These functions deliver normal game-window events;
+-- they never infer that the UI accepted a gameplay operation.
+local function integer(value) return type(value) == "number" and value == math.floor(value) end
+local function visual_feedback(index, act, status, reason)
+  local item = {index=index-1,type=type(act) == "table" and act.type or "unknown",status=status}
+  if reason then item.reason=reason end
+  S.visual_feedback[#S.visual_feedback+1] = item
+end
+local function visual_deliver(index, act, caps)
+  if type(act) ~= "table" then visual_feedback(index,act,"rejected","invalid_action"); return end
+  local modifiers = 0
+  if act.modifiers ~= nil and type(act.modifiers) ~= "table" then
+    visual_feedback(index,act,"rejected","invalid_modifiers"); return
+  end
+  local seen = {}
+  for _, modifier in ipairs(act.modifiers or {}) do
+    if (modifier ~= "shift" and modifier ~= "ctrl") or seen[modifier] then
+      visual_feedback(index,act,"rejected","unsupported_modifier"); return
+    end
+    seen[modifier]=true
+    modifiers=modifiers+(modifier == "shift" and 1 or 2)
+  end
+  local function point(x,y)
+    return integer(x) and integer(y) and x >= 0 and y >= 0
+      and type(caps.width) == "number" and type(caps.height) == "number"
+      and x < caps.width and y < caps.height
+  end
+  local fn, args
+  if act.type == "key" then
+    if type(act.key) ~= "string" then visual_feedback(index,act,"rejected","invalid_key"); return end
+    fn,args=Hyperspace.benchmark_key_press,{act.key,modifiers}
+  elseif act.type == "click" or act.type == "move" or act.type == "drag" then
+    if not point(act.x,act.y) or (act.type == "drag" and not point(act.to_x,act.to_y)) then
+      visual_feedback(index,act,"rejected","invalid_coordinates"); return
+    end
+    local button = act.button or "left"
+    if button ~= "left" and button ~= "right" then visual_feedback(index,act,"rejected","unsupported_button"); return end
+    if act.type == "move" then
+      if modifiers ~= 0 then visual_feedback(index,act,"rejected","move_modifiers_unsupported"); return end
+      fn,args=Hyperspace.benchmark_mouse_move,{act.x,act.y}
+    elseif act.type == "click" then
+      fn,args=Hyperspace.benchmark_mouse_click,{act.x,act.y,button == "left" and 0 or 1,modifiers}
+    else
+      fn,args=Hyperspace.benchmark_mouse_drag,{act.x,act.y,act.to_x,act.to_y,button == "left" and 0 or 1,modifiers}
+    end
+  else visual_feedback(index,act,"rejected","unsupported_input"); return end
+  if type(fn) ~= "function" then visual_feedback(index,act,"rejected","native_input_unavailable"); return end
+  local ok, delivered = pcall(fn,table.unpack(args))
+  visual_feedback(index,act,ok and delivered == true and "delivered" or "rejected",
+    (not ok and "native_input_error") or (delivered ~= true and "native_input_refused") or nil)
+end
+local function visual_blocked()
+  if type(Hyperspace.benchmark_visual_simulation_blocked) ~= "function" then return true end
+  local ok, blocked = pcall(Hyperspace.benchmark_visual_simulation_blocked)
+  return not ok or blocked ~= false
+end
+
+_G.ftl_bench_visual_render = function()
+  if S.observation_mode ~= "visual-v1" or not S.visual_pending or S.frame_budget > 0 then return end
+  set_frozen(true)
+  S.visual_in_render = true
+  S.obs_fresh = write_observation()
+  S.visual_in_render = false
+end
+
+local function read_action_packet()
+  local ok, encoded = pcall(Hyperspace.read_json_action)
+  if not ok or type(encoded) ~= "string" or encoded == "" then return nil end
+  local decoded, packet = pcall(json.decode, encoded)
+  if decoded and type(packet) == "table" and integer(packet.seq) then return packet end
+  return nil
+end
+
+-- Isolated future-cohort helper. Ordinary gameplay RNG is never reseeded here.
+-- Native construction/seed receipt v3 and native clock2 are mandatory.
+local function NewDeterministicSetup(S, H, json, freeze, capabilities, counter)
+ local D={}
+ local function integer(v) return type(v)=="number" and v==math.floor(v) end
+ local function state() return S.benchmark_setup end
+ local function count_string(n) return string.format("%.0f",n) end
+ function D.owns() local r=state();return r~=nil and r.active==true end
+ local function fail(message)
+  local r=state()
+  if r then r.error=message;r.phase="failed";r.active=true end
+  S.frame_budget=0
+  pcall(H.benchmark_visual_set_clock,true,false)
+  if H.App and H.App.gui then H.App.gui.bPaused=true end
+  return false
+ end
+ local function clock()
+  local caps=capabilities();local n=counter(caps)
+  if n==nil then fail("clock2 counter unavailable");return nil end
+  return n
+ end
+ local function idle_counter_valid()
+  local r=state()
+  if r and r.active and r.phase=="ready" and not r.pending then
+   local now=clock();if now==nil then return false end
+   if count_string(now)~=r.clock.current_world_updates then return fail("unbudgeted idle setup update") end
+  end
+  return true
+ end
+ local function permit(advance)
+  local ok,accepted=pcall(H.benchmark_visual_set_clock,true,advance)
+  if not ok or accepted~=true then return fail("clock ownership refused") end
+  freeze(not advance)
+  return true
+ end
+ local function stage()
+  local ok,value=pcall(H.benchmark_fresh_menu_stage)
+  if not ok or type(value)~="string" then fail("native menu stage unavailable");return nil end
+  return value
+ end
+ local function capture_native_receipt()
+  local r=state()
+  local ok,payload=pcall(H.benchmark_fresh_seed_receipt)
+  local decoded,native=pcall(json.decode,ok and payload or "")
+  r.native_seed_receipt={call_succeeded=ok,raw_response=tostring(payload),
+   parse_succeeded=decoded and type(native)=="table"}
+  if decoded and type(native)=="table" then r.native_seed=native;return native end
+  r.native_seed_receipt.parse_error=tostring(native)
+  return nil
+ end
+ -- Evidence only: every binding read is protected, and no value influences
+ -- admission, native timing, or the number of forward calls.
+ local function menu_snapshot()
+  local out={contract="menu-binding-diagnostic-v1",errors={}}
+  local function read(label,fn)
+   local ok,value=pcall(fn)
+   if not ok or value==nil then
+    out.errors[#out.errors+1]={field=label,error=ok and "binding returned nil" or tostring(value)}
+    return nil
+   end
+   return value
+  end
+  local function scalar(label,fn)
+   local value=read(label,fn)
+   if value~=nil then
+    if type(value)=="number" or type(value)=="boolean" or type(value)=="string" then out[label]=value
+    else out[label]=tostring(value) end
+   end
+  end
+  local app=read("app",function() return H.Global.GetInstance():GetCApp() end)
+  local menu=read("menu",function() return app.menu end)
+  local button=read("start_button",function() return menu.startButton end)
+  scalar("start_button_identity",function() return tostring(button) end)
+  for _,field in ipairs({"bActive","bHover"}) do
+   scalar("start_button_"..field,function() return button[field] end)
+  end
+  for _,part in ipairs({"hitbox","position"}) do
+   local object=read("start_button_"..part,function() return button[part] end)
+   local fields=part=="hitbox" and {"x","y","w","h"} or {"x","y"}
+   for _,field in ipairs(fields) do
+    scalar("start_button_"..part.."_"..field,function() return object[field] end)
+   end
+  end
+  for _,field in ipairs({"bOpen","bScoreScreen","bCreditScreen","bSelectSave","finalChoice","bNewGame"}) do
+   scalar("menu_"..field,function() return menu[field] end)
+  end
+  for _,field in ipairs({"confirmNewGame","shipBuilder","optionScreen","changelog"}) do
+   scalar("menu_"..field.."_open",function() return menu[field].bOpen end)
+  end
+  scalar("language_chooser_open",function() return app.langChooser.bOpen end)
+  local buttons=read("menu_buttons",function() return menu.buttons end)
+  scalar("menu_buttons_count",function() return buttons:size() end)
+  out.menu_button_identities={}
+  local n=out.menu_buttons_count
+  if type(n)=="number" and n>=0 and n==math.floor(n) then
+   out.menu_buttons_truncated=n>128
+   for index=0,math.min(n,128)-1 do
+    local item=read("menu_button_"..index,function() return buttons[index] end)
+    local row={index=index}
+    if item~=nil then
+     row.identity=tostring(item)
+     local equal=read("menu_button_"..index.."_is_start",function() return item==button end)
+     if equal~=nil then row.is_start=equal end
+    end
+    out.menu_button_identities[#out.menu_button_identities+1]=row
+   end
+  end
+  return out
+ end
+ local function capture_menu_snapshot()
+  local ok,value=pcall(menu_snapshot)
+  if ok then return value end
+  return {contract="menu-binding-diagnostic-v1",errors={{field="snapshot",error=tostring(value)}}}
+ end
+ local function native_seed(applied)
+  local r=state();local native=capture_native_receipt()
+  if type(native)~="table"
+   or native.contract~="fresh-start-seed-v3" or native.contract_version~=3
+   or native.seed~=r.seed or native.failed~=false
+   or not integer(native.epoch) or native.epoch<1 then
+   fail("native fresh seed receipt invalid");return nil
+  end
+  if r.native_epoch and native.epoch~=r.native_epoch then fail("native seed epoch changed");return nil end
+  if native.utility_name_calls~=1 or native.utility_lookup_calls~=1 or native.utility_lookup_completed~=1
+   or native.utility_lookup_valid~=true
+   or native.utility_name_provenance~="StatBoostManager::CreateDummyCrew.GetCrewBlueprint(human)"
+   or type(native.utility_name)~="string" or native.utility_name==""
+   or not integer(native.utility_thread_id) or native.utility_thread_id<1
+   or native.names_before_arm~=1 or native.unclassified_names_before_arm~=0
+   or native.intervening_names_after_arm~=0 or native.ship_inits_before_arm~=0
+   or native.reservations_before_arm~=1 then
+   fail("classified utility construction evidence invalid");return nil
+  end
+  for _,kind in ipairs({"crew","lost","player","enemy","clone"}) do
+   if native["factory_"..kind.."_before_arm"]~=0 or applied and native["factory_"..kind.."_before_reset"]~=0 then
+    fail("preexisting crew factory construction");return nil
+   end
+  end
+  if r.utility_name and (native.utility_name~=r.utility_name or native.utility_thread_id~=r.utility_thread) then
+   fail("classified utility identity changed");return nil
+  end
+  r.utility_name=native.utility_name;r.utility_thread=native.utility_thread_id
+  if applied then
+   if native.applied~=true or native.pending~=false
+    or native.native_seed_applications~=1 or native.c_runtime_seed_applications~=1
+    or native.boundary~="ShipBuilder::Open.before_super"
+    or native.constructor_timing_controlled~=true or native.fixed_creation_timing~=true
+    or native.construction_clock_owned~=true
+    or native.construction_fixed_step_numerator~=1 or native.construction_fixed_step_denominator~=60
+    or native.construction_speed_factor_bits~=1049135241
+    or native.construction_scope_active~=false
+    or not integer(native.construction_clicks) or native.construction_clicks<1
+    or native.completed_construction_clicks~=native.construction_clicks
+    or not integer(native.seed_thread_id) or native.seed_thread_id<1
+    or native.utility_thread_id~=native.seed_thread_id
+    or native.names_before_seed~=1 or native.unclassified_names_before_seed~=0
+    or native.ship_inits_before_seed~=0
+    or native.reservations_before_reset~=1 or native.reservations_after_reset~=0
+    or native.reservation_reset_applications~=1 or native.reservation_reset_verified~=true
+    or native.reservation_reset_thread_id~=native.seed_thread_id
+    or type(native.reservation_names_before_reset)~="table"
+    or #native.reservation_names_before_reset~=1 or native.reservation_names_before_reset[1]~=native.utility_name
+    or not integer(native.names_during_open) or native.names_during_open<1 then
+    fail("construction seed evidence incomplete");return nil
+   end
+   if r.native_thread and native.seed_thread_id~=r.native_thread then fail("native seed thread changed");return nil end
+   r.native_thread=native.seed_thread_id
+  elseif native.pending~=true or native.applied~=false
+   or native.native_seed_applications~=0 or native.c_runtime_seed_applications~=0
+   or native.reservation_reset_applications~=0 or native.reservation_reset_verified~=false
+   or native.names_before_seed~=0 or native.unclassified_names_before_seed~=0
+   or native.ship_inits_before_seed~=0 then
+   fail("fresh seed no longer pending");return nil
+  end
+  r.native_epoch=native.epoch;r.native_seed=native
+  return native
+ end
+ local function arm()
+  local r=state();local current=stage()
+  r.admission_stage=current
+  if current~="main_menu" and current~="overwrite_confirmation" then return fail("unsafe fresh construction boundary") end
+  local ok,accepted=pcall(H.benchmark_arm_fresh_seed,r.seed)
+  r.arm_call={succeeded=ok,accepted=accepted==true,response=tostring(accepted)}
+  if not ok or accepted~=true then
+   capture_native_receipt()
+   return fail("fresh native seed arm refused")
+  end
+  r.phase="menu"
+  return native_seed(false)~=nil
+ end
+ function D.admit(packet)
+  if packet.benchmark_setup==nil then return true end
+  if state() then return fail("setup opt-in cannot be rearmed") end
+  local request=packet.benchmark_setup
+  local action=type(packet.actions)=="table" and #packet.actions==1 and packet.actions[1] or nil
+  S.benchmark_setup={contract="deterministic-setup-v1",version=1,active=true,
+   phase="admitting",intervals={},menu_stages={},determinism_claimed=false,
+   start_action_seq=packet.seq,seed=type(request)=="table" and request.seed or nil}
+  if type(request)~="table" or request.version~=1 or request.fresh~=true
+   or not integer(request.seed) or request.seed<0 or request.seed>4294967295
+   or packet.advance_frames~=0 or not action or action.seed~=request.seed
+   or not (action.type=="reset_episode" or (action.type=="start_game" and action.mode=="new")) then
+   return fail("explicit single fresh setup request required")
+  end
+  local ok,version=pcall(H.benchmark_fresh_seed_contract_version)
+  if not ok or version~=3 then return fail("fresh native seed contract3 unavailable") end
+  if not permit(false) then return false end
+  S.observation_mode="structured-v7";S.visual_pending=false;S.visual_capture=nil
+  local n=clock();if n==nil then return false end
+  local r=state();r.clock={version=2,numerator=1,denominator=60,initial_world_updates=count_string(n),current_world_updates=count_string(n)}
+  local current=stage()
+  if action.type=="reset_episode" and current=="in_game" then
+   r.phase="resetting";r.reset_steps=0;return true
+  end
+  _G.ftl_bench_desired_seed=r.seed
+  if not arm() then return false end
+  S.starting_new=true;S.menu_throttle=0
+  return true
+ end
+ function D.guard(packet)
+  local r=state();if not r or not r.active or not packet then return true end
+  if r.error then return false end
+  if not idle_counter_valid() then return false end
+  if not integer(packet.advance_frames) or packet.advance_frames<0 or packet.advance_frames>600
+   or type(packet.actions)~="table" then return fail("invalid explicit setup packet budget or actions") end
+  if packet.benchmark_setup and packet.seq~=r.start_action_seq then return fail("duplicate setup request") end
+  if packet.seq==r.start_action_seq then return true end
+  for _,action in ipairs(packet.actions or {}) do
+   if action.type=="set_seed" or action.type=="reset_episode" or action.type=="start_game" then
+    return fail("fresh lifecycle action during setup")
+   end
+  end
+  return true
+ end
+ function D.menu()
+  local r=state();if not r or not r.active then return false end
+  if r.error then return false end
+  if r.phase=="resetting" then
+   if r.pending then
+    local now=clock();if now==nil then return false end
+    local row=r.pending;local delta=now-tonumber(row.start_world_updates)
+    if delta<0 or delta>row.requested_updates then return fail("reset interval counter mismatch") end
+    row.end_world_updates=count_string(now);row.actual_updates=delta;row.status="menu_boundary";r.pending=nil
+   end
+   if not permit(false) or not arm() then return false end
+  end
+  -- No uncontrolled hangar OnLoop between opening and Start. Asynchronous
+  -- paths fail closed instead of waiting under an unaccounted UI clock.
+  for _=1,3 do
+   local current=stage()
+   if current~="main_menu" and current~="overwrite_confirmation" and current~="hangar" then
+    return fail("unsupported stage in fresh menu chain")
+   end
+   local native=native_seed(current=="hangar");if not native then return false end
+   local before=clock();if before==nil then return false end
+   r.menu_diagnostics=r.menu_diagnostics or {}
+   local diagnostic={index=#r.menu_diagnostics+1,stage=current,before=capture_menu_snapshot()}
+   r.menu_diagnostics[#r.menu_diagnostics+1]=diagnostic
+   local ok,accepted=pcall(H.benchmark_advance_fresh_menu)
+   diagnostic.after=capture_menu_snapshot()
+   diagnostic.forward_call_succeeded=ok;diagnostic.forward_call_accepted=accepted==true
+   -- Freeze in the SAME callback, before any next CApp/world/render iteration.
+   if not permit(false) then return false end
+   if not ok or accepted~=true then
+    r.forward_call={succeeded=ok,accepted=accepted==true,response=tostring(accepted),stage=current}
+    capture_native_receipt()
+    return fail("native scoped forward click refused")
+   end
+   local after=clock();if after==nil then return false end
+   if after~=before then return fail("unbudgeted world update during construction") end
+   local next_stage=stage()
+   r.menu_stages[#r.menu_stages+1]={before=current,after=next_stage,world_updates_before=count_string(before),world_updates_after=count_string(after)}
+   if current=="hangar" then
+    if next_stage~="start_pending" or H.App.world.bStartedGame then return fail("Start must enter the controlled native completion boundary") end
+    local pending=native_seed(true);if not pending then return false end
+    if pending.start_pending~=true or pending.start_completed~=false then return fail("native Start completion was not armed") end
+    r.creation_pending={start_action_seq=r.start_action_seq,world_updates_before_start=count_string(before)}
+    r.phase="starting";r.clock.current_world_updates=count_string(after);return true
+   end
+   if next_stage==current then return fail("fresh menu chain made no synchronous progress") end
+  end
+  return fail("fresh menu chain exceeded three forward clicks")
+ end
+ function D.start_pending() local r=state();return r and r.active and r.phase=="starting" end
+ function D.complete_start()
+  local r=state();if not D.start_pending() or r.error then return fail("no pending Start completion") end
+  local current=stage();local native=native_seed(true);local now=clock()
+  if not native or now==nil then return false end
+  local before=r.creation_pending.world_updates_before_start
+  if current~="in_game" or not H.App.world.bStartedGame
+   or native.start_pending~=false or native.start_completed~=true
+   or native.start_completion_callbacks~=1 or native.start_extra_hangar_dwell~=0
+   or native.start_hangar_onloop_requests~=1 or native.start_hangar_onloop_executed~=0
+   or native.start_game_calls~=1 or native.start_game_returns~=1
+   or native.start_cfps_fixed_applications~=1 or native.start_speed_factor_bits~=1049135241
+   or native.start_thread_id~=native.seed_thread_id
+   or native.start_world_updates_before~=before or native.start_world_updates_after~=before
+   or native.start_timing_controlled~=true or native.start_world_frozen~=true
+   or count_string(now)~=before then
+   return fail("controlled next-loop Start completion invalid or late")
+  end
+  if not permit(false) then return false end
+  r.creation={start_action_seq=r.start_action_seq,world_updates_before_start=before,
+   world_updates_after_start=count_string(now),frozen_immediately=true,zero_unbudgeted_world_updates=true,
+   completion_callbacks=1,extra_hangar_dwell=0}
+  r.phase="ready";r.clock.current_world_updates=count_string(now);return true
+ end
+ function D.begin_interval(seq,requested,kind,defer)
+  local r=state();if not r or not r.active then return true end
+  if r.error or r.pending then return fail("setup interval overlaps or follows failure") end
+  if not integer(requested) or requested<0 or requested>600 then return fail("setup budget must be an integer in 0..600") end
+  if not idle_counter_valid() then return false end
+  local now=clock();if now==nil then return false end
+  local row={index=#r.intervals+1,kind=kind or "structured",action_seq=seq,requested_updates=requested,
+   start_world_updates=count_string(now),end_world_updates=count_string(now),actual_updates=0,status=requested==0 and "complete" or "pending"}
+  r.intervals[#r.intervals+1]=row;r.pending=requested>0 and row or nil
+  r.clock.current_world_updates=count_string(now)
+  return permit(requested>0 and not defer)
+ end
+ function D.dispatch_complete()
+  local r=state();local row=r and r.intervals[#r.intervals]
+  if not row or r.error then return fail("setup dispatch without interval") end
+  local now=clock();if now==nil then return false end
+  if now~=tonumber(row.start_world_updates) then return fail("unbudgeted update during semantic dispatch") end
+  return permit(row.requested_updates>0)
+ end
+ function D.advance_interval()
+  local r=state();local row=r and r.pending
+  if not row or r.error then return fail("no pending setup interval") end
+  local now=clock();if now==nil then return false end
+  local delta=now-tonumber(row.start_world_updates)
+  row.end_world_updates=count_string(now);row.actual_updates=delta;r.clock.current_world_updates=count_string(now)
+  if delta<0 or delta>row.requested_updates then row.status="failed";return fail("setup clock regression or overrun") end
+  S.adv_elapsed=delta;S.frame_budget=row.requested_updates-delta
+  if S.frame_budget==0 then row.status="complete";r.pending=nil;return permit(false) end
+  return true
+ end
+ function D.reset_tick()
+  local r=state();if not r or r.error or r.phase~="resetting" then return false end
+  if r.pending then
+   if not D.advance_interval() then return false end
+   if r.pending then return true end
+   r.reset_steps=r.reset_steps+1
+  end
+  if r.reset_steps>=600 then return fail("reset transition exceeded fixed budget") end
+  if r.reset_steps%10==0 then
+   local gui=H.App.gui
+   if gui.choiceBoxOpen then
+    return fail("reset with event modal requires explicit prior event resolution")
+   end
+   local a=pcall(H.benchmark_return_to_menu);local b=pcall(H.benchmark_confirm_menu)
+   if not a or not b then return fail("native reset menu command failed") end
+  end
+  return D.begin_interval(r.start_action_seq,1,"reset")
+ end
+ function D.handoff(seq)
+  local r=state();if not r or not r.active then return true end
+  if r.error or r.phase~="ready" or r.pending then return fail("visual handoff before fixed setup completion") end
+  local now=clock();local native=native_seed(true)
+  if now==nil or not native then return false end
+  if native.start_completion_scope_active~=false then return fail("visual handoff during Start completion scope") end
+  -- Called only AFTER visual mode assignment; the visual owner now retains it.
+  r.handoff={action_seq=seq,world_updates=count_string(now)};r.phase="visual";r.active=false
+  return true
+ end
+ function D.failed() local r=state();return r and r.error~=nil end
+ D.reject=fail
+ function D.observe()
+  local r=state();if not r then return nil end
+  idle_counter_valid()
+  local caps=capabilities();local now=counter(caps)
+  if now and r.clock then r.clock.current_world_updates=count_string(now) end
+  return r
+ end
+ return D
+end
+
+DeterministicSetup=NewDeterministicSetup(S,Hyperspace,json,set_frozen,visual_capabilities,visual_world_updates)
+
+local function visual_tick(packet)
+  local current_caps = S.observation_mode == "visual-v1" and visual_capabilities() or nil
+  local changed_input = S.visual_capture and current_caps
+    and current_caps.external_input_generation ~= S.visual_capture.external_input_generation
+  if changed_input then S.obs_fresh=false end -- publish contamination even while waiting for the model
+  if S.observation_mode == "visual-v1" and S.frame_budget > 0 then
+    local updates=visual_world_updates(current_caps)
+    if updates == nil or S.visual_start_world_updates == nil or updates < S.visual_start_world_updates then
+      S.visual_request_error="visual_clock_unavailable"; S.frame_budget=0
+    else
+      S.adv_elapsed=updates-S.visual_start_world_updates
+      S.frame_budget=math.max(0,S.visual_requested_frames-S.adv_elapsed)
+    end
+    -- Only visible blocking UI stops this mode; no hidden damage/crew/kill gates.
+    if not current_caps or current_caps.external_input_guard ~= true then
+      S.visual_request_error="external_input_guard_unavailable"; S.frame_budget=0
+    elseif changed_input or current_caps.external_input_detected == true then
+      S.visual_request_error="external_input_since_capture"; S.frame_budget=0
+    elseif S.adv_elapsed > S.visual_requested_frames then
+      S.visual_request_error="visual_clock_overrun"; S.frame_budget=0
+    elseif visual_blocked() then S.frame_budget=0 end
+    if S.frame_budget == 0 then set_frozen(true); S.obs_fresh=write_observation() end
+    return true
+  end
+  local fresh=packet ~= nil
+    and (S.last_applied_seq == nil or packet.seq > S.last_applied_seq)
+  if fresh and packet.observation_mode == "structured-v7" then
+    S.observation_mode="structured-v7"; S.visual_pending=false; S.visual_capture=nil
+    if type(Hyperspace.benchmark_visual_set_clock) == "function" then
+      pcall(Hyperspace.benchmark_visual_set_clock,DeterministicSetup.owns(),false)
+    end
+    return false -- backstage reset/menu handling remains in the historical path
+  end
+  if not (fresh and packet.observation_mode == "visual-v1") and S.observation_mode ~= "visual-v1" then return false end
+  set_frozen(true)
+  if fresh then
+    S.observation_mode="visual-v1"
+    S.manual_fire={} -- visual input owns normal native weapon queues from now on
+    S.last_applied_seq=packet.seq
+    S.action_feedback={}
+    S.visual_feedback={}
+    S.visual_request_error=nil
+    S.visual_requested_frames=packet.advance_frames or 0
+    S.adv_elapsed=0
+    local actions=type(packet.actions) == "table" and packet.actions or {}
+    local caps=visual_capabilities()
+    local reason=nil
+    if type(packet.actions) ~= "table" then reason="invalid_actions"
+    elseif not integer(S.visual_requested_frames) or S.visual_requested_frames < 0 or S.visual_requested_frames > 600 then reason="invalid_frame_budget"
+    elseif #actions > 4 then reason="too_many_inputs"
+    elseif not caps then reason="visual_io_unavailable"
+    elseif visual_world_updates(caps) == nil or type(Hyperspace.benchmark_visual_set_clock) ~= "function" then reason="visual_clock_unavailable"
+    elseif caps.external_input_guard ~= true or type(caps.external_input_generation) ~= "string"
+      or type(caps.external_input_detected) ~= "boolean" then reason="external_input_guard_unavailable"
+    elseif caps.external_input_detected == true or (S.visual_capture
+      and caps.external_input_generation ~= S.visual_capture.external_input_generation) then reason="external_input_since_capture"
+    elseif packet.expected_capture_id ~= nil and (not S.visual_capture or packet.expected_capture_id ~= S.visual_capture.capture_id) then reason="stale_capture"
+    elseif (#actions > 0 or S.visual_requested_frames > 0) and (not S.visual_capture or packet.expected_capture_id == nil) then reason="capture_required"
+    elseif (#actions > 0 or S.visual_requested_frames > 0) and packet.expected_external_input_generation == nil then reason="external_input_generation_required"
+    elseif packet.expected_external_input_generation ~= nil and
+      (not S.visual_capture or packet.expected_external_input_generation ~= S.visual_capture.external_input_generation
+        or packet.expected_external_input_generation ~= caps.external_input_generation) then reason="external_input_generation_mismatch"
+    elseif S.visual_capture and (caps.width ~= S.visual_capture.width or caps.height ~= S.visual_capture.height) then reason="capture_dimensions_changed" end
+    if reason then
+      S.visual_request_error=reason
+      for index,act in ipairs(actions) do visual_feedback(index,act,"rejected",reason) end
+      if reason == "invalid_frame_budget" then S.visual_requested_frames=0 end
+      S.frame_budget=0 -- stale/invalid packets never invoke handlers or advance time
+    else
+      if DeterministicSetup.owns() and not DeterministicSetup.handoff(packet.seq) then
+        S.visual_request_error="deterministic_setup_handoff_failed";S.frame_budget=0
+        S.obs_fresh=write_observation();return true
+      end
+      for index,act in ipairs(actions) do visual_deliver(index,act,caps) end
+      S.visual_start_world_updates=visual_world_updates(caps)
+      S.frame_budget=S.visual_requested_frames
+      if visual_blocked() then S.frame_budget=0 end
+    end
+    if S.frame_budget > 0 then set_frozen(false); S.obs_fresh=false; return true end
+    set_frozen(true) -- a delivered Space key cannot run through model latency
+    S.obs_fresh=write_observation()
+  elseif not S.obs_fresh then S.obs_fresh=write_observation() end
+  return true
+end
+
 _G.ftl_bench_tick = function()
   S.frame_counter = S.frame_counter + 1
   if S.err_cooldown > 0 then S.err_cooldown = S.err_cooldown - 1 end
 
   local gui = Hyperspace.App and Hyperspace.App.gui
   if not gui then return end
+  -- Atomic publication can replace the file during this tick. Route one decoded
+  -- snapshot throughout, so a new visual packet cannot be consumed by a later
+  -- historical handler after visual admission inspected the previous packet.
+  local action = read_action_packet()
+  local fresh_setup=action and action.benchmark_setup and (S.last_applied_seq==nil or action.seq>S.last_applied_seq)
+  if fresh_setup and not DeterministicSetup.admit(action) then
+    S.last_applied_seq=action.seq;S.obs_fresh=write_observation();return
+  end
+  if not DeterministicSetup.guard(action) or DeterministicSetup.failed() then
+    if action then S.last_applied_seq=action.seq end
+    S.obs_fresh=write_observation();return
+  end
+  if DeterministicSetup.start_pending() then
+    DeterministicSetup.complete_start();S.starting_new=false
+    S.obs_fresh=write_observation();return
+  end
+  if visual_tick(action) then return end
 
   -- Only gate during an actual run; at the menu/hangar, stream without freezing.
   local world = Hyperspace.App.world
@@ -1777,10 +2797,8 @@ _G.ftl_bench_tick = function()
       S.resetting = false
     end
     -- Autonomy: let the harness start/continue a game from the menu (no click).
-    local ok, action_str = pcall(Hyperspace.read_json_action)
-    if ok and action_str and action_str ~= "" then
-      local dok, action = pcall(json.decode, action_str)
-      if dok and type(action) == "table" and action.seq ~= nil
+    if action then
+      if action.seq ~= nil
          and (S.last_applied_seq == nil or action.seq > S.last_applied_seq) then
         for _, act in ipairs(action.actions or {}) do
           if act.type == "set_seed" then
@@ -1797,14 +2815,29 @@ _G.ftl_bench_tick = function()
           end
         end
         S.last_applied_seq = action.seq
+        S.action_feedback = {}
       end
     end
     -- New game is a 3-click flow (New Game -> CONFIRM -> hangar Start); step it
     -- every ~25 ticks so each screen has time to transition before the next click.
-    if S.starting_new then
+    if S.starting_new and DeterministicSetup.owns() then
+      local set_ok,accepted=pcall(Hyperspace.benchmark_set_difficulty,0)
+      local get_ok,difficulty=pcall(Hyperspace.benchmark_difficulty)
+      if not set_ok or accepted~=true or not get_ok or difficulty~=0 then
+        DeterministicSetup.reject("canonical difficulty unavailable")
+      elseif DeterministicSetup.menu() then S.starting_new=false end
+    elseif S.starting_new then
       S.menu_throttle = (S.menu_throttle or 0) + 1
       if S.menu_throttle % 25 == 0 then
-        pcall(Hyperspace.benchmark_advance_menu)
+        -- Canonical benchmark starts on easy. Set it only in the menu and verify
+        -- the native setting before any click can create the seeded world.
+        local set_ok, accepted = pcall(Hyperspace.benchmark_set_difficulty, 0)
+        local get_ok, difficulty = pcall(Hyperspace.benchmark_difficulty)
+        if set_ok and accepted == true and get_ok and difficulty == 0 then
+          pcall(Hyperspace.benchmark_advance_menu)
+        else
+          log_err("cannot verify canonical easy difficulty before new game")
+        end
       end
     end
     S.obs_fresh = false
@@ -1823,6 +2856,9 @@ _G.ftl_bench_tick = function()
   -- then launches a fresh seeded game). Runs UNFROZEN so the transition plays out.
   if S.resetting then
     S.manual_fire = {}
+    if DeterministicSetup.owns() then
+      DeterministicSetup.reset_tick();S.obs_fresh=write_observation();return
+    end
     set_frozen(false)
     S.reset_throttle = (S.reset_throttle or 0) + 1
     if S.reset_throttle % 10 == 0 then
@@ -1846,7 +2882,16 @@ _G.ftl_bench_tick = function()
     return
   end
 
+  -- Cancel stale surrender targets while still paused, before an empty wait can
+  -- unfreeze a fully charged queued weapon for its first native simulation frame.
+  cancel_unavailable_manual_fire()
   if S.frame_budget > 0 then
+    if DeterministicSetup.owns() then
+      update_manual_fire()
+      DeterministicSetup.advance_interval()
+      if S.frame_budget==0 then S.obs_fresh=write_observation() end
+      return
+    end
     update_manual_fire()
     S.frame_budget = S.frame_budget - 1
     S.adv_elapsed = (S.adv_elapsed or 0) + 1
@@ -1860,8 +2905,7 @@ _G.ftl_bench_tick = function()
     end
     if S.frame_budget == 0 then
       set_frozen(true)
-      write_observation()        -- advance complete (or early-interrupt): rebuild
-      S.obs_fresh = true
+      S.obs_fresh = write_observation()  -- failed snapshots remain dirty for retry
     end
     return
   end
@@ -1869,10 +2913,8 @@ _G.ftl_bench_tick = function()
   set_frozen(true)
 
   local applied = false
-  local ok, action_str = pcall(Hyperspace.read_json_action)
-  if ok and action_str and action_str ~= "" then
-    local dok, action = pcall(json.decode, action_str)
-    if dok and type(action) == "table" and action.seq ~= nil
+  if action then
+    if action.seq ~= nil
        and (S.last_applied_seq == nil or action.seq > S.last_applied_seq) then
       local is_reset = false
       for _, act in ipairs(action.actions or {}) do
@@ -1885,11 +2927,23 @@ _G.ftl_bench_tick = function()
         end
       end
       S.last_applied_seq = action.seq
+      S.action_feedback = {}
       if not is_reset then
+        if DeterministicSetup.owns() and not DeterministicSetup.begin_interval(action.seq,action.advance_frames,"structured",true) then
+          S.obs_fresh=write_observation();return
+        end
         local aok, aerr = pcall(dispatch_actions, action.actions)
-        if not aok then log_err("dispatch error: " .. tostring(aerr)) end
+        if not aok then
+          if DeterministicSetup.owns() then
+            DeterministicSetup.reject("setup dispatch error: "..tostring(aerr));S.obs_fresh=write_observation();return
+          end
+          log_err("dispatch error: " .. tostring(aerr))
+        end
         applied = true
         S.frame_budget = action.advance_frames or 30
+        if DeterministicSetup.owns() and not DeterministicSetup.dispatch_complete() then
+          S.obs_fresh=write_observation();return
+        end
         if S.frame_budget > 0 then
           -- hybrid pause: snapshot the danger baseline so check_critical can detect a crisis
           -- developing during this advance and re-pause early. Clear the prior interrupt flag.
@@ -1904,13 +2958,14 @@ _G.ftl_bench_tick = function()
     end
   end
 
-  -- Rebuild the observation ONLY on a state change (an action was applied) or the first
-  -- frozen tick of this idle period -- not every idle frame. While the agent "thinks" the
-  -- frozen state doesn't change; rebuilding (iterating volatile game collections) ~60x/sec
-  -- was pure waste AND set up the next advance to spin (the residual freeze).
-  if applied or not S.obs_fresh then
-    write_observation()
-    S.obs_fresh = true
+  local ui_signature = idle_ui_signature(gui, world)
+  local ui_changed = ui_signature ~= S.observed_ui_signature
+  local waiting_refresh = S.observed_native_waiting and S.frame_counter - (S.observed_frame or 0) >= 12
+  -- Stable paused ships keep their cached snapshot. Native GUI transitions and
+  -- explicit Wait turns can still progress; refresh on transition and at a
+  -- bounded interval while waiting. A failed read/write never makes the cache fresh.
+  if applied or not S.obs_fresh or ui_changed or waiting_refresh then
+    S.obs_fresh = write_observation()
   end
 end
 

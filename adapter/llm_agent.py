@@ -51,10 +51,10 @@ def load_prompt(version: str = "v1") -> str:
 
 # verbs apply_command accepts from an agent (used to salvage a non-prefixed reply)
 KNOWN_VERBS = {"power", "fire", "beam", "jump", "event", "leave", "wait", "crew", "buy",
-               "sell", "upgrade", "cloak", "doors", "mindcontrol", "battery", "hack",
+               "sell", "upgrade", "reactor", "waitfuel", "distress", "closestore", "cloak", "doors", "mindcontrol", "battery", "hack",
                "drone", "dronerecall", "board", "recall", "giveup", "give_up", "surrender"}
 GIVE_UP_VERBS = {"giveup", "give_up", "surrender"}
-TERMINAL = {"GAME_OVER", "DESTROYED", "FROZEN_KILLED", "ALIVE_BUT_UNRESPONSIVE"}
+TERMINAL = {"VICTORY", "GAME_OVER", "DESTROYED", "FROZEN_KILLED", "ALIVE_BUT_UNRESPONSIVE"}
 
 
 def _attr(g, name, default=None):
@@ -210,8 +210,8 @@ def parse_plan(text: str, max_actions: int = 12) -> tuple[list[tuple[str, list[s
             continue
         if verb in KNOWN_VERBS:
             commands.append((verb, rest))
-            if len(commands) >= max_actions:
-                break
+            if len(commands) > max_actions:
+                commands.pop()
     return commands, advance
 
 
@@ -278,6 +278,28 @@ def _summarize(step: int, cmd: str, args: list[str], c: dict) -> str:
     return f"step{step}: '{cmd} {' '.join(args)}' -> " + " ".join(bits)
 
 
+def _economy_sig(c: dict):
+    """Track native recovery/upgrade state, excluding feedback and render timestamps."""
+    economy = c.get("economy") or {}
+    recovery = economy.get("fuel_recovery") or {}
+    navigation = economy.get("navigation") or {}
+    fields = ("current_max_power", "max_level", "next_upgrade_cost", "can_upgrade")
+    return (
+        economy.get("upgrade_available"),
+        tuple(sorted((json.dumps({key: system.get(key) for key in ("system_id", *fields)}, sort_keys=True)
+                      for system in economy.get("systems") or []))),
+        tuple((economy.get("reactor") or {}).get(key) for key in fields),
+        tuple(recovery.get(key) for key in ("out_of_fuel", "distress_on", "can_wait", "waiting")),
+        tuple((economy.get("store") or {}).get(key) for key in ("open", "can_close", "reason")),
+        tuple(navigation.get(key) for key in ("can_jump", "enemy_defeat_pending", "drive_current", "drive_max", "reason")),
+    )
+
+
+def _native_fuel_waiting(c: dict) -> bool:
+    """Native fuel waiting is an animation; its progress is not exposed as a timer."""
+    return ((c.get("economy") or {}).get("fuel_recovery") or {}).get("waiting") is True
+
+
 def _state_sig(c: dict):
     """Signature of the salient game state. If it's unchanged after an action, that action made
     no progress — so the repeated-action nudge can fire on TRUE no-op loops (re-power a maxed
@@ -292,8 +314,10 @@ def _state_sig(c: dict):
         sum((s.get("damage") or 0) + int(bool(s.get("needs_repair"))) for s in c.get("systems", [])),
         tuple(sorted(str(cr.get("hp")) for cr in c.get("crew", []))),
         (en.get("hull") if en else None),
+        en.get("hostile"), en.get("targetable"),
         (c.get("map") or {}).get("at_exit"),
         sh.get("fired"), sh.get("hit"),
+        _economy_sig(c),
     )
 
 
@@ -311,7 +335,8 @@ def _progress_sig(c: dict):
     return (
         # goal progress
         c.get("sector"), c.get("scrap"), m.get("current_pos"), m.get("at_exit"),
-        bool(en), (en.get("hull") if en else None), c.get("game_status"),
+        c.get("fuel"), _economy_sig(c),
+        bool(en), (en.get("hull") if en else None), en.get("hostile"), en.get("targetable"), c.get("game_status"),
         # active ship-management (handling a crisis is NOT a stall)
         c.get("hull"), c.get("oxygen_pct"),
         sum(
@@ -321,6 +346,14 @@ def _progress_sig(c: dict):
         sum(int(f.get("fires") or 0) for f in (c.get("fires") or [])),
         len(c.get("intruders") or []),
         tuple(sorted(str(cr.get("hp")) for cr in (c.get("crew") or []))),
+        # Recharging is productive waiting. Count our charge/cooldown progress so short
+        # advances do not declare a loss before a weapon or the FTL drive is ready.
+        tuple((w.get("slot"), w.get("charge"), w.get("ready_to_fire"))
+              for w in (c.get("weapons") or []) if w.get("powered")),
+        m.get("jump_charge_pct"), m.get("jump_charged"),
+        tuple((key, json.dumps(c.get(key), sort_keys=True))
+              for key in ("cloak", "battery", "hacking", "teleporter", "mind_control")
+              if c.get(key)),
     )
 
 
@@ -329,61 +362,52 @@ def _progress_sig(c: dict):
 def anthropic_complete(system: str, user: str, model: str, max_tokens: int = 700) -> str:
     """Canonical track: Anthropic Messages API over urllib (no SDK dependency). Retries a
     couple times on transient overload (429/529)."""
-    import urllib.error
-    import urllib.request
+    from model_backend import Completion, post_json
 
     # Tolerate a key set with surrounding quotes or stray whitespace (a common `setx KEY "..."`
     # / shell mistake on Windows that otherwise stores the quotes literally and yields a 401).
     key = (os.environ.get("ANTHROPIC_API_KEY") or "").strip().strip('"').strip("'")
     if not key:
         raise RuntimeError("ANTHROPIC_API_KEY not set (export it, or use --backend claude-cli)")
-    body = json.dumps({
+    body = {
         "model": model, "max_tokens": max_tokens, "system": system,
         "messages": [{"role": "user", "content": user}],
-    }).encode()
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages", data=body,
-        headers={"content-type": "application/json", "x-api-key": key,
-                 "anthropic-version": "2023-06-01"})
-    last = None
-    for attempt in range(3):
-        try:
-            with urllib.request.urlopen(req, timeout=90) as r:
-                data = json.loads(r.read())
-            return "".join(b.get("text", "") for b in data.get("content", [])
-                           if b.get("type") == "text")
-        except urllib.error.HTTPError as e:  # noqa: PERF203
-            last = e
-            if e.code in (429, 500, 503, 529):
-                time.sleep(2 * (attempt + 1)); continue
-            # Surface the API's error body (e.g. "Your credit balance is too low...", an invalid
-            # model, a malformed request) instead of a bare "HTTP Error 400" that hides the cause.
-            detail = ""
-            try:
-                detail = e.read().decode()[:300]
-            except Exception:  # noqa: BLE001
-                pass
-            raise RuntimeError(f"anthropic API HTTP {e.code}: {detail or e.reason}") from e
-    raise RuntimeError(f"anthropic API failed after retries: {last}")
+    }
+    data, metadata = post_json("https://api.anthropic.com/v1/messages", body, key,
+                              provider="anthropic", headers={"x-api-key": key,
+                              "anthropic-version": "2023-06-01"})
+    if data.get("stop_reason") not in {"end_turn", "stop_sequence"}:
+        raise RuntimeError(f"Anthropic response did not complete: {data.get('stop_reason')}")
+    reply = "".join(block.get("text", "") for block in data.get("content", [])
+                    if block.get("type") == "text")
+    if not reply.strip():
+        raise RuntimeError("Anthropic returned an empty text response")
+    return Completion(reply, metadata)
 
 
 def claude_cli_complete(system: str, user: str, model: str | None) -> str:
     """No-key track: drive the local `claude -p` headless CLI (uses Claude Code auth). One
     self-contained prompt per turn; we parse one ACTION line out of stdout."""
     prompt = (f"{system}\n\n{user}\n\n"
-              f"(Respond with one short reasoning sentence then a final `ACTION: <command>` "
-              f"line. Do not use any tools or read any files — answer only from the prompt.)")
-    cmd = ["claude", "-p", prompt]
+              f"(Respond with a brief reason then the multi-command `ACTION:` block as instructed. "
+              f"Do not use any tools or read any files — answer only from the prompt.)")
+    # Pass the prompt on stdin: Windows has a 32 KiB command-line limit and a full
+    # observation plus the operating manual can exceed it.
+    cmd = ["claude", "-p", "--tools", ""]
     if model:
         cmd += ["--model", model]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    started = time.monotonic()
+    r = subprocess.run(cmd, input=prompt, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=180)
     if r.returncode != 0:
         # claude -p failed (e.g. "Credit balance is too low", auth / rate errors). Raise so the
         # agent loop ENDS the episode cleanly, instead of returning the error text as a "reply"
         # that parses to no action and silently waits the ship to death.
         raise RuntimeError(f"claude -p failed (exit {r.returncode}): "
                            f"{(r.stderr or r.stdout or '').strip()[:200]}")
-    return r.stdout or r.stderr
+    from model_backend import Completion
+    return Completion(r.stdout or r.stderr, {"provider": "claude-cli", "model": model or "default",
+                      "latency_seconds": round(time.monotonic() - started, 3), "usage": None})
 
 
 def _codex_bin() -> str:
@@ -426,6 +450,7 @@ def codex_complete(system: str, user: str, model: str | None) -> str:
                                      text=True).stdout.strip() or out_path
         except Exception:  # noqa: BLE001
             pass
+    started = time.monotonic()
     try:
         cmd = [codex_bin, "exec", "--skip-git-repo-check", "--ephemeral",
                "--ignore-user-config", "-s", "read-only", "--color", "never", "-o", out_arg]
@@ -438,12 +463,13 @@ def codex_complete(system: str, user: str, model: str | None) -> str:
             cmd += ["-c", f"model_reasoning_effort={effort}"]
         if model:
             cmd += ["-m", model]
-        cmd.append(prompt)
-        # CRITICAL: close stdin. `codex exec` reads stdin when it isn't a TTY (to append a
-        # piped <stdin> block); with no input and an open pipe it blocks forever ("Reading
-        # additional input from stdin..."). DEVNULL gives immediate EOF so it uses the arg prompt.
+        cmd.append("-")
+        # Explicit stdin input supplies EOF and avoids Windows' command-line length limit.
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=300,
-                           stdin=subprocess.DEVNULL)
+                           input=prompt, encoding="utf-8", errors="replace")
+        if r.returncode != 0:
+            raise RuntimeError(f"codex exec failed (exit {r.returncode}): "
+                               f"{(r.stderr or r.stdout or '').strip()[:300]}")
         msg = ""
         try:
             msg = Path(out_path).read_text(encoding="utf-8").strip()
@@ -455,7 +481,9 @@ def codex_complete(system: str, user: str, model: str | None) -> str:
                 raise RuntimeError(f"codex exec failed (exit {r.returncode}): "
                                    f"{(r.stderr or r.stdout or '').strip()[:300]}")
             msg = r.stdout or ""
-        return msg
+        from model_backend import Completion
+        return Completion(msg, {"provider": "codex", "model": model or "default",
+                          "latency_seconds": round(time.monotonic() - started, 3), "usage": None})
     finally:
         try:
             os.unlink(out_path)
@@ -507,6 +535,10 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
     burning the whole budget. A high hard cap still bounds pathological runs.
 
     The session is already reset to the scenario seed by run_instance; we just play."""
+    if backend not in {"anthropic", "claude-cli", "codex", "openai", "jev"}:
+        raise ValueError(f"unknown model backend: {backend}")
+    if step_mult < 1 or stall_limit < 0:
+        raise ValueError("step_mult must be positive and stall_limit must be nonnegative")
     if model is None:
         # anthropic needs an explicit id; claude-cli defaults to 'sonnet'; codex uses its own
         # configured default (pass no -m) so leave it None.
@@ -514,6 +546,10 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
             model = "claude-sonnet-4-6"
         elif backend == "claude-cli":
             model = "sonnet"
+        elif backend == "openai":
+            model = os.environ.get("OPENAI_MODEL", "gpt-6.1-sol")
+        elif backend == "jev":
+            model = "jev-1.13.0"
     manual = load_prompt(prompt_version)  # load once; fail fast if the version is missing
 
     def complete(system: str, user: str) -> str:
@@ -521,12 +557,21 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
             return claude_cli_complete(system, user, model)
         if backend == "codex":
             return codex_complete(system, user, model)
+        if backend == "openai":
+            from openai_backend import openai_complete
+            return openai_complete(system, user, model)
+        if backend == "jev":
+            from decision_backends import jev_complete
+            return jev_complete(system, user, model)
         return anthropic_complete(system, user, model)
 
-    def agent_fn(sess, scenario, log, attempts=()) -> None:
+    def agent_fn(sess, scenario, log, attempts=()) -> dict:
         # Retry context: if the benchmark handed us prior same-seed attempts, reflect on them and
         # carry the lessons into this try's system prompt (Reflexion). First try: attempts is empty.
-        reflection = reflect(attempts, complete) if attempts else ""
+        # Structured backends answer plans/choices, not free-text lessons. Carry the
+        # recorded same-seed history directly instead of requesting a mismatched response.
+        reflection = ("\n\n".join(attempt.digest() for attempt in attempts) if backend in {"jev", "openai"}
+                      else reflect(attempts, complete)) if attempts else ""
         if reflection:
             log(f"    [llm] reflection after {len(attempts)} prior attempt(s) at this seed "
                 f"(carried into this try's system prompt):\n"
@@ -545,18 +590,32 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
         stall_count = 0      # consecutive turns with NO forward progress (play-to-gameover)
         timeouts = 0         # consecutive transient action-ack lags (reset on any success)
         empty_plans = 0      # consecutive turns the model gave NOTHING parseable (dead backend?)
+        observation_errors = 0
+        outcome = {"status": "failed", "reason": "step_limit"}
         HARD_CAP = 1500      # safety bound for play-to-gameover (a full FTL game is < this)
         max_steps = HARD_CAP if play_to_gameover else budget * step_mult
         for step in range(max_steps):
             if not play_to_gameover and jumps >= budget:
+                outcome = {"status": "completed", "reason": "budget"}
                 log(f"    [llm] jump budget {budget} reached"); break
             try:
                 o = sess.observe()
-            except Exception:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001
+                observation_errors += 1
+                if observation_errors >= 4:
+                    outcome = {"status": "failed", "reason": "observation_error", "error": str(e)}
+                    log(f"    [llm] observation unavailable: {e}")
+                    break
                 time.sleep(0.2); continue
+            observation_errors = 0
             c = compact(o)
             status = c.get("game_status")
             if status in TERMINAL:
+                if getattr(sess, "recorder", None) is not None:
+                    sess.recorder.record("terminal_observation", [], o)
+                outcome = {"status": "completed", "reason": "win" if c.get("victory") is True else "game_over"}
+                if status in {"FROZEN_KILLED", "ALIVE_BUT_UNRESPONSIVE"}:
+                    outcome = {"status": "failed", "reason": "game_unavailable"}
                 log(f"    [llm] episode over: {status}"); break
             # resolve a blocking event automatically? No — the model decides (event is in obs).
             try:
@@ -579,6 +638,11 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
                              f"damage, resolve an event) — not another action that does nothing.")
                 reply = complete(system, turn)
             except Exception as e:  # noqa: BLE001 — a model/transport error ends the episode
+                if getattr(sess, "recorder", None) is not None:
+                    trace = getattr(e, "metadata", None)
+                    if trace:
+                        sess.recorder.record("model_error", [], o, model=trace, decision_obs=getattr(o, "raw", None))
+                outcome = {"status": "failed", "reason": "model_error", "error": str(e)}
                 log(f"    [llm] model error: {e}"); break
             commands, adv_directive = parse_plan(reply)
             # Backend-death backstop: a reply with NO commands and NO advance directive is the model
@@ -588,12 +652,16 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
             if not commands and adv_directive is None:
                 empty_plans += 1
                 if empty_plans >= 4:
+                    outcome = {"status": "failed", "reason": "empty_plan"}
                     log(f"    [llm] no actionable plan {empty_plans} turns in a row "
                         f"(backend dead/erroring?) — ending episode"); break
             else:
                 empty_plans = 0
             thought = _extract_thought(reply)
+            sess.pending_model = getattr(reply, "metadata", None)
+            sess.pending_decision_obs = getattr(o, "raw", None)
             if any(vcmd in GIVE_UP_VERBS for vcmd, _ in commands):
+                outcome = {"status": "completed", "reason": "gave_up"}
                 sess.pending_thought = thought
                 try:
                     o2 = sess.step([{"type": "give_up"}], advance_frames=20)
@@ -604,6 +672,7 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
                         f"hull {c2.get('hull')}"
                         + (f"\n        [thought: {thought}]" if thought else ""))
                 except TimeoutError:
+                    outcome = {"status": "failed", "reason": "action_timeout"}
                     log(f"    [llm] step {step}: GIVE UP ack timed out")
                 break
             # Build the env batch from the plan; skip `wait` (a pure advance) and report a bad
@@ -639,7 +708,8 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
                 log(f"    [llm] action ack timed out [{timeouts}]"
                     + ("  — game frozen/dead" if dead else ""))
                 if dead or timeouts >= 4:
-                    raise  # real freeze: let run_instance relaunch + move on
+                    outcome = {"status": "failed", "reason": "action_timeout"}
+                    break
                 continue
             except Exception as e:  # noqa: BLE001 — dispatch error: tell the model, continue
                 history.append(f"step{step}: plan '{plan_str}' -> ERROR: {e}")
@@ -647,16 +717,23 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
                 prev_action = action_str
                 continue
             timeouts = 0  # a successful ack clears the transient-lag streak
-            jumps += sum(1 for c, _ in good_cmds if c in ("jump", "leave"))
             c2 = compact(o2)
+            before_map, after_map = c.get("map") or {}, c2.get("map") or {}
+            position_changed = (before_map.get("current_pos") is not None
+                                and after_map.get("current_pos") is not None
+                                and before_map["current_pos"] != after_map["current_pos"])
+            sector_changed = (c.get("sector") is not None and c2.get("sector") is not None
+                              and c["sector"] != c2["sector"])
+            jumps += int(position_changed or sector_changed)
             # No-op-loop detection: an IDENTICAL plan that left the salient state unchanged did
             # nothing; a plan that moved the state is productive even if repeated.
             sig = _state_sig(c2)
-            repeat_count = repeat_count + 1 if (action_str == prev_action and sig == prev_sig) else 0
+            waiting = _native_fuel_waiting(c2)
+            repeat_count = repeat_count + 1 if (not waiting and action_str == prev_action and sig == prev_sig) else 0
             # Stall = no FORWARD PROGRESS vs the previous turn (map didn't move, enemy not dying, no
             # scrap). Catches idling AND combat stalemates without tripping on incidental micro-drift.
             prog = _progress_sig(c2)
-            stall_count = stall_count + 1 if (prev_prog is not None and prog == prev_prog) else 0
+            stall_count = stall_count + 1 if (not waiting and prev_prog is not None and prog == prev_prog) else 0
             prev_action, prev_sig, prev_prog = action_str, sig, prog
             note = _batch_feedback(good_cmds, c2)
             history.append(f"step{step}: {plan_str} (adv {advance}) -> sector {c2.get('sector')} "
@@ -668,13 +745,18 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
                 + (f"  [stall {stall_count}/{stall_limit}]"
                    if (play_to_gameover and stall_count) else "")
                 + (f"\n        [thought: {thought}]" if thought else ""))
-            # Stall-out: no progress for stall_limit turns -> the run is over (a loss).
-            if play_to_gameover and stall_limit and stall_count >= stall_limit:
-                log(f"    [llm] STALLED {stall_count} turns with no progress -> GAME OVER")
-                break
-            # play-to-gameover also stops when the obs reports the game is over (DESTROYED/GAME_OVER).
-            if play_to_gameover and (c2.get("game_status") in TERMINAL or c2.get("game_over")):
+            # A confirmed native terminal outcome takes precedence over safety guards.
+            if c2.get("game_status") in TERMINAL or c2.get("game_over"):
+                outcome = {"status": "completed", "reason": "win" if c2.get("victory") is True else "game_over"}
                 log(f"    [llm] game over: {c2.get('game_status') or 'GAME_OVER'}"); break
+            # Stall-out is an incomplete evaluation, not a native game loss.
+            if play_to_gameover and stall_limit and stall_count >= stall_limit:
+                outcome = {"status": "failed", "reason": "stalled"}
+                log(f"    [llm] STALLED {stall_count} turns with no progress -> stopping attempt")
+                break
+        else:
+            if not play_to_gameover and jumps >= budget:
+                outcome = {"status": "completed", "reason": "budget"}
 
         # Episode over (stall / death / win / cap): leave FTL cleanly at the menu instead of
         # paused mid-run, so the game is genuinely "over" and the next instance starts fresh.
@@ -685,4 +767,17 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
             except Exception as e:  # noqa: BLE001
                 log(f"    [llm] abandon_to_menu failed: {e}")
 
+        return {**outcome, "turns": step + 1 if max_steps > 0 else 0, "jumps": jumps}
+
+    agent_fn.metadata = {"model": model or "default", "backend": backend,
+                         "prompt_version": prompt_version,
+                         "retry_context": "recorded_digest" if backend in {"jev", "openai"} else "reflection",
+                         "reasoning_effort": os.environ.get("CODEX_REASONING_EFFORT")
+                         if backend == "codex" else None}
+    if backend == "jev":
+        agent_fn.metadata.update(action_selection="enumerated",
+                                 decision_contract="jev-actuator-choice-v1")
+    elif backend == "openai":
+        agent_fn.metadata.update(action_selection="structured_plan",
+                                 reasoning_effort=os.environ.get("OPENAI_REASONING_EFFORT"))
     return agent_fn

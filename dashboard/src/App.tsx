@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import VisualReplay from "./VisualReplay";
+import TrialResult from "./TrialResult";
+import ComparisonOverview from "./ComparisonOverview";
 import type {
   ActionView,
   DashboardState,
@@ -66,6 +69,7 @@ function formatDelta(from: number | null | undefined, to: number | null | undefi
 }
 
 function feedTone(item: FeedItem): Tone {
+  if (item.ack_timeout) return "warn";
   if (item.collapsed) return item.phase === "recovery" ? "warn" : "info";
   const kinds = new Set(item.actions.map((action) => action.kind));
   if (kinds.has("fire") || kinds.has("event")) return "danger";
@@ -78,12 +82,22 @@ function actionMix(feed: FeedItem[]) {
   const counts = new Map<string, number>();
   for (const item of feed) {
     for (const action of item.actions) {
-      counts.set(action.kind, (counts.get(action.kind) ?? 0) + 1);
+      counts.set(action.kind, (counts.get(action.kind) ?? 0) + (action.count ?? 1));
     }
   }
   return [...counts.entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, 6);
+}
+
+function statusLabel(value?: string | null) {
+  return value ? value.replace(/_/g, " ") : "unknown";
+}
+
+function runProgress(data: DashboardState) {
+  const aggregate = data.agg;
+  if (!aggregate) return "--";
+  return aggregate.total_known ? `${aggregate.done}/${aggregate.total}` : `${aggregate.done} recorded`;
 }
 
 function buildAttention(header: HeaderState) {
@@ -118,7 +132,7 @@ function buildAttention(header: HeaderState) {
   if (incoming > 0) {
     items.push({ label: "Incoming fire", value: `${incoming} inbound`, tone: incoming >= 2 ? "danger" : "warn" });
   }
-  for (const drone of header.enemy_drones ?? []) {
+  for (const drone of header.enemy_hostile === true ? header.enemy_drones ?? [] : []) {
     items.push({ label: "Enemy drone", value: `${drone.type}${drone.firing ? " - firing" : ""}`, tone: "danger" });
   }
   for (const name of header.offline ?? []) {
@@ -136,7 +150,9 @@ function buildAttention(header: HeaderState) {
     items.push({ label: "Store", value: "available", tone: "info" });
   }
   if (items.length === 0) {
-    items.push({ label: "Ship state", value: "no urgent faults", tone: "good" });
+    items.push(header.hull == null
+      ? { label: "Ship state", value: "awaiting observation", tone: "neutral" }
+      : { label: "Ship state", value: "no urgent faults", tone: "good" });
   }
   return items.slice(0, 8);
 }
@@ -210,10 +226,10 @@ function StatePills({ state }: { state: StepState }) {
       <span>Hull {display(state.hull)}</span>
       <span>O2 {display(state.oxygen)}%</span>
       {state.crew_min !== null && state.crew_min !== undefined ? <span>Crew min {state.crew_min.toFixed(0)}</span> : null}
-      <span>Enemy {display(state.enemy, "none")}</span>
+      <span>{state.enemy_hostile === false ? "Friendly ship" : state.enemy_hostile === true ? "Enemy" : "Ship contact"} {display(state.enemy, "none")}</span>
       <span>Fire {display(state.fires, "0")}</span>
       {state.incoming ? <span className="threat">Incoming {state.incoming}</span> : null}
-      {state.enemy_drones && state.enemy_drones.length ? (
+      {state.enemy_hostile === true && state.enemy_drones && state.enemy_drones.length ? (
         <span className="threat">Drone {state.enemy_drones.map((drone) => drone.type).join(", ")}</span>
       ) : null}
     </div>
@@ -229,9 +245,11 @@ function Delta({ label, value }: { label: string; value: string }) {
   );
 }
 
-function TimelineItem({ item }: { item: FeedItem }) {
+export function TimelineItem({ item }: { item: FeedItem }) {
   const tone = feedTone(item);
-  const title = item.collapsed
+  const interference = item.record_kind === "external_interference";
+  const noDispatch = interference && item.visual?.external_input_guard?.packet_dispatched === false;
+  const title = interference ? "Outside input stopped the run" : item.record_kind === "model_error" ? "Model decision unavailable" : item.ack_timeout ? "Input acknowledgement unavailable" : item.collapsed
     ? `${item.count ?? 0} ${item.phase ?? "stabilize"} turns`
     : item.actions.some((action) => action.kind === "jump")
       ? "Navigation"
@@ -250,8 +268,12 @@ function TimelineItem({ item }: { item: FeedItem }) {
       <div className="timeline-body">
         <div className="timeline-head">
           <h3>{title}</h3>
-          <span>{item.advance ? `${item.advance} frames` : "advance pending"}</span>
+          <span>{item.elapsed_seconds !== null && item.elapsed_seconds !== undefined
+            ? `${item.elapsed_seconds.toFixed(1)}s ${item.collapsed ? "total elapsed" : "between records"}`
+            : "elapsed time unavailable"}</span>
         </div>
+        {item.ack_timeout ? <p className="muted">Delivery is unverified. Some inputs may have taken effect.</p> : null}
+        {interference ? <p className="muted">{noDispatch ? "No planned inputs were sent." : "Input delivery is unverified."}</p> : null}
 
         {item.collapsed ? (
           <div className="collapsed-block">
@@ -267,26 +289,39 @@ function TimelineItem({ item }: { item: FeedItem }) {
         )}
 
         <div className="action-row">
-          {item.actions.length ? item.actions.map((action, index) => <ActionChip action={action} key={`${action.label}-${index}`} />) : <span className="action-chip other">advance</span>}
+          {noDispatch ? <span className="action-chip other">No input sent</span>
+            : item.actions.length ? item.actions.map((action, index) => <ActionChip action={action} key={`${action.label}-${index}`} />)
+            : <span className="action-chip other">{interference ? "Delivery unverified" : "advance"}</span>}
         </div>
         <StatePills state={item.state} />
+        {item.model ? <details className="muted">
+          <summary>{item.collapsed ? "Latest model request" : "Model request"}: {item.model.model || item.model.provider || "identity unavailable"}
+            {item.model.latency_seconds !== undefined ? ` · ${item.model.latency_seconds.toFixed(2)}s` : ""}</summary>
+          <p>Input tokens {display(item.model.usage?.input_tokens)} · Output tokens {display(item.model.usage?.output_tokens)}</p>
+          <p>Request {item.model.request_id || item.model.client_request_id || "unavailable"}</p>
+        </details> : null}
       </div>
     </article>
   );
 }
 
-function Timeline({ feed }: { feed: FeedItem[] }) {
+function Timeline({ feed, status }: { feed: FeedItem[]; status: string }) {
   if (!feed.length) {
     return (
       <section className="empty-panel">
         <h2>No trajectory steps yet</h2>
-        <p>The live run has not written decisions to the selected JSONL file.</p>
+        <p>{["completed", "error", "failed", "interrupted"].includes(status)
+          ? "This attempt ended before recording an action."
+          : "This attempt has not recorded an action yet."}</p>
       </section>
     );
   }
   const newestFirst = [...feed].reverse();
   return (
     <section className="timeline-list">
+      <p className="muted">Elapsed time includes model response time. {feed.some(item => item.visual)
+        ? "Visual replay shows recorded requests and simulated frames separately."
+        : "Requested and simulated frame counts are unrecorded."}</p>
       {newestFirst.map((item, index) => (
         <TimelineItem item={item} key={`${item.i}-${index}`} />
       ))}
@@ -303,20 +338,22 @@ function InstanceButton({
   selected: boolean;
   onSelect: (name: string) => void;
 }) {
-  const tone: Tone = item.solved ? "good" : item.score !== null && item.score !== undefined ? "warn" : item.live ? "info" : "neutral";
+  const tone: Tone = item.status === "error" || item.status === "failed" ? "danger" : item.solved ? "good" : item.score !== null && item.score !== undefined ? "warn" : item.live ? "info" : "neutral";
   return (
     <button className={`instance-button ${selected ? "selected" : ""}`} onClick={() => onSelect(item.name)}>
       <span className="instance-main">
         <span className="instance-name">
-          <StatusDot tone={item.live ? "good" : item.current ? "info" : tone} />
-          {item.name}
+            <StatusDot tone={item.live ? "good" : tone} />
+            {item.label === "trajectory" ? item.run_id || item.name.split("/").slice(-2, -1)[0] || item.label : item.label}
         </span>
         <span className="instance-meta">
-          {item.steps} steps {item.age !== undefined ? `- ${timeAgo(item.age)} ago` : ""}
+          {statusLabel(item.status)} · {item.steps} steps · {timeAgo(item.age)} ago
+          {item.comparison_eligible === false ? " · diagnostic only" : ""}
+          {item.run_id ? ` · ${item.run_id}` : ""}
         </span>
       </span>
       <span className={`score-pill ${tone}`}>
-        {item.score !== null && item.score !== undefined ? item.score : item.live ? "live" : "--"}
+        {item.score !== null && item.score !== undefined ? item.score : item.live ? "live" : statusLabel(item.status)}
         {item.solved ? " solved" : ""}
       </span>
     </button>
@@ -337,7 +374,7 @@ function Sidebar({
   setSelection: (value: string) => void;
 }) {
   const filtered = data.instances.filter((item) => {
-    const haystack = `${item.name} ${item.scenario} ${item.type ?? ""} ${item.tier ?? ""}`.toLowerCase();
+    const haystack = `${item.name} ${item.label} ${item.scenario} ${item.type ?? ""} ${item.tier ?? ""}`.toLowerCase();
     return haystack.includes(query.toLowerCase());
   });
   const current = filtered.filter((item) => item.current);
@@ -352,7 +389,7 @@ function Sidebar({
 
       <button className={`follow-button ${data.following_live ? "active" : ""}`} onClick={() => setSelection("live")}>
         <span>Follow latest run</span>
-        <small>{data.process.label}</small>
+        <small>{statusLabel(data.latest_run.status)}</small>
       </button>
 
       <input
@@ -362,9 +399,9 @@ function Sidebar({
         value={query}
       />
 
-      <div className="side-section">
+      <div className="side-section latest-section">
         <div className="side-heading">
-          <span>Current run</span>
+          <span>Latest run</span>
           <span>{current.length || 0}</span>
         </div>
         <div className="instance-list">
@@ -374,7 +411,7 @@ function Sidebar({
         </div>
       </div>
 
-      <div className="side-section">
+      <div className="side-section history-section">
         <div className="side-heading">
           <span>History</span>
           <span>{other.length}</span>
@@ -389,15 +426,15 @@ function Sidebar({
       <div className="sidebar-footer">
         <div>
           <span>Done</span>
-          <strong>{data.agg ? `${data.agg.done}/${data.agg.total}` : "--"}</strong>
+            <strong>{runProgress(data)}</strong>
         </div>
         <div>
-          <span>Mean</span>
-          <strong>{data.agg ? data.agg.mean : "--"}</strong>
+          <span>Comparison mean</span>
+            <strong>{display(data.agg?.mean)}</strong>
         </div>
         <div>
           <span>Solved</span>
-          <strong>{data.agg ? `${data.agg.solved}/${data.agg.total}` : "--"}</strong>
+            <strong>{data.agg ? `${data.agg.solved}/${data.agg.comparison_instances}` : "--"}</strong>
         </div>
       </div>
     </aside>
@@ -449,9 +486,9 @@ function TopPanel({ data, lastUpdated }: { data: DashboardState; lastUpdated: Da
   const hullMax = header.hull_max || 30;
   const enemy = parsePair(header.enemy);
   const score = data.selected_score?.score ?? header.ftl_score;
-  const runLabel = data.following_live ? "following live" : "inspecting history";
-  const processTone: Tone = data.process.alive === true ? "good" : data.process.alive === false ? "danger" : "neutral";
-  const currentInstance = data.run.current_instance || "none";
+  const runLabel = data.following_live ? `latest run · ${statusLabel(data.run.status)}` : `recorded run · ${statusLabel(data.run.status)}`;
+  const processTone: Tone = header.live ? "good" : header.status === "error" || header.status === "failed" ? "danger" : "neutral";
+  const showEnemy = header.enemy_hostile === true && header.live;
 
   return (
     <header className="top-panel">
@@ -466,19 +503,37 @@ function TopPanel({ data, lastUpdated }: { data: DashboardState; lastUpdated: Da
         </div>
         <div className="run-meta">
           <span>{display(header.agent, "agent unknown")}</span>
-          <span>{display(data.run.run_id || header.run_id, "run id pending")}</span>
+          <span>{display(header.run_id || data.run.run_id, "run id unavailable")}</span>
+          <span>FTL process: {data.process.label}</span>
           <span>{lastUpdated ? `updated ${lastUpdated.toLocaleTimeString()}` : "not refreshed"}</span>
         </div>
       </div>
 
-      <div className={`source-banner ${data.following_live ? "live" : "history"}`}>
-        <strong>{data.following_live ? "Live trajectory" : "Historical snapshot"}</strong>
+      <div className={`source-banner ${header.live ? "live" : "history"}`}>
+        <strong>{header.live ? "Active attempt" : `Attempt ${statusLabel(header.status)}`}</strong>
         <span>
-          {data.following_live
-            ? `${display(header.instance)} from ${shortPath(data.run.bench)}`
-            : `${display(header.instance)} is not the live FTL window. Live file: ${currentInstance} in ${shortPath(data.run.bench)}.`}
+          {header.reason || data.run.reason ? statusLabel(header.reason || data.run.reason) : `${display(header.instance)} from ${shortPath(data.run.bench)}`}
+          {!data.following_live && data.latest_run.active_instance ? ` · Active: ${data.latest_run.active_instance}` : ""}
         </span>
       </div>
+      {data.run.validation?.comparison_eligible === false ? <>
+        <div className="source-banner history" role="note">
+          <strong>Diagnostic only</strong>
+          <span>Recorded scores and outcomes are retained. This run is excluded from model-comparison totals.</span>
+        </div>
+        {data.run.validation.limitations.length ? <ul className="muted">
+          {data.run.validation.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}
+        </ul> : null}
+      </> : null}
+      {header.error || data.run.error ? <div className="api-error">{header.error || data.run.error}</div> : null}
+      {header.partial ? <div className="api-error">Trajectory is partially written or contains an invalid record. Final scoring is pending.</div> : null}
+      {header.status === "unknown" ? <p className="muted">This older trajectory has no recorded lifecycle. Its score is provisional.</p> : null}
+      {header.model_usage?.recorded_completions ? <p className="muted">
+        {header.model_usage.models.join(", ") || "Model identity unavailable"} · {header.model_usage.recorded_completions} recorded requests
+        {" · "}{display(header.model_usage.input_tokens)} input / {display(header.model_usage.output_tokens)} output tokens
+        {header.model_usage.latency_seconds_mean !== null ? ` · ${header.model_usage.latency_seconds_mean.toFixed(2)}s average` : ""}
+        <br />Usage covers recorded completions; failed request usage and cost may be unavailable.
+      </p> : null}
 
       <div className="metric-grid">
         <MetricCard
@@ -491,23 +546,23 @@ function TopPanel({ data, lastUpdated }: { data: DashboardState; lastUpdated: Da
         <MetricCard
           label="Oxygen"
           value={`${display(header.oxygen)}%`}
-          sub={header.fires ? `${header.fires} fire tiles` : "rooms stable"}
+          sub={header.fires == null ? "awaiting observation" : header.fires ? `${header.fires} fire tiles` : "rooms stable"}
           tone={toneForLowGood(header.oxygen, 60, 25)}
           bar={percent(header.oxygen)}
         />
         <MetricCard
-          label="Crew"
+          label="Player crew"
           value={`${display(header.crew)} alive`}
-          sub={header.crew_min !== null && header.crew_min !== undefined ? `min ${header.crew_min.toFixed(0)} hp` : "health unknown"}
-          tone={header.crew_low ? "warn" : "good"}
-          bar={percent(header.crew_min ?? 100)}
+          sub={header.crew === 0 ? "No surviving crew" : header.crew_min !== null && header.crew_min !== undefined ? `min ${header.crew_min.toFixed(0)} hp` : "health unknown"}
+          tone={header.crew === 0 ? "danger" : header.crew_min === null || header.crew_min === undefined ? "neutral" : header.crew_low ? "warn" : "good"}
+          bar={header.crew === 0 ? 0 : percent(header.crew_min)}
         />
         <MetricCard
-          label={header.enemy_present ? "Enemy" : "Score"}
-          value={header.enemy_present ? display(header.enemy) : display(score)}
-          sub={header.enemy_present ? "enemy hull" : data.selected_score?.solved ? "solved" : "current FTL score"}
-          tone={header.enemy_present ? "danger" : data.selected_score?.solved ? "good" : "info"}
-          bar={header.enemy_present && enemy ? enemy.pct : percent(score ?? 0, 350)}
+          label={showEnemy ? "Enemy" : "Score"}
+          value={showEnemy ? display(header.enemy) : display(score)}
+          sub={showEnemy ? "enemy hull" : data.selected_score?.solved ? "solved" : header.live ? "current FTL score" : "recorded FTL score"}
+          tone={showEnemy ? "danger" : data.selected_score?.solved ? "good" : "info"}
+          bar={showEnemy && enemy ? enemy.pct : percent(score ?? 0, 350)}
         />
       </div>
 
@@ -529,7 +584,7 @@ function InsightPanel({ data }: { data: DashboardState }) {
   const attention = buildAttention(data.header);
   const mix = actionMix(data.feed);
   const aggregate = data.agg;
-  const progress = aggregate ? percent(aggregate.done, aggregate.total) : 0;
+  const progress = aggregate?.total ? percent(aggregate.done, aggregate.total) : 0;
 
   return (
     <aside className="insight-panel">
@@ -550,24 +605,34 @@ function InsightPanel({ data }: { data: DashboardState }) {
 
       <section className="panel-section">
         <div className="panel-head">
-          <h2>Run Progress</h2>
-          <span>{aggregate ? `${aggregate.done}/${aggregate.total}` : "--"}</span>
+          <h2>Selected Run</h2>
+          <span>{runProgress(data)}</span>
         </div>
         <Bar value={progress} tone={aggregate && aggregate.solved === aggregate.total ? "good" : "info"} />
         <dl className="summary-list">
           <div>
-            <dt>Mean FTL</dt>
-            <dd>{aggregate ? aggregate.mean : "--"}</dd>
+            <dt>Comparison mean FTL</dt>
+            <dd>{display(aggregate?.mean)}</dd>
           </div>
           <div>
-            <dt>Solved</dt>
-            <dd>{aggregate ? `${aggregate.solved}/${aggregate.total}` : "--"}</dd>
+            <dt>Solved (comparison)</dt>
+            <dd>{aggregate ? `${aggregate.solved}/${aggregate.comparison_instances} scored` : "--"}</dd>
           </div>
           <div>
-            <dt>Attempt files</dt>
+            <dt>Finalized attempts</dt>
             <dd>{aggregate ? aggregate.attempt_files : "--"}</dd>
           </div>
+          <div><dt>Failed / interrupted (comparison)</dt><dd>{aggregate ? `${aggregate.failed} / ${aggregate.interrupted}` : "--"}</dd></div>
+          <div><dt>Failed / interrupted (all)</dt><dd>{aggregate ? `${aggregate.attempt_failures} / ${aggregate.attempt_interrupted}` : "--"}</dd></div>
+          {aggregate?.comparison_excluded ? <>
+            <div><dt>Diagnostic instances excluded</dt><dd>{aggregate.comparison_excluded}</dd></div>
+            <div><dt>Recorded diagnostic mean FTL</dt><dd>{display(aggregate.recorded_mean)}</dd></div>
+            <div><dt>Solved (recorded)</dt><dd>{aggregate.recorded_solved}/{aggregate.recorded_scored} scored</dd></div>
+          </> : null}
+          <div><dt>Unfinished files</dt><dd>{aggregate?.incomplete ?? "--"}</dd></div>
         </dl>
+        <p className="muted">Comparison metrics use the best eligible attempt per scenario. Finalized counts describe recorded-file coverage. All attempt failures remain listed.</p>
+        {aggregate && aggregate.recorded_scored < aggregate.done ? <p className="muted">{aggregate.done - aggregate.recorded_scored} finalized scenario(s) could not be scored.</p> : null}
       </section>
 
       <section className="panel-section">
@@ -600,17 +665,21 @@ function InsightPanel({ data }: { data: DashboardState }) {
 
 function App() {
   const [data, setData] = useState<DashboardState | null>(null);
-  const [selection, setSelection] = useState("live");
+  const [selection, setSelection] = useState(() => new URLSearchParams(window.location.search).get("sel") || "live");
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    let inFlight = false;
+    const controller = new AbortController();
 
     async function load() {
+      if (inFlight) return;
+      inFlight = true;
       try {
-        const response = await fetch(`/api/state?sel=${encodeURIComponent(selection)}`, { cache: "no-store" });
+        const response = await fetch(`/api/state?sel=${encodeURIComponent(selection)}`, { cache: "no-store", signal: controller.signal });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -624,6 +693,8 @@ function App() {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Unable to load dashboard state");
         }
+      } finally {
+        inFlight = false;
       }
     }
 
@@ -631,6 +702,7 @@ function App() {
     const id = window.setInterval(load, POLL_MS);
     return () => {
       cancelled = true;
+      controller.abort();
       window.clearInterval(id);
     };
   }, [selection]);
@@ -658,8 +730,11 @@ function App() {
       <main className="main">
         <TopPanel data={data} lastUpdated={lastUpdated} />
         {error ? <div className="api-error">API refresh failed: {error}</div> : null}
+        <ComparisonOverview onSelect={setSelection} />
+        <TrialResult trial={data.visual_trial} />
+        {data.selected && data.header.visual_steps ? <VisualReplay key={data.selected} selection={data.selected} count={data.header.visual_steps} /> : null}
         <div className="content-grid">
-          <Timeline feed={data.feed} />
+          <Timeline feed={data.feed} status={data.header.status} />
           <InsightPanel data={data} />
         </div>
       </main>

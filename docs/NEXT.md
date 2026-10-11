@@ -1,300 +1,175 @@
-# ftl_bench — next steps
+# Current validation and next work
 
-## CURRENT DIRECTION (2026-06-05) — play the game, no sub-goals
-The benchmark was REFRAMED (user's call): the agent should just PLAY FTL toward its real goal —
-beat the rebel flagship — using its own intelligence; we measure how far it gets (`progress`
-milestone: 8 sectors + 3 flagship phases = win). NO artificial scenario types / sub-goals are
-given to the agent. `scenarios/full_game.json` (seeds only, progress-scored); `build_system_prompt`
-appends a constant "WIN THE GAME" objective, not `_goal_text(scenario)`. The T1–T5 typed suite
-(`suite_v1.json`) + its scripted-70.2/random-5.2 numbers are now LEGACY (they scored sub-goals).
+**WIP / alpha. Snapshot: 2026-10-11 02:32 UTC (2026-10-10 23:32 in São Paulo).**
+The visual benchmark is implemented and partially validated. Nine of 36 challenge
+cells are finished; the sector pilot and all four full-game cells are unstarted.
+Development experiments are paused. At this snapshot no recorded benchmark child,
+FTL process or Python controller was live. Documentation updates do not resume them.
 
-**Agent prompt = INTERFACE ONLY** (`prompts/ftl_agent_v5.md`): name the game + the controls + the
-obs schema + the few quirks that differ from clicking the real game (commands are one-time SETS;
-power≠fire; broken systems need crew repair not power; `leave` crosses sectors; the hybrid pause
-+ `advance <N>`; `giveup` concedes an unrecoverable instance without reward). ZERO strategy — the
-model already knows FTL from training; teaching strategy backfired (v2's "no time pressure/patch up"
-made it dawdle). v5 keeps the prompt lean while preserving decision-complete observations.
+## Implemented and verified scope
 
-**Interface VALIDATED — it discriminates by capability.** Opus 4.8 played the full game (seed 1)
-WELL through this interface (smart targeting/power/repair, no no-op loops, cleared sector 0 at 30/30,
-one jump from sector 1) where zero-shot Sonnet DAWDLED at sector 0 (power/wait no-op loops, 3-4
-jumps). Opus credited the session's interface fixes (called `shots` "the single most helpful field").
-So the benchmark works; the ceiling is the AGENT, not interface friction.
+| Area | Evidence and limits |
+| --- | --- |
+| Visual play | Authenticated Codex CLI receives archived native PNGs and returns bounded mouse/key inputs. Native protocol 5, visual clock 2 and `fresh-start-seed-v3` are integrated. |
+| Observation modes | Image-only play and hybrid HUD numerals extracted from the same PNG; no hidden native-state fallback. The comparative model trials remain incomplete. |
+| Repeatable setup | Nine no-model fixture-6 probes passed measured starting-state and step equality across three wall delays. This covers the tested inputs, not every hidden RNG stream or full-game determinism. |
+| Protected lifecycle | Save backups, exact restoration, runtime identities and terminal evidence are recorded. Cooperative-stop probes passed before the actor and during one real CLI request; the returned cancelled response was retained and its actions discarded. |
+| Challenges | Frozen 36-cell controller, versioned public tasks, outcome audits, retained failures and exact replays. Nine Sol/image cells are complete; results are below. |
+| Full-game support | Fixture-free startup and the five-cell controller are implemented. Startup preserves the opening choice. No cell in the current full-game cohort has started. |
+| Dashboard | Saved challenge/full-game overviews, exact screenshots and inputs, outcome reasons, task identities and saved cleanup receipts. The dashboard is read-only. |
 
-**REMAINING FRONTIERS (not the interface):**
-1. **Engine reliability** — Opus's winning run ended on a Rosetta jump/sector-transition FREEZE
-   (`FROZEN_KILLED`, ship was 30/30 alive). This caps full-length runs + a real progress number.
-   Root-cause the jump-time freeze (RepairDrone SIGBUS class / warp teardown) so games can run to 8
-   sectors. THE key blocker now.
-2. **Play-to-game baselines** — re-baseline `scripted`/`random` on `full_game.json` (progress-scored)
-   so agent results have floors (code agents, no API credit needed). IN PROGRESS.
-3. **Billing** — Anthropic API + headless `claude -p` are credit-exhausted (account-wide) after this
-   session; harness-scored LLM runs need a top-up. In-session Agent-tool subagent (runs as Opus 4.8)
-   is the working fallback for a strong agent but isn't auto-scored.
+The visual track is `visual-v1`; historical structured runs retain runner/ruleset
+v7 and their own contracts. Do not pool their scores or treat a diagnostic fixture
+ending as a fixture-free full game.
 
----
+## Current challenge results
 
-**Benchmark v1 shipped (2026-06-04):** the env is now a goal-conditioned scenario
-benchmark (ARC-AGI/WebShop/BALROG-inspired). `harness/src/ftl_bench/{scenario,scoring.
-score_instance,aggregate}.py`, `scenarios/suite_v1.json` (T1–T5, public + held-out),
-`adapter/run_benchmark.py` (runner → headline **GCS@1** + Solve Rate). The agent decides
-in-game; only goal achievement is scored. Reliability: the jump/arrival freeze is fixed
-(rebuild obs only on state change + guard volatile collection reads against the warp).
+Cohort: `harness/runs/validation/visual-v1/matrix-task-v2-stop-v1-20261011`.
+Protocol SHA-256:
+`9cab4b1629ebefef5f6686d3865ea19966793a2d6013801d471e51a14f062087`.
+All 76 source/runtime pins match the retained archive and checkout at this update.
 
-**Combat now actually works (2026-06-04) — Burst Laser firing fixed.** Root cause: a
-multi-shot weapon needs `ProjectileFactory::NumTargetsRequired()` aim points to fire, but
-`fire_weapon` supplied only one — so the 3-shot Burst Laser II stayed fully charged +
-`fire_when_ready` yet never released (the Artemis missile, 1 shot, worked). Fix (live, pure
-Lua in `apply_fire_weapon`): top up `pf.targets` to `NumTargetsRequired()` copies of the
-target-room center so the whole burst can release. The current interface is manual one-shot
-fire control: `fire_weapon` queues one release, then clears `fireWhenReady`/autofire. C++
-`hs_benchmark_fire_weapon` also corrected for the next rebuild. The obs now
-exposes per-weapon `num_shots`/`targets_required`/`n_targets`. Two combat facts this exposed:
-(1) FTL gates `World::OnLoop` on `bPaused || event_pause || menu_pause || bAutoPaused`, so an
-unresolved (often **chained**) event/flee dialog freezes the *whole* combat sim — clear the
-choice box (loop `choose_event` until `choice_box_open=false`) to resume; (2) a damaged enemy
-pops a "trying to escape!/Continue…" dialog that re-pauses combat — the baseline `fight()` now
-dismisses it to finish the kill. Verified: scripted agent lands real kills in the suite
-(`enemy destroyed`, scrap reward) — shielded fights are winnable now that the burst fires.
+All completed cells requested `gpt-6.1-sol`, image mode, Kestrel A/easy, seed 1,
+medium reasoning, 60 decisions, 1,800 seconds and eight consecutive empty
+zero-frame decisions. The [protocol](visual-experiment-protocol.md) defines the
+remaining controls, setup, audit and exclusion rules.
 
-**First real-LLM playtest (2026-06-05) — the agent-facing CLI was starving the agent.**
-Dispatched a real frontier LLM (a subagent, no scripted policy) to play instance
-T3-healthy1-s1 (seed 1) turn-by-turn through `play_cli.py` and write a benchmark report. It
-**died at hull 0 in sector 0 (score ~0/4)** and its report was the missing signal: its three
-biggest complaints — "can't navigate to the exit", "enemy weapons invisible", "weapon identity
-unknown" — were **all data the raw obs already had but `compact()` discarded**. Verified field-
-by-field against `ftl_agent_observation.json`: the raw obs carries `map.exit_pos`/`current_pos`
-+ per-beacon `pos_x/pos_y`, `enemy_ship.weapons`/`systems`, and per-weapon `weapon_type`/
-`is_beam` — none of which reached the agent. **Fix (pure Python, no rebuild, `play_cli.py
-compact()`):** forward `current_pos`/`exit_pos` + per-beacon `pos` and a derived `dist_to_exit`
-(the data; the agent still decides which beacon — no "best" flag); add player weapon `type`/
-`is_beam`; forward `enemy.weapons` (count + charge + `about_to_fire`) and `enemy.systems`
-(powered); split the ambiguous `reactor "3/8"` into numeric `reactor_free`/`reactor_total`
-(a real agent misread which number was free); flag `game_status: DESTROYED` at hull<=0 (the
-formal `game_over` flag only flips at the menu, leaving a hull-0 window that read as a live-
-but-stuck state — verified the fix on the prior run's corpse); and a `power_result` that says
-WHY a `power` command didn't apply (damaged/ion/no-free-reactor — a silent power no-op cost the
-first agent its main weapon). **A/B VALIDATED:** identical prompt, fresh agent, enriched obs →
-**Run #2 crossed to sector 1, hull 23/30, 3 crew, 4/4** (vs Run #1's ~0/4). The obs compaction
-WAS the bottleneck. **Second-tier fixes (surfaced only once the agent got far enough), both
-verified live:** (1) **`leave` silent no-op → reliable** — `benchmark_leave_sector` only SETS the
-StarMap transition flags and `StarMap::OnLoop` commits them a later tick, so a fixed frame-advance
-could re-pause mid-transition (Run #2 needed ~5 retries to cross). `session.leave_sector` now
-PUMPS until the sector increments (re-issue is a safe no-op mid-warp); `play_cli` emits
-`leave_result` (committed/refused/pending). Verified: a single `s.leave_sector()` committed sector
-0→1 in 6.3s. (2) **weapon stats null until combat** — the dev-lua enrichment gated the PLAYER's
-own `weapon_type`/`is_beam`/`num_shots` on an enemy being present; dropped that. Verified:
-`type:MISSILES/LASER` shows with `enemy:None`. **Third-tier — the items I'd called "deferred"
-are now DONE (2026-06-05), all pure-Lua-hot-reload + `compact()`, NO rebuild.** A 4-lane
-research→adversarial-verify Workflow confirmed every `%rename`-bound symbol against the SWIG master
-+ the compiled wrapper (the deferral premise was wrong — enemy-weapon enrichment mirrors the player
-loop in the hot-reload `ftl_bench_dev.lua`, and `ShipManager::jump_timer` was bound all along, just
-never read into the obs). The verifier caught a real bug (the draft's enemy-weapon loop would be
-clobbered by the existing `obs.enemy_ship.weapons = ew` replacement — fixed by EXTENDING that loop +
-adding its missing jump/destroy guard). All 4 live-verified in combat: (1) **weapon damage+type+
-shield-piercing for BOTH ships** (`dmg`/`pierces`/`eff_pierce`/`fire`/`ion`; player Artemis dmg2
-pierce5, enemy MISSILES dmg1 pierce5 vs LASER dmg1 pierce0 — the exact missile-vs-laser threat ID the
-dead agent lacked); (2) **`jump_charge_pct`** (`ShipManager::jump_timer` pair; 0 idle, 0.044→climbing
-in combat, + `jump_charge {current,max}`); (3) **evasion** both ships (`GetDodgeFactor()`; player 20,
-enemy 15); (4) **`map.hazard`** (SpaceManager `bStorm`/`pulsarLevel`/`sunLevel`/`bNebula`/asteroids +
-`pds`) + **reactor power-truth** (`PowerManager::GetMaxPower()` → `reactor_usable_total`/
-`reactor_usable_free`/`reactor_power_penalty`, so a storm-capped reactor stops lying; no-hazard case
-verified usable==raw, penalty 0). Only a non-`"none"` hazard value is unobserved (RNG-gated on hitting
-a storm/nebula beacon); the flags are confirmed bound and the `"none"` path works.
+| Challenge | Repeat | Decisions | Terminal reason | Task success |
+| --- | --- | ---: | --- | --- |
+| Combat | 01 | 38 | `idle_decision_budget` | No |
+| Combat | 02 | 34 | `native_game_over` | No |
+| Combat | 03 | 8 | `fixture_goal_observed` | Yes |
+| Fire / crew recovery | 01 | 4 | `fixture_goal_observed` | Yes |
+| Fire / crew recovery | 02 | 3 | `fixture_goal_observed` | Yes |
+| Fire / crew recovery | 03 | 9 | `fixture_goal_observed` | Yes |
+| Repair / charge / escape | 01 | 11 | `idle_decision_budget` | No |
+| Repair / charge / escape | 02 | 4 | `fixture_goal_observed` | Yes |
+| Repair / charge / escape | 03 | 4 | `fixture_goal_observed` | Yes |
 
-### Benchmark — remaining to make it canonical
-1. **Micro-encounter scenarios (T6–T9)** — `win_this_combat`, `escape_a_crisis`,
-   `event_risk_choice`, `resource_goal`. Highest signal-per-token. Needs a new Lua
-   `scenario_setup` binding to pin a frozen mid-run state (player loadout + enemy +
-   systems), plus hand-authored, human-validated snapshots. Pure Lua hot-reload.
-2. **Flagship + store tiers (T10–T12)** — gated on the action-gap bindings below
-   (flagship reachability, store buy/sell). The apex skill probes + the full-run ceiling.
-3. **Baseline ladder + references** — run `random` and `scripted` for the floor (done by
-   run_benchmark.py); add a **human reference** (≥2 clears/instance via MCP/code-mode) to
-   anchor the efficiency axis and validate each instance is human-achievable & not
-   random-achievable; add a **frontier-LLM** track (zero-shot + code-mode).
-4. **Reproducibility hardening** — capture ftl/hyperspace build hashes in the manifest;
-   an acceptance test that re-running an instance reproduces the same milestone outcome.
-5. **Efficiency reference** — per-seed human/best jump counts for the T4 efficiency term.
+This is six task successes, two budget stops and one native crew-loss ending.
+Per-challenge success is 1/3, 3/3 and 2/3 respectively. All nine saved individual
+audits pass with no exclusions. The overall comparison remains unqualified:
+nine Sol/hybrid, nine Luna/image and nine Luna/hybrid cells are still planned.
+These small fixed-seed samples establish no model ranking or hybrid advantage.
 
-Status of the env it runs on: **M1–M6 working end-to-end and live-verified** (see README),
-**plus sector progression, richer observation, and a smarter baseline.**
-An agent can reset (continue/new, seeded), observe, and act (power, crew, jump,
-event-choice, fire, leave-sector) through the harness, the MCP adapter, or the scripted
-baseline agent; runs are recorded and scored. The baseline navigates a full sector to
-the exit beacon and **crosses into the next sector** (`leave_sector`), fleeing on
-oxygen/weapon/crew danger and escalating event choices.
+Failure details matter. Combat repeat 01 let the enemy escape without its reward;
+raw native `destroyed` and kill-counter changes alone do not prove a kill.
+Repeat 02's final screen reports all crew dead; oxygen was 1%, but the precise
+death mechanism is not established. Repair repeat 01 departed and spent fuel,
+but did not establish the required repaired, powered, fully charged drive state
+before departure. These outcomes remain in the denominator; they are not
+silently retried or converted into infrastructure errors.
 
-Done this session (was rebuild-gated): **`leave_sector` binding** (exit beacon → next
-sector; refuses during combat to dodge a transition SIGBUS), **exit-beacon + position +
-rebel-fleet + sector-choice observation**, **crash-flag-aware restart** (recovers from a
-crashed/killed FTL), **launch via `Hyperspace.command` directly** (no `open` → vanilla
-bridge-less hang; no `osascript activate` → duplicate instance).
+Each completed cell has a saved gate under `gated-audits/`, joining its terminal
+artifacts to verification of all seven original saves at cleanup. The last gate
+is dated 2026-10-11 02:17:36 UTC. These are point-in-time restoration checks; the
+documentation review did not repeat a live save audit. Requested model IDs,
+available token usage and response latencies are retained. Resolved backend
+weights and cost are unavailable and must not be inferred.
 
-## Needs a Hyperspace C++ rebuild (do when present — a rebuild re-triggers the mic dialog)
+## Full-game WIP
 
-Rebuild = edit `Benchmark_Extend.{h,cpp}` / `hyperspace.i`, then
-`ninja -C ~/Projects/FTL-Hyperspace/build-darwin-1.6.13-release`, copy the dylib
-into `FTL.app/Contents/MacOS/`, `codesign -f -s - --deep`, relaunch (Allow mic once).
+Cohort: `harness/runs/validation/visual-v1/fullgame-stop-v1-20261011`.
+Protocol SHA-256:
+`da498515a486baf0eff09564f880342106ce2e156d3a65a24df1b468f844c1fc`.
+All 78 source/runtime pins match at this update. All five cells are planned:
 
-1. ~~**Return-to-menu binding**~~ ✅ DONE — `AgentSession.reset_episode(seed)` abandons
-   the current run back to the main menu and launches a fresh seeded game, from
-   in-game, no process restart. (`return_to_menu()` finds the "Main Menu" button by
-   label; the bridge drives return→confirm→new-game in Lua.)
-2. ~~**Store transactions**~~ ✅ DONE — `hs_benchmark_store_read()` (serializes the active
-   store's `vStoreBoxes`/`vItemBoxes`: name from `desc.title`, `desc.cost`, `count`),
-   `hs_benchmark_store_buy(i)`/`hs_benchmark_store_sell(i)` (call the box's virtual
-   `Purchase()`, which deducts scrap + adds the item). Obs exposes `store={buy:[...],sell:
-   [...]}` at a store beacon; actions `store_buy`/`store_sell`/`upgrade_system` (the last
-   spends scrap via `ModifyScrapCount` to raise a system's max power). CLI: `buy`/`sell`/
-   `upgrade`. Verified: bought FTL Fuel, scrap 10→7. Active store = `world->baseLocationEvent->pStore`.
-3. ~~**Beam weapon targeting** (two-point)~~ ✅ DONE — see #4.
-4. ~~**Activate special systems** as first-class actions~~ ✅ ALL 8 WIRED (2026-06-05). Two
-   research+adversarial-verify workflows (one per system) produced paste-ready impls with a full
-   binding audit (every Hyperspace symbol confirmed `%rename`-bound) + a per-system Rosetta
-   crash verdict re-derived from the teardown source. All 8 came back SHIP-WITH-FIXES; the fixes
-   are folded in. **Lua-only (hot-reload):** `cloak` (10), `set_doors` (8), `mind_control` (14),
-   `deploy_drone`/`recall_drones` (4). **Needed the C++ rebuild (3 new bindings, done + loaded +
-   verified callable):** `battery` (12, +`BatterySystem::timer` rename, then Lua), `fire_beam`
-   (`hs_benchmark_fire_beam`, two distinct sweep points), `hack_system` (`hs_benchmark_hack_system`),
-   `teleport_crew` (`hs_benchmark_teleport_crew`, send/recall). Obs exposes each system's state
-   (`battery`/`hacking`/`drones`/`teleporter`/`cloak`/`mind_control` blocks + per-weapon
-   `is_beam`/`weapon_type`/`beam_length`). Harness builders + `__init__` exports + `play_cli`
-   cmds (`battery`/`beam`/`hack`/`drone`/`dronerecall`/`board`/`recall`).
-   **Rosetta crash-safety (verified from source):** HackingDrone is a `SpaceDrone` (not a
-   CrewDrone) → outside the SIGBUS class; combat/defense drones likewise. `deploy_drone`
-   DEFAULT-REFUSES crew-drone types (2 repair,3 battle,4 boarder,5 ship-repair) unless
-   `allow_crew_drone` (slot-order-safe so it can't deploy a refused slot first). `teleport_crew`
-   only ever sends `IsDrone()==false` organic crew (organic death frees via uncorrupted
-   `~CrewAnimation`; only RepairDrone's RepairAnimation vtable SIGBUSes). hack dedups the
-   space.drones push by pointer-scan (not the unreliable `drone.deployed` flag).
-   **Verified at runtime (new build):** all 3 bindings register as callable Lua functions; all 7
-   new actions dispatch clean (no crash, FTL alive) when the system is absent (no-op); obs blocks
-   run clean. **Not yet runtime-demonstrated:** the in-combat EFFECT of a *bought* special system
-   (a beam sweep / hack landing / boarders teleporting / cloak engaging) — gated on reaching a
-   store that stocks a special SYSTEM (RNG; a 14-jump run hit a store with weapons only). The
-   buy→power→activate loop + obs-confirms is the recommended next validation.
+1. Sol/image sector-one pilot.
+2. Sol/image full game.
+3. Sol/hybrid full game.
+4. Luna/image full game.
+5. Luna/hybrid full game.
 
-## No rebuild needed (pure Lua hot-reload / Python)
+The declared settings are seed 1, medium reasoning, 300 decisions, 14,400 seconds
+and eight idle decisions. Only audited native victory or defeat completes a
+fixture-free full game. Pilot results, budget exhaustion, interrupted attempts
+and a native loss inside a challenge fixture do not satisfy that requirement.
+One attempt per condition will remain descriptive, not a broad ranking.
 
-5. **Scenario library** (`scenarios/`): curated `{seed, sector, goal}` micro-encounters
-   (a single combat, an escape, a store-allocation) + a runner that scores each.
-6. ~~**A real LLM agent** over the adapter~~ ✅ DONE (2026-06-05) — **`--agent llm` track in
-   `run_benchmark.py`** (`adapter/llm_agent.py`). A real frontier model plays the whole suite
-   over the SAME intent-level surface the baselines use: per turn it gets the decision-complete
-   `compact()` obs + the scenario goal + a short action history and replies with one command
-   (`ACTION: <cmd>`), dispatched through a SHARED `apply_command()` refactored out of
-   `play_cli.py` so the LLM and CLI have identical action semantics. No scripted policy. Two
-   pluggable backends: `--backend anthropic` (canonical; Anthropic Messages API over urllib, no
-   SDK dep; needs `ANTHROPIC_API_KEY`) and `--backend claude-cli` (shells out to local
-   `claude -p`; no key — used to validate end-to-end). Scored identically (trajectory →
-   `score_instance` → `aggregate` → GCS@1/solve), manifest records `{model, backend}`, summary
-   filename namespaced per agent label. **Validated live** (claude-cli, seed 1): the model made
-   real decisions (`jump 3` → `event 0` → `jump 5`), jumps counted, budget enforced, scored.
-   **Versioned prompt manual (2026-06-05):** the agent's rules/instructions are a first-class,
-   version-controlled artifact — `prompts/ftl_agent_v1.md` (a full operating manual: turn loop,
-   obs schema field-by-field, core mechanics, how-to-play). The diagnosis that prompted it: a
-   real run showed the model `power`s weapons then `wait`s forever because **power ≠ fire — you
-   must `fire <slot> <room>` to set a target** (`targeted:false`); the obs now surfaces
-   `targeted` and the manual teaches the mechanic. `--prompt-version` selects the manual;
-   `prompt_version` is recorded in the manifest + agent label (a different manual = a different,
-   non-comparable agent). Remaining: a FULL public/suite pass for the first real GCS@1 row.
-7. **Richer observation** (mostly ✅, v5 current): incoming projectiles, weapon charge/ETA,
-   per-system ion/hack/broken/repair-room state, room oxygen/fire/breach facts, door topology,
-   exit beacon + positions, rebel fleet, sector-choice flag are done. **Crew
-   management (2026-06-05):** `move_crew(crew_id, room_id)` is the universal tasking action
-   (repair a damaged system = send to its room; fight a fire/intruder = send to that room; man
-   a station). Obs now exposes what that needs (pure Lua, all `%rename`-bound, no rebuild):
-   player system→`room_id` (where to send a repairer; `damage>0` = needs it), per-crew
-   `species`/`skills`(0-5)/`repairing`/`fighting`/`on_enemy_ship`, `player_ship.intruders`
-   (enemy boarders aboard our ship: room/health/species — "find invaders"), and
-   `player_ship.fires` (burning rooms via `GetFireCount`). CLI `compact` surfaces `crew`,
-   system `room`, `broken` / `repair_room`, `rooms`, `doors`, `intruders`, `fires`.
-   **Shot-outcome feed (2026-06-05):** Hyperspace event
-   hooks (`PROJECTILE_FIRE`/`DAMAGE_AREA_HIT`/`SHIELD_COLLISION`, ourShots only) give the agent
-   `player_ship.shots = {fired, hit, shields_blocked, missed, damage_dealt, recent[]}` so it can
-   tell a whiff (evasion → target engines/flee) from a shield-block (→ drop shields/pierce) from
-   a hit, instead of dumping ammo blindly. Verified live via `fight()`: fired=32/hit=8/blocked=17/
-   missed=7 (chain-event callbacks return nil so damage still applies). **Terminal concession
-   (2026-06-10):** `giveup` records the current state and native score as an unsolved concession,
-   preventing dead-end trajectories from turning into long no-op loops. Remaining: runtime-verify
-   optional flagship/event/sector-choice probes on the current build, plus augments.
-8. **Better baseline agent** (partly ✅): exit navigation, flee on O2/weapon/crew danger,
-   event-choice escalation, stalemate-flee, and sector crossing are done. Remaining:
-   active **crew repair** (move crew to a destroyed O2/weapons room instead of fleeing),
-   FTL-charge-aware combat fleeing, buy at stores once #2 lands.
-9. **Combat-time sector flee**: `leave_sector` currently refuses with a live enemy (the
-   transition SIGBUS guard). Root-cause the crash (likely a projectile/teardown race) so
-   the agent can also flee a sector mid-combat.
+## Validation evidence and distribution limits
 
-## Reliability — drone bugs FIXED + autonomous recovery (2026-06-04)
+The accepted cooperative-stop package snapshot passed **1,849 tests with ten
+Windows skips** (eight host C++ compiler checks and two symlink checks). Its
+installed-wheel CLI/helper/dashboard smoke checks passed. The receipt is local:
+`dist/fresh-start-v3-production/package-validation-cooperative-stop/receipt.json`,
+SHA-256 `7ad330cbfc438132f7e0cbba6cd681b32daa050ef9b10b8aea8a8267b81087dd`.
+Its 102 wheel and 176 source-release mappings matched that tested snapshot.
+Subsequent documentation edits mean that receipt does not certify byte identity
+of packages rebuilt from this commit. No new package release is implied.
 
-A single **macOS/Rosetta** bug (`translated:True`, SIGBUS) caused every "freeze"/crash:
-Rosetta corrupts the **`RepairAnimation` vtable**, so **`RepairDrone::~RepairDrone()` SIGBUSes
-whenever an enemy repair drone is FREED** — at a jump (`ClearLocation → RemoveExcessCrew`) and
-at new-game init (`ShipBuilder::Open → CrewMemberFactory::Restart`). Found by `sample`-ing the
-live process (the deepest `Hook_NNNN::wrapper` frame is a fn *called by* the symbol above it,
-so guess-and-rebuild kept missing). You CANNOT refuse the drone's creation — that infinite-
-loops `ShipGenerator::CreateShip → AddDrone`. **FIX (env-gated `FTL_BENCH_STABILIZE_DRONES=1`,
-StatBoost.cpp):** hook `CrewMemberFactory::{Restart,RemoveExcessCrew}` and `std::remove_if` the
-`IsDrone()` members out of `crewMembers`+`lostMembers` before `super()`, so the corrupt
-RepairDrone is LEAKED (a few small objects/instance, bounded) instead of freed. Non-drone crew
-free normally. Verified: `--new seed 3` (both crash sites) plays 10 jumps, 3 kills, crosses to
-sector 1, hull 28/30, **0 crashes at full speed**.
+Separate checks passed ten native executables, including 72 fresh-start cases,
+and 17 dashboard tests plus its build. These scopes do not establish complete
+gameplay. The main integration adds dashboard tests before CI/release builds
+and runs the headless output-contract regressions in the harness CI matrix.
 
-**Defense in depth (kept as belt-and-suspenders):** the launcher exports
-`HYPERSPACE_FORCE_EXIT_ON_FREEZE=1` so Hyperspace's `FreezeWatchdog` SIGKILLs any future spin
-in ~5s (no human dialog) and `com.apple.CrashReporter DialogType none` silences crash popups;
-the runner detects a dead game via `pgrep`, relaunches eagerly, and the agent bails on a
-non-advancing obs `tick`. So even an unforeseen hang self-heals: kill → relaunch → continue.
-`adapter/play_cli.py` reports `game_status: FROZEN_KILLED` so a live agent knows the episode ended.
+The accepted local visual DLL starts with SHA-256 `a33b9984`; the authoritative
+full identities are in `native/manifest.json`, the native build provenance and
+`dist/native-validation.visual-v1.json`. The latter receipt's SHA-256 is
+`2fe556557cc00a2cfa23cb0cd67a58e21ac9b4209b1126c669d588b5f90c97da`.
+Runtime admission checks the exact accepted files, not the prefix in this note.
 
-**Agent-plays harness:** `adapter/play_cli.py` is a thin turn-based CLI (`obs/power/fire/jump/
-event/leave/wait/start`, one action per call → compact JSON). It's the tool surface a code-mode
-LLM agent uses to actually PLAY (vs the scripted baseline) — used to validate the burst-laser
-fix and surface the freeze above with a real agent in the loop.
+`dist/`, generated packages, native binaries, raw runs and credentials are
+intentionally absent from Git. A fresh checkout contains source, tests and
+documentation, but the frozen experiment controllers additionally require the
+locally generated acceptance receipts, referenced evidence and matching installed
+FTL/runtime. The local `dist/run_guarded_matrix.py` supervisor is not shipped.
+Portable acquisition/build/validation of this evidence remains WIP; documented
+`freeze` commands are not a promise that a clean clone is immediately runnable.
 
-**Screenshot (on-demand vision, additive, 2026-06-05):** `adapter/capture.py` +
-`play_cli.py screenshot [path]` lets a vision-capable agent SEE the game when JSON isn't enough.
-It captures FTL's OWN window buffer via `screencapture -l <CGWindowID>` (occlusion-proof — works
-even when another window covers FTL; the naive `-R region` grabs whatever is on top instead).
-The CGWindowID comes from Quartz (optional `screenshot` extra: `pyobjc-framework-Quartz`,
-macOS-only, lazy-imported so it never affects the rest of the CLI); falls back to an
-AppleScript-bounds region grab (and SAYS SO) if Quartz is missing. Purely additive — does NOT
-change the JSON obs; the turn-based pause makes each frame a stable, decision-relevant moment.
-Verified end-to-end (window_buffer, occlusion_proof=True).
+## Main integration
 
-**GAME OVER detection (2026-06-05).** A crew-death game-over is neither a process crash (so the
-pgrep recovery doesn't fire — FTL is alive at the menu) NOR `hull<=0` (crew death leaves the
-hull intact), and the obs had no signal for it — so an agent/driver would spin no-op actions at
-the GAME OVER screen until an iteration cap. Fixed: bound `CommandGui::gameover` (one-line
-`%rename`, rebuild) → obs carries `game_over`; the baseline `play()` loop + CLI (`game_status:
-GAME_OVER`) treat it as terminal, and the runner resets to a fresh episode. Verified end-to-end:
-the obs flag flips and a driver caught it and reset (`GAME OVER detected -> reset to new game`).
+The visual progress is merged with the existing headless Linux/Docker work on
+`main`. Shared code retains Linux process detection, headless reset-completion
+markers, WSL-to-Windows CLI output paths and enriched crew observations alongside
+the visual lifecycle and ownership checks. The package keeps `main`'s version
+`0.2.0`; this merge does not publish a new release.
 
-## Known issues
+The historical nine-cell snapshot above still belongs to its original frozen
+sources. The integration was performed in a separate checkout, preserving the
+original `visual-benchmark-progress` checkout and raw evidence. Merged source
+bytes differ from those pins: experiments on merged `main` require fresh
+acceptance and a new frozen cohort, not reuse of the old cohort under new code.
 
-- ~~**Reproducible game freeze (seed 11, beacon 3).**~~ ✅ FIXED. Root-caused by
-  `sample`-ing the hung process: the game-loop thread was spinning in FTL's
-  `CommandGui::OnLoop()` because the bridge forced `starMap.readyToTravel` while the FTL
-  drive was still recharging (the agent jumping right after a flee) — an inconsistent
-  warp state the engine loops on forever. Fix (Lua, no rebuild): the bridge gates every
-  jump/sector-leave on `jump_ready` (player ship present, not `bJumping`, and
-  `jump_timer.first >= jump_timer.second`); the obs exposes `jump_charged` so the agent
-  waits out the recharge for free instead of spending no-op jump attempts. Verified: the
-  deterministic seed-11 case clears beacon 3 with no freeze; a healthy seed-7 run jumps
-  normally (fuel decrements, no stalls). Diagnostic tooling kept in
-  `$CLAUDE_JOB_DIR/tmp/freeze_sampler.sh` (sample-then-kill on a >12s obs-staleness hang;
-  a watchdog threshold <12s false-fires on normal multi-second warps).
-- **Baseline flee-loop on a crippled ship.** A badly damaged ship (engines/O2 down) can
-  flee repeatedly and its FTL drive recharges too slowly to jump (the agent then stops
-  with "drive won't charge here"). Not a freeze — a policy gap: the baseline should keep
-  engines powered (faster FTL charge) and repair/leave instead of flee-looping.
+Offline merge validation passes 1,853 harness tests with ten platform skips on
+Python 3.13.5, and the same suite from the extracted source release on Python
+3.14.8. The installed-wheel smoke, 17 dashboard tests, dashboard build and
+documentation-site build pass. The standalone economy, routing and fresh-start
+native executables pass in WSL; the fresh-start executable covers 72 cases.
+The 25 headless output-contract checks also pass, including nested/legacy
+artifacts, budget caps, retries, missing/invalid evidence, output overrides and
+Bash syntax. They run separately from the package suite because the Docker
+launchers are checkout-only files. The parallel launcher preserves earlier
+outputs and propagates failed shard/aggregate status.
 
-## Operating notes
+Live Linux/headless compatibility and complete visual games remain WIP; neither
+is established by merging source or passing offline tests. The headless docs
+retain the existing Linux restart and scratch-save limitations. No game or model
+run is part of this integration, and the benchmark goal remains paused.
 
-- Keep FTL un-napped: `defaults write com.example.FTL NSAppSleepDisabled -bool YES`
-  (done) — FTL then ticks in the background and the harness drives it unattended.
-- Iterate Lua with `scripts/deploy_dev.sh` (hot-reload, no relaunch). Only C++ changes
-  need a rebuild+relaunch (and the one mic click).
-- `scripts/restart_ftl.sh [continue|new|none]` = autonomous restart to a run/the menu.
+## Next work when experiments resume
+
+1. Recheck source/runtime pins, exclusive game ownership and original-save cleanup
+   before starting the first sector pilot. Use the existing cohort only if all
+   admission checks pass; changes require a newly declared cohort.
+2. Audit the pilot, then execute the remaining 27 challenge cells and four
+   fixture-free full-game conditions sequentially. Preserve every attempted
+   outcome and stop for technical failures or ambiguous cleanup.
+3. Report matched conditions with denominators, exclusions, outcome reasons,
+   latency and available usage. Keep incomplete games distinct from native endings.
+4. Make native acceptance/evidence setup reproducible from a fresh checkout,
+   validate the merged headless runtime, and revalidate any
+   changed implementation and rebuild packages before release.
+
+Use the [experiment controller commands](visual-experiment-protocol.md#freezing-and-resumption)
+and [full-game sequence](visual-experiment-protocol.md#full-game-progression).
+Stop through the owning controller's cooperative `stop` command and keep it
+alive until protected cleanup finishes. Never rerun a started cell or remove a
+durable stop request to make a cohort continue.
+
+## Historical evidence
+
+The [preserved validation history](validation-history-2026-10-11.md) contains the
+prior development narrative, superseded cohorts, timing/RNG investigations,
+task-v1 false-negative, manual recovery and package receipts. Its intermediate
+"current" and "running" statements are historical. Original raw artifacts remain
+unchanged; later repairs never rewrite their outcomes.

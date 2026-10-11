@@ -1,0 +1,75 @@
+#include <cstdio>
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <vector>
+#define _WIN32
+typedef unsigned long DWORD;
+const DWORD ERROR_SUCCESS=0, ERROR_FILE_NOT_FOUND=2, ERROR_PATH_NOT_FOUND=3,
+    ERROR_ACCESS_DENIED=5, ERROR_SHARING_VIOLATION=32, ERROR_LOCK_VIOLATION=33,
+    INVALID_FILE_ATTRIBUTES=0xffffffff, MOVEFILE_WRITE_THROUGH=8;
+static std::string directory;
+static DWORD last_error=0;
+static int failures=0, calls=0, moves=0, sleeps=0;
+static DWORD forced_error=ERROR_SHARING_VIOLATION;
+static bool exists(const std::string& path) { std::ifstream file(path); return file.good(); }
+static DWORD GetLastError() { return last_error; }
+static DWORD GetFileAttributesA(const char* path) {
+    if (exists(path)) return 0;
+    last_error=ERROR_FILE_NOT_FOUND; return INVALID_FILE_ATTRIBUTES;
+}
+static int ReplaceFileA(const char* target,const char* replacement,void*,int,void*,void*) {
+    ++calls;
+    if (failures-- > 0) { last_error=forced_error; return 0; }
+    if (!exists(target)) { last_error=ERROR_FILE_NOT_FOUND; return 0; }
+    std::remove(target);
+    return std::rename(replacement,target)==0;
+}
+static int MoveFileExA(const char* replacement,const char* target,DWORD flags) {
+    ++moves;
+    if (flags != MOVEFILE_WRITE_THROUGH || exists(target)) { last_error=ERROR_ACCESS_DENIED; return 0; }
+    return std::rename(replacement,target)==0;
+}
+static void Sleep(int ms) { if (ms==2) ++sleeps; }
+template<class... Args> static void hs_log_file(const char*,Args...) {}
+static std::string get_observation_dir() { return directory; }
+static const char* kObservationFile="ftl_agent_observation.json";
+static const char* kObservationTemp="ftl_agent_observation.json.tmp";
+
+static bool hs_benchmark_write_observation(const char* json_str)
+{
+    if (!json_str) return false;
+    const std::string final_path=directory+kObservationFile, temp_path=directory+kObservationTemp;
+    { std::ofstream file(temp_path); file << json_str; file.flush(); if (!file.good()) return false; }
+    // Actual Win32 publication block extracted from the distributed patch.
+@PUBLICATION@
+    return true;
+}
+
+static std::string read() { std::ifstream file(directory+kObservationFile); return std::string((std::istreambuf_iterator<char>(file)),{}); }
+static void reset(int fail,DWORD error=ERROR_SHARING_VIOLATION) { failures=fail; forced_error=error; calls=moves=sleeps=0; }
+#define CHECK(value) do { if (!(value)) { std::cerr << "failed: " #value "\n"; return 1; } } while (0)
+int main(int argc,char** argv)
+{
+    CHECK(argc==2); directory=std::string(argv[1])+"/";
+    std::remove((directory+kObservationFile).c_str());
+    reset(0);
+    CHECK(hs_benchmark_write_observation("old"));
+    CHECK(read()=="old" && calls==1 && moves==1);
+    reset(0);
+    CHECK(hs_benchmark_write_observation("new"));
+    CHECK(read()=="new" && calls==1 && moves==0);
+    reset(1);
+    CHECK(hs_benchmark_write_observation("retry"));
+    CHECK(read()=="retry" && calls==2 && moves==0 && sleeps==1);
+    reset(10,ERROR_ACCESS_DENIED);
+    CHECK(!hs_benchmark_write_observation("must not replace"));
+    CHECK(read()=="retry" && calls==4 && moves==0 && sleeps==3);
+    CHECK(!exists(directory+kObservationTemp));
+    reset(10,1234); // unrelated failures are not retried indefinitely
+    CHECK(!hs_benchmark_write_observation("must not replace"));
+    CHECK(read()=="retry" && calls==1 && moves==0 && sleeps==0);
+    CHECK(!hs_benchmark_write_observation(nullptr));
+    std::cout << "actual native writer policy checks passed\n";
+}

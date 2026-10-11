@@ -1,0 +1,101 @@
+#include "Benchmark_Visual.h"
+#include <cstring>
+#include <iostream>
+#include <vector>
+#define CHECK(value) do { if (!(value)) { std::cerr << "failed: " #value "\n"; return 1; } } while (0)
+struct FocusWindow { bool bOpen=false; } other_window;
+struct ChoiceBox : FocusWindow { int selectedChoice=-1; std::vector<int> choices={0,1}; };
+struct Sector {} current_sector, neighbor_sector, unrelated_sector;
+struct StarMap : FocusWindow {
+    bool readyToTravel=false,bChoosingNewSector=false;
+    int finalSectorChoice=-1;
+    Sector* currentSector=&current_sector;
+    std::vector<Sector*> sectors={&current_sector,&neighbor_sector,&unrelated_sector};
+    struct { bool running=false; } waiting;
+    unsigned unsafe_neighbor_queries=0;
+    bool NeighboringSector(int index) {
+        if (index<0 || static_cast<size_t>(index)>=sectors.size() || !currentSector || !sectors[index]) {
+            ++unsafe_neighbor_queries; return false;
+        }
+        return sectors[index]==&neighbor_sector;
+    }
+};
+struct ShipManager { bool bJumping=false; } manager;
+struct CompleteShip { ShipManager* shipManager=&manager; } ship;
+struct CommandGui {
+    bool gameover=false,alreadyWon=false,choiceBoxOpen=false;
+    ChoiceBox choiceBox;
+    FocusWindow menuBox,optionsBox,inputBox,gameOverScreen,shipScreens,storeScreens,
+        upgradeScreen,crewScreen,equipScreen,leaveCrewDialog,writeErrorDialog;
+    std::vector<FocusWindow*> focusWindows;
+} gui;
+struct WorldManager { bool bStartedGame=true; CompleteShip* playerShip=&ship; StarMap starMap; } world;
+struct CApp { CommandGui* gui=&::gui; WorldManager* world=&::world; } app;
+@BLOCKER@
+int main()
+{
+    CHECK(std::strcmp(visual_blocked_reason(&app),"")==0);
+    gui.choiceBox.bOpen=true;
+    gui.focusWindows={&gui.choiceBox};
+    // Native arrival stages bOpen while reverse warp hides every focus window.
+    // choiceBoxOpen remains false until native GUI synchronizes after the jump.
+    manager.bJumping=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"")==0);
+    other_window.bOpen=true; gui.focusWindows.push_back(&other_window);
+    CHECK(std::strcmp(visual_blocked_reason(&app),"")==0);
+    manager.bJumping=false;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"choice_open")==0);
+    gui.choiceBox.selectedChoice=0;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"focus_window_open")==0);
+    gui.focusWindows.pop_back();
+    CHECK(std::strcmp(visual_blocked_reason(&app),"")==0); // allow explicit queued-choice budget
+    gui.choiceBox.selectedChoice=-1; gui.choiceBox.bOpen=false; gui.focusWindows.clear();
+    world.starMap.bOpen=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"map_open")==0);
+    world.starMap.readyToTravel=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"")==0);
+    // A normal sector click queues only finalSectorChoice. OnLoop must be
+    // explicitly permitted to validate/commit it; an idle picker stays blocked.
+    StarMap& map=world.starMap;
+    map.readyToTravel=false; map.bChoosingNewSector=true;
+    gui.focusWindows={&map};
+    CHECK(std::strcmp(visual_blocked_reason(&app),"map_open")==0);
+    map.finalSectorChoice=static_cast<int>(map.sectors.size());
+    CHECK(std::strcmp(visual_blocked_reason(&app),"map_open")==0);
+    map.finalSectorChoice=2;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"map_open")==0); // non-neighbor
+    map.finalSectorChoice=1; map.sectors[1]=nullptr;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"map_open")==0);
+    map.sectors[1]=&neighbor_sector; map.currentSector=nullptr;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"map_open")==0);
+    map.currentSector=&current_sector;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"")==0);
+    CHECK(map.unsafe_neighbor_queries==0);
+    other_window.bOpen=true; gui.focusWindows.push_back(&other_window);
+    CHECK(std::strcmp(visual_blocked_reason(&app),"focus_window_open")==0);
+    gui.focusWindows.pop_back();
+    map.bChoosingNewSector=false;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"map_open")==0);
+    // The normal Wait button starts waiting.running without closing the map
+    // or setting readyToTravel. Its animation/resolver needs explicit updates.
+    map.waiting.running=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"")==0);
+    gui.choiceBox.bOpen=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"choice_open")==0);
+    gui.choiceBox.bOpen=false; map.waiting.running=false;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"map_open")==0);
+    gui.focusWindows.clear(); map.readyToTravel=true;
+    // Pending travel alone does not hide choices; the renderer uses bJumping.
+    gui.choiceBox.bOpen=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"choice_open")==0);
+    manager.bJumping=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"")==0);
+    gui.writeErrorDialog.bOpen=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"write_error_dialog")==0);
+    gui.writeErrorDialog.bOpen=false; gui.menuBox.bOpen=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"menu_open")==0);
+    gui.menuBox.bOpen=false; gui.gameover=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"terminal")==0);
+    CHECK(std::strcmp(visual_blocked_reason(nullptr),"no_game")==0);
+    std::cout << "actual native visible-modal blocker checks passed\n";
+}

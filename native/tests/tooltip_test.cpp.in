@@ -1,0 +1,162 @@
+#include "Benchmark_Visual.h"
+#include <iostream>
+#include <string>
+#include <vector>
+#define CHECK(value) do { if (!(value)) { std::cerr << "failed: " #value "\n"; return 1; } } while (0)
+#define _WIN32 1
+#define __i386__ 1
+using SDLKey=int;
+struct Point { int x,y; };
+struct MouseControl {
+    Point position={0,0};
+    std::string tooltip,tooltipTitle,lastTooltipText="prior-render";
+    float tooltipTimer=0.25f;
+    bool bForceTooltip=false,valid=true,newHover=true,lastValid=true,bMoving=true;
+    int tooltipFont=12,overrideTooltipWidth=-1;
+    Point staticTooltip={-1,-1};
+    int aiming_required=2,iTeleporting=3,iMindControlling=4,iHacking=5,animateDoor=6;
+    void SetTooltip(const std::string& value) {
+        // The actual EXE ignores empty incoming tooltip strings.
+        if (!value.empty()) tooltip=value;
+    }
+    void Reset() { std::cerr << "full MouseControl::Reset must not run\n"; std::abort(); }
+} mouse;
+struct CApp;
+extern CApp app;
+struct Global {
+    static Global* GetInstance() { static Global instance; return &instance; }
+    MouseControl* GetMouseControl() { return &mouse; }
+    CApp* GetCApp() { return &app; }
+};
+std::string trace;
+unsigned ui_loops=0;
+void tooltip_at(int x) {
+    trace+='H';
+    if (x==10) { mouse.SetTooltip("Close all doors. Hotkey:X"); mouse.tooltipTitle="Doors"; mouse.bForceTooltip=true; mouse.overrideTooltipWidth=144; mouse.staticTooltip={30,40}; }
+    else if (x==20) { mouse.SetTooltip("Oxygen Fully Powered"); mouse.tooltipTitle="Oxygen"; }
+    else mouse.SetTooltip("");
+}
+struct Window {
+    bool bOpen=false;
+    std::string text;
+    void MouseMove(int x,int) {
+        if (text.empty()) tooltip_at(x);
+        else { trace+='H'; mouse.SetTooltip(text); }
+    }
+};
+struct CommandGui {
+    void MouseMove(int x,int) { tooltip_at(x); }
+    void OnLoop();
+} gui;
+struct CApp {
+    CommandGui* gui=&::gui;
+    Window langChooser,menu;
+    bool shift_held=false,lCtrl=true;
+    int downs=0,ups=0,held_motion=0;
+    Point pointer={0,0};
+    Point TranslateMouse(int x,int y) { return {x,y}; }
+    void OnMouseMove(int x,int y,int,int,bool left,bool right,bool) {
+        trace+='M'; pointer={x,y}; mouse.position={x,y}; held_motion+=(left || right);
+        if (langChooser.bOpen) langChooser.MouseMove(x,y);
+    }
+    void OnLButtonDown(int,int) { trace+='D'; ++downs; }
+    void OnLButtonUp(int,int) { trace+='U'; ++ups; }
+    void OnRButtonDown(int,int) { trace+='d'; ++downs; }
+    void OnRButtonUp(int,int) { trace+='u'; ++ups; }
+    void OnKeyDown(SDLKey key) { trace+='K'; if (key==27) menu.bOpen=!menu.bOpen; }
+    void OnKeyUp(SDLKey) { trace+='k'; }
+} app;
+namespace BenchmarkVisualEngine {
+    BenchmarkVisual::FrameClock frame_clock;
+    BenchmarkVisual::ExternalInputGuard external_input;
+    using ModifierScope=BenchmarkVisual::ModifierScope<CApp>;
+    int injected_modifiers=-1;
+    bool input_available=true;
+    CApp* input_app() { return input_available ? &app : nullptr; }
+    bool point(int x,int y) { return BenchmarkVisual::point_valid(x,y,1280,720); }
+    void refresh_idle_map_ui(CApp*) {}
+    @CLEAR_POINTER_TOOLTIP@
+    @REFRESH_POINTER_HOVER@
+}
+void CommandGui::OnLoop()
+{
+    auto super=[]() { ++ui_loops; };
+    @GUI_HOVER_LOOP@
+}
+@INPUT_WRAPPERS@
+bool preserved() {
+    return mouse.aiming_required==2 && mouse.iTeleporting==3 && mouse.iMindControlling==4
+        && mouse.iHacking==5 && mouse.animateDoor==6 && mouse.valid && mouse.newHover
+        && mouse.lastValid && mouse.bMoving && mouse.tooltipFont==12
+        && mouse.tooltipTimer==0.25f && mouse.lastTooltipText=="prior-render"
+        && !app.shift_held && app.lCtrl && BenchmarkVisualEngine::injected_modifiers==-1
+        && BenchmarkVisualEngine::frame_clock.world_updates==0 && ui_loops==0
+        && BenchmarkVisualEngine::external_input.synthetic_depth==0
+        && !BenchmarkVisualEngine::external_input.detected;
+}
+int main() {
+    using namespace BenchmarkVisualEngine;
+    frame_clock.control(true,false);
+    // Four normal deliveries share one zero-budget native tick, as in the run.
+    CHECK(hs_benchmark_mouse_click(10,10,0,0));
+    CHECK(mouse.tooltip=="Close all doors. Hotkey:X");
+    CHECK(hs_benchmark_mouse_click(40,40,0,0));
+    CHECK(mouse.tooltip.empty() && mouse.tooltipTitle.empty());
+    CHECK(!mouse.bForceTooltip && mouse.overrideTooltipWidth==-1);
+    CHECK(mouse.staticTooltip.x==-1 && mouse.staticTooltip.y==-1);
+    CHECK(hs_benchmark_mouse_click(20,20,1,3));
+    CHECK(mouse.tooltip=="Oxygen Fully Powered" && mouse.tooltipTitle=="Oxygen");
+    CHECK(!mouse.bForceTooltip && mouse.overrideTooltipWidth==-1);
+    CHECK(hs_benchmark_mouse_move(40,40));
+    CHECK(mouse.tooltip.empty() && app.pointer.x==40 && preserved());
+
+    // Intermediate tooltip-producing drag positions cannot poison its endpoint.
+    CHECK(hs_benchmark_mouse_drag(10,10,40,10,0,1));
+    CHECK(mouse.tooltip.empty() && mouse.tooltipTitle.empty() && app.pointer.x==40);
+    CHECK(app.held_motion>0 && app.downs==4 && app.ups==4 && preserved());
+    // Native key handlers change the active window without clearing tooltip.
+    // The normal post-key hover must use the CURRENT native GUI position; it
+    // must not synthesize a mouse event or translate already-normalized coords.
+    CHECK(hs_benchmark_mouse_move(10,10));
+    app.menu.text="Pause menu control"; trace.clear();
+    CHECK(hs_benchmark_key_press("escape",0));
+    CHECK(app.menu.bOpen && mouse.tooltip=="Pause menu control");
+    CHECK(trace=="KkH" && app.pointer.x==10 && mouse.position.x==10 && preserved());
+    trace.clear();
+    CHECK(hs_benchmark_key_press("escape",0));
+    CHECK(!app.menu.bOpen && mouse.tooltip=="Close all doors. Hotkey:X");
+    CHECK(trace=="KkH" && preserved());
+    app.menu.text.clear();
+
+    // CApp's ordinary display reset/tooltip timer still runs while world time
+    // is frozen. Its gated GUI phase must rebuild stationary hover every UI
+    // frame, so an empty zero-budget capture can show a matured native hint.
+    BenchmarkVisual::clear_pointer_tooltip(mouse); trace.clear();
+    gui.OnLoop();
+    CHECK(mouse.tooltip=="Close all doors. Hotkey:X" && trace=="H" && preserved());
+    CHECK(app.pointer.x==10 && mouse.position.x==10 && ui_loops==0);
+    // No movement or timer forcing: a newly hovered control retains the native
+    // delay; after natural UI timing advances it, the same current hover is
+    // repopulated without any world frame or actor input.
+    CHECK(hs_benchmark_mouse_move(20,20));
+    mouse.tooltipTimer=0.01f;
+    BenchmarkVisual::clear_pointer_tooltip(mouse); gui.OnLoop();
+    CHECK(mouse.tooltip=="Oxygen Fully Powered" && mouse.tooltipTimer==0.01f);
+    mouse.tooltipTimer=0.25f;
+    BenchmarkVisual::clear_pointer_tooltip(mouse); trace.clear(); gui.OnLoop();
+    CHECK(mouse.tooltip=="Oxygen Fully Powered" && trace=="H" && preserved());
+    CHECK(app.pointer.x==20 && ui_loops==0);
+    app.menu.bOpen=true;
+    CHECK(hs_benchmark_mouse_move(20,20));
+    CHECK(mouse.tooltip=="Oxygen Fully Powered");
+    app.langChooser.bOpen=true;
+    CHECK(hs_benchmark_mouse_move(40,40));
+    CHECK(mouse.tooltip.empty() && preserved());
+
+    mouse.tooltip="do not touch invalid input"; trace.clear();
+    CHECK(!hs_benchmark_mouse_move(-1,10));
+    CHECK(!hs_benchmark_mouse_click(10,10,2,0));
+    CHECK(!hs_benchmark_mouse_drag(10,10,1280,10,0,0));
+    CHECK(mouse.tooltip=="do not touch invalid input" && trace.empty() && preserved());
+    std::cout << "actual tooltip helper/input wrapper checks passed\n";
+}

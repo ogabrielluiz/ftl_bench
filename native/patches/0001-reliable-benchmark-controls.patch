@@ -1,0 +1,181 @@
+diff --git a/Benchmark_Extend.cpp b/Benchmark_Extend.cpp
+index f483293..61a2500 100644
+--- a/Benchmark_Extend.cpp
++++ b/Benchmark_Extend.cpp
+@@ -291,6 +291,82 @@ bool hs_benchmark_choose_event(int index)
+     return app->gui->choiceBox.KeyDown((SDLKey)((int)SDLKey::SDLK_1 + index));
+ }
+ 
++bool hs_benchmark_set_weapon_autofire(bool enabled)
++{
++    CApp* app = Global::GetInstance()->GetCApp();
++    if (!app || !app->gui) return false;
++    app->gui->combatControl.weapControl.SetAutofiring(enabled, false);
++    return true;
++}
++
++bool hs_benchmark_victory()
++{
++    CApp* app = Global::GetInstance()->GetCApp();
++    if (!app || !app->gui || !app->world || !app->world->bStartedGame) return false;
++    return app->gui->alreadyWon || (app->gui->gameover && app->gui->gameOverScreen.bVictory);
++}
++
++bool hs_benchmark_set_difficulty(int difficulty)
++{
++    CApp* app = Global::GetInstance()->GetCApp();
++    if (difficulty < 0 || difficulty > 2 || !Global::difficulty || !app ||
++        !app->world || app->world->bStartedGame || !app->menu.bOpen) return false;
++    *Global::difficulty = difficulty;
++    return *Global::difficulty == difficulty;
++}
++
++int hs_benchmark_difficulty()
++{
++    // The game and Hyperspace difficulty logic use this settings pointer. The
++    // legacy WorldManager currentDifficulty layout is not reliable on Windows.
++    return Global::difficulty ? *Global::difficulty : -1;
++}
++
++const char* hs_benchmark_player_blueprint()
++{
++    static std::string blueprint;
++    blueprint.clear();
++    CApp* app = Global::GetInstance()->GetCApp();
++    if (!app || !app->world || !app->world->bStartedGame) return blueprint.c_str();
++    ShipManager* ship = Global::GetInstance()->GetShipManager(0);
++    if (ship) blueprint = ship->myBlueprint.blueprintName;
++    return blueprint.c_str();
++}
++
++int hs_benchmark_run_score()
++{
++    CApp* app = Global::GetInstance()->GetCApp();
++    if (!app || !app->world || !app->world->bStartedGame || !Global::difficulty) return -1;
++    ScoreKeeper* keeper = Global::GetInstance()->GetScoreKeeper();
++    int difficulty = *Global::difficulty;
++    if (!keeper || difficulty < 0 || difficulty > 2) return -1;
++    // FTL 1.6.9 ScoreKeeper::Save, 0x442bcd..0x442c20 in the Windows executable:
++    // current scrap + 20*ships destroyed + 10*explored beacons, times difficulty.
++    // Read current-run StatTrackers, not the TopScore snapshot updated by Save.
++    float modifier = difficulty == 2 ? 1.5f : difficulty == 1 ? 1.25f : 1.f;
++    return static_cast<int>(modifier * (keeper->stats[2].current +
++                                       20 * keeper->stats[0].current +
++                                       10 * keeper->stats[1].current));
++}
++
++const char* hs_benchmark_score_components()
++{
++    static char buffer[256];
++    buffer[0] = '\0';
++    if (hs_benchmark_run_score() < 0) return buffer;
++    ScoreKeeper* keeper = Global::GetInstance()->GetScoreKeeper();
++    std::snprintf(buffer, sizeof(buffer),
++                  "{\"scrap_collected\":%d,\"ships_destroyed\":%d,\"beacons_explored\":%d,\"difficulty\":%d}",
++                  keeper->stats[2].current, keeper->stats[0].current,
++                  keeper->stats[1].current, *Global::difficulty);
++    return buffer;
++}
++
++const char* hs_benchmark_capabilities()
++{
++    return "{\"native_protocol\":4,\"global_autofire_control\":true,\"hacking_idle_ready\":true,\"victory\":true,\"setup_identity\":true,\"seeded_easy_setup\":true,\"live_score\":true}";
++}
++
+ bool hs_benchmark_fire_weapon(int weapon_slot, int target_ship_id, int target_room_id)
+ {
+     Global* g = Global::GetInstance();
+@@ -324,12 +400,11 @@ bool hs_benchmark_fire_weapon(int weapon_slot, int target_ship_id, int target_ro
+     std::vector<Pointf> points;
+     for (int i = 0; i < nReq; ++i) points.push_back(center);
+     wc.Fire(points, targetShip->iShipId, false);       // sets persistent target on the armed weapon
+-    weapon->SetAutoFire(true);                          // per-weapon autofire flag
+-    // GLOBAL autofire ON. Without it a powered+charged+targeted weapon just SITS there
+-    // (fire_when_ready stays set but it never releases the shot) -- the "burst laser fully
+-    // charged but not firing" bug. SetAutofiring is what the AUTOFIRE button does: every
+-    // armed weapon fires the moment it's charged, and re-fires each cooldown.
+-    wc.SetAutofiring(true, false);
++    // Manual release. Lua keeps this slot's fireWhenReady queued until one release;
++    // enabling global autofire here would also arm every previously targeted slot.
++    wc.SetAutofiring(false, false);
++    weapon->SetAutoFire(false);
++    weapon->fireWhenReady = true;
+     return true;
+ }
+ 
+@@ -476,7 +551,7 @@ bool hs_benchmark_fire_beam(int weapon_slot, int target_ship_id, int room_a, int
+ 
+     // Refuse non-beams: a 2-point swipe at a 1-point laser leaves it charged but never
+     // releasing. A beam reports 2 aim points.
+-    if (weapon->NumTargetsRequired() != 2) return false;
++    if (!weapon->blueprint || weapon->blueprint->type != 2) return false;
+ 
+     WeaponControl& wc = app->gui->combatControl.weapControl;   // value members
+     wc.SelectArmament((unsigned int)weapon_slot);
+@@ -490,8 +565,9 @@ bool hs_benchmark_fire_beam(int weapon_slot, int target_ship_id, int room_a, int
+     points.push_back(b);
+ 
+     wc.Fire(points, targetShip->iShipId, false);   // persistent 2-point target on armed weapon
+-    weapon->SetAutoFire(true);                      // per-weapon autofire flag
+-    wc.SetAutofiring(true, false);                  // GLOBAL autofire (AUTOFIRE button)
++    wc.SetAutofiring(false, false);
++    weapon->SetAutoFire(false);
++    weapon->fireWhenReady = true;
+     return true;
+ }
+ 
+@@ -518,7 +594,7 @@ bool hs_benchmark_hack_system(int target_system_id)
+     HackingSystem* hs = player->hackingSystem;
+     if (!hs) return false;                       // Kestrel hasn't bought Hacking
+     if (!hs->Powered()) return false;            // needs >= 1 power bar
+-    if (hs->iLockCount != -1) return false;      // our own hacking is ion-locked/hacked
++    if (hs->iLockCount != 0) return false;       // 0 is idle; -1 active; positive cooldown/ion
+ 
+     // Resolve the enemy system -> its room. HasSystem guards a destroyed/absent system.
+     if (!enemy->HasSystem(target_system_id)) return false;
+diff --git a/Benchmark_Extend.h b/Benchmark_Extend.h
+index 6bc15e0..ead2412 100644
+--- a/Benchmark_Extend.h
++++ b/Benchmark_Extend.h
+@@ -61,6 +61,14 @@ bool hs_benchmark_choose_event(int index);
+ // Arm player weapon `weapon_slot`, target room `target_room_id` on ship
+ // `target_ship_id` (0=player, 1=enemy), and fire. Single-point (laser/missile).
+ bool hs_benchmark_fire_weapon(int weapon_slot, int target_ship_id, int target_room_id);
++bool hs_benchmark_set_weapon_autofire(bool enabled);
++bool hs_benchmark_victory();
++int hs_benchmark_difficulty();
++bool hs_benchmark_set_difficulty(int difficulty);
++const char* hs_benchmark_player_blueprint();
++int hs_benchmark_run_score();
++const char* hs_benchmark_score_components();
++const char* hs_benchmark_capabilities();
+ 
+ // Leave the current sector from the exit beacon and travel to a random valid next
+ // sector (advances map.sector). Returns false unless: at the exit beacon, fuel>=1,
+diff --git a/lua/modules/hyperspace.i b/lua/modules/hyperspace.i
+index 10def30..9e87a27 100644
+--- a/lua/modules/hyperspace.i
++++ b/lua/modules/hyperspace.i
+@@ -499,6 +499,22 @@ bool hs_benchmark_choose_event(int index);
+ 
+ %rename("benchmark_fire_weapon") hs_benchmark_fire_weapon;
+ bool hs_benchmark_fire_weapon(int weapon_slot, int target_ship_id, int target_room_id);
++%rename("benchmark_set_weapon_autofire") hs_benchmark_set_weapon_autofire;
++bool hs_benchmark_set_weapon_autofire(bool enabled);
++%rename("benchmark_victory") hs_benchmark_victory;
++bool hs_benchmark_victory();
++%rename("benchmark_difficulty") hs_benchmark_difficulty;
++int hs_benchmark_difficulty();
++%rename("benchmark_set_difficulty") hs_benchmark_set_difficulty;
++bool hs_benchmark_set_difficulty(int difficulty);
++%rename("benchmark_player_blueprint") hs_benchmark_player_blueprint;
++const char* hs_benchmark_player_blueprint();
++%rename("benchmark_run_score") hs_benchmark_run_score;
++int hs_benchmark_run_score();
++%rename("benchmark_score_components") hs_benchmark_score_components;
++const char* hs_benchmark_score_components();
++%rename("benchmark_capabilities") hs_benchmark_capabilities;
++const char* hs_benchmark_capabilities();
+ 
+ %rename("benchmark_leave_sector") hs_benchmark_leave_sector;
+ bool hs_benchmark_leave_sector();

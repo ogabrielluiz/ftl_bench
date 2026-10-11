@@ -12,6 +12,8 @@ combined by a weighted intersection (see scoring.score_instance).
 from __future__ import annotations
 
 import json
+import math
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -36,6 +38,16 @@ class SubObjective:
     kind: ObjKind = "threshold"
     weight: float = 1.0
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.key, str) or not self.key or self.kind not in ("threshold", "boolean", "milestone"):
+            raise ValueError("a goal needs a metric key and a supported objective kind")
+        if (not isinstance(self.target, (int, float)) or isinstance(self.target, bool)
+                or not math.isfinite(self.target) or self.target < 0):
+            raise ValueError("objective target must be a finite non-negative number")
+        if (not isinstance(self.weight, (int, float)) or isinstance(self.weight, bool)
+                or not math.isfinite(self.weight) or self.weight <= 0):
+            raise ValueError("objective weight must be finite and greater than zero")
+
 
 @dataclass(frozen=True)
 class Scenario:
@@ -54,6 +66,19 @@ class Scenario:
     params: dict[str, Any] = field(default_factory=dict)
     notes: str = ""
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", self.id):
+            raise ValueError("scenario id must contain only letters, numbers, dots, underscores or hyphens")
+        if not isinstance(self.seed, int) or isinstance(self.seed, bool) or not 0 <= self.seed <= 0xFFFFFFFF:
+            raise ValueError("scenario seed must be an unsigned 32-bit integer")
+        if not isinstance(self.budget_jumps, int) or isinstance(self.budget_jumps, bool) or self.budget_jumps <= 0:
+            raise ValueError("scenario budget_jumps must be greater than zero")
+        if self.min_distinct_beacons is not None and (
+            not isinstance(self.min_distinct_beacons, int) or isinstance(self.min_distinct_beacons, bool)
+            or self.min_distinct_beacons < 0
+        ):
+            raise ValueError("min_distinct_beacons must be a non-negative integer")
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id, "type": self.type, "seed": self.seed,
@@ -64,12 +89,16 @@ class Scenario:
             "params": self.params, "notes": self.notes,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Scenario":
+        return _scenario_from_dict(data)
+
 
 def _scenario_from_dict(d: dict[str, Any]) -> Scenario:
     goal = [SubObjective(**o) for o in d["goal"]]
     return Scenario(
-        id=d["id"], type=d["type"], seed=int(d["seed"]), goal=goal,
-        budget_jumps=int(d.get("budget_jumps", 8)), ship=d.get("ship", "kestrel"),
+        id=d["id"], type=d["type"], seed=d["seed"], goal=goal,
+        budget_jumps=d.get("budget_jumps", 8), ship=d.get("ship", "kestrel"),
         difficulty=d.get("difficulty", "easy"), tier=d.get("tier", "public"),
         min_distinct_beacons=d.get("min_distinct_beacons"),
         params=d.get("params", {}), notes=d.get("notes", ""),
@@ -80,4 +109,7 @@ def load_suite(path: Path | str) -> list[Scenario]:
     """Load a scenario suite from a JSON file ({"scenarios": [...]} or a bare list)."""
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     items = data["scenarios"] if isinstance(data, dict) else data
-    return [_scenario_from_dict(d) for d in items]
+    scenarios = [_scenario_from_dict(d) for d in items]
+    if len({s.id for s in scenarios}) != len(scenarios):
+        raise ValueError("scenario ids must be unique within a suite")
+    return scenarios

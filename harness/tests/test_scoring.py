@@ -157,9 +157,11 @@ def test_score_trajectory_empty_records():
 
 def test_score_trajectory_counts_jumps_and_events_and_decisions():
     records = [
-        rec(obs=obs_dict(), actions=[{"type": "jump"}]),
-        rec(obs=obs_dict(), actions=[{"type": "choose_event"}, {"type": "jump"}]),
-        rec(obs=obs_dict(), actions=[{"type": "set_system_power"}]),
+        rec(obs=obs_dict(map={"sector": 0, "current_pos": {"x": 0, "y": 0}})),
+        rec(obs=obs_dict(map={"sector": 0, "current_pos": {"x": 1, "y": 0}}),
+            actions=[{"type": "jump"}]),
+        rec(obs=obs_dict(map={"sector": 0, "current_pos": {"x": 2, "y": 0}}),
+            actions=[{"type": "choose_event"}, {"type": "jump"}]),
     ]
     s = score_trajectory(records)
     assert s["decisions"] == 3
@@ -182,7 +184,7 @@ def test_score_trajectory_skips_meta_records():
     s = score_trajectory(records)
     # meta record contributes neither a decision nor its jump action.
     assert s["decisions"] == 1
-    assert s["jumps"] == 1
+    assert s["jumps"] == 0  # one observation establishes a baseline, not a confirmed jump
 
 
 def test_score_trajectory_final_obs_is_last_with_obs():
@@ -261,8 +263,13 @@ def test_achieved_metrics_empty():
 
 def test_achieved_metrics_jumps_include_leave_sector():
     records = [
-        rec(obs=obs_dict(), actions=[{"type": "jump"}, {"type": "leave_sector"}]),
-        rec(obs=obs_dict(), actions=[{"type": "jump"}]),
+        rec(obs=obs_dict(map={"sector": 0, "current_pos": {"x": 0, "y": 0}})),
+        rec(obs=obs_dict(map={"sector": 0, "current_pos": {"x": 1, "y": 0}}),
+            actions=[{"type": "jump"}]),
+        rec(obs=obs_dict(map={"sector": 1, "current_pos": {"x": 0, "y": 0}}),
+            actions=[{"type": "leave_sector"}]),
+        rec(obs=obs_dict(map={"sector": 1, "current_pos": {"x": 1, "y": 0}}),
+            actions=[{"type": "jump"}]),
     ]
     a = achieved_metrics(records)
     assert a["sectors_crossed"] == 1
@@ -282,7 +289,7 @@ def test_achieved_metrics_max_sector_progress():
     ]
     a = achieved_metrics(records)
     assert a["sector"] == 5
-    assert a["progress"] == 5
+    assert a["progress"] == 6  # worldLevel is zero based; sector 5 is the sixth sector
 
 
 def test_achieved_metrics_non_int_sector_ignored():
@@ -291,13 +298,13 @@ def test_achieved_metrics_non_int_sector_ignored():
     assert achieved_metrics(records)["sector"] == 0
 
 
-def test_achieved_metrics_ftl_score_is_max_seen():
+def test_achieved_metrics_ftl_score_is_latest_in_game_value():
     records = [
         rec(obs=obs_dict(ftl_score=120)),
         rec(obs=obs_dict(ftl_score=340)),
-        rec(obs=obs_dict(ftl_score=300)),  # never decreases the tracked max
+        rec(obs=obs_dict(ftl_score=300)),  # replace a stale/earlier snapshot
     ]
-    assert achieved_metrics(records)["ftl_score"] == 340
+    assert achieved_metrics(records)["ftl_score"] == 300
 
 
 def test_achieved_metrics_ftl_score_ignores_non_numeric():
@@ -364,7 +371,7 @@ def test_achieved_metrics_skips_meta():
     a = achieved_metrics(records)
     # meta record's sector and action are both ignored.
     assert a["sector"] == 2
-    assert a["jumps"] == 1
+    assert a["jumps"] == 0
 
 
 def test_achieved_metrics_oxygen_pct_from_final_obs():
@@ -474,7 +481,8 @@ def test_score_instance_weighting_actually_matters():
 
 def test_score_instance_milestone_partial_credit():
     records = [
-        rec(obs=obs_dict(), actions=[{"type": "jump"}, {"type": "jump"}]),
+        rec(obs=obs_dict(map={"sector": 0, "current_pos": {"x": i, "y": 0}}),
+            actions=[{"type": "jump"}] if i else []) for i in range(3)
     ]
     sc = scenario([sub("jumps", target=4, kind="milestone")])
     res = score_instance(records, sc)
@@ -493,6 +501,7 @@ def test_score_instance_zero_target_does_not_divide_by_zero():
 
 def test_score_instance_reports_ftl_score_and_jump_budget():
     records = [
+        rec(obs=obs_dict(map={"sector": 0})),
         rec(obs=obs_dict(ftl_score=512, map={"sector": 1}), actions=[{"type": "jump"}]),
     ]
     sc = scenario([sub("sector", target=1, kind="threshold")], budget_jumps=6)
@@ -529,8 +538,8 @@ def test_score_instance_multi_objective_all_met_is_solved():
 # --- Legitimacy gate (anti metric-gaming) ---------------------------------- #
 def test_legitimacy_gate_collapses_jump_in_place():
     # The agent jumps repeatedly but stays on the SAME beacon: distinct_beacons == 1,
-    # below the scenario's min_distinct_beacons -> reward collapses to 0 despite the
-    # sub-objective (many jumps) being fully met.
+    # below the scenario's min_distinct_beacons -> reward collapses to 0. Refused
+    # actions also earn no raw jump credit.
     records = [
         rec(
             obs=obs_dict(map={"current_pos": {"x": 4, "y": 4}}),
@@ -543,8 +552,7 @@ def test_legitimacy_gate_collapses_jump_in_place():
         min_distinct_beacons=3,
     )
     res = score_instance(records, sc)
-    # raw credit would be 1.0, but the gate zeroes it.
-    assert res["breakdown"]["jumps"] == 1.0
+    assert res["breakdown"]["jumps"] == 0.0
     assert res["legitimacy_gate"] == 0
     assert res["r"] == 0.0
     assert res["score"] == 0.0
@@ -561,7 +569,7 @@ def test_legitimacy_gate_passes_with_enough_distinct_beacons():
         for i in range(4)
     ]
     sc = scenario(
-        [sub("jumps", target=4, kind="milestone")],
+        [sub("jumps", target=3, kind="milestone")],
         min_distinct_beacons=3,
     )
     res = score_instance(records, sc)
@@ -574,9 +582,10 @@ def test_legitimacy_gate_passes_with_enough_distinct_beacons():
 def test_legitimacy_gate_disabled_when_unset():
     # min_distinct_beacons is None -> the gate never fires, even on a one-beacon run.
     records = [
-        rec(obs=obs_dict(map={"current_pos": {"x": 0, "y": 0}}), actions=[{"type": "jump"}])
+        rec(obs=obs_dict(player_ship=player_ship(),
+                         map={"current_pos": {"x": 0, "y": 0}}))
     ]
-    sc = scenario([sub("jumps", target=1, kind="milestone")], min_distinct_beacons=None)
+    sc = scenario([sub("final_hull", target=20)], min_distinct_beacons=None)
     res = score_instance(records, sc)
     assert res["legitimacy_gate"] == 1
     assert res["solved"] is True

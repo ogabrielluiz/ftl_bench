@@ -1,72 +1,53 @@
 ---
 title: Observation schema
-description: The decision-complete JSON the agent receives each turn.
+description: Preserved compact game facts, setup identity, optional probes and authoritative victory.
 ---
 
-Each turn the agent receives one JSON snapshot of the whole game (the `compact()` view). It is
-decision-complete: everything needed to choose the next action is in it. Fields that do not apply
-are omitted (for example, `enemy` is `null` out of combat; `store` appears only on a store beacon).
+The agent sees `play_cli.compact()` JSON. The bridge emits bound game facts; optional fields are omitted when unavailable. Absence means unknown. See the repository's `docs/observation_coverage_audit.md` for evidence levels and remaining probes.
 
 ## Top level
 
 | Field | Meaning |
 |---|---|
-| `game_started`, `paused` | lifecycle flags; at the menu `game_started` is false and `menu_buttons` is present |
-| `sector` | current sector index |
-| `hull` | `"cur/max"` (0 = destroyed) |
-| `oxygen_pct`, `fuel`, `missiles`, `parts`, `scrap` | resources |
-| `reactor_free` / `reactor_total` | power bars free vs total; `reactor_usable_free`/`_total` give the true cap under an ion-storm penalty |
-| `evasion`, `crew_count` | your dodge %, crew alive |
-| `interrupted_by` | why the last advance stopped early (`combat_started`, `took_damage`, `boarder_aboard`, `fire`, `event`) |
-| `game_status` | absent while alive; `DESTROYED` / `GAME_OVER` when the run is over |
+| `game_started`, `paused` | Lifecycle and pause flags |
+| `sector`, `hull` | Zero-based sector; hull string current/max |
+| `oxygen_pct`, `fuel`, `missiles`, `drone_parts`, `scrap` | Ship resources |
+| `reactor_free/total`, `reactor_usable_free/total` | Allocation and effective storm/ion cap |
+| `ship`, `difficulty` | Actual native setup identity |
+| `capabilities` | Bridge/native protocol features |
+| `victory` | Explicit authoritative native boolean |
+| `game_status` | Absent while alive; DESTROYED/GAME_OVER/VICTORY |
+| `interrupted_by` | Early advance interruption |
+| `ftl_score` | Native score when available |
+| `economy` | Native upgrade prices/caps/legality and fuel-recovery state |
+| `action_feedback` | Applied/rejected crew, event, upgrade and recovery requests |
 
-## Ship state
+## Ship and combat
 
-- `systems`: each `{id, name, power: "cur/max", room, damage, needs_repair, ion, on_fire, broken,
-  repair_room}`. `broken` names why power alone will not fix it (`needs_repair`, `damaged`,
-  `on_fire`, or a `+` combination).
-- `crew`: each `{id, room, species, hp, busy, boarding}`.
-- `fires`: burning rooms, each `{room_id, fires}` where `fires` is the number of fire blobs in that
-  room (sum them for the total active fires).
-- `rooms`: player ship room facts when available, including `{room_id, oxygen, fires,
-  breaches/breached, rect}`.
-- `doors`: door topology/state when available, including `{id/index, room_a, room_b, open, locked,
-  forced_open, hacked}`.
-- `intruders`: enemy crew aboard your ship, `{room, health, species}`.
-- `weapons`: each `{slot, type, is_beam, dmg, pierces, eff_pierce, ready_to_fire, targeted, charge,
-  charge_max, req_power, shots}`. `targeted: false` means the weapon has no target and will never
-  fire until you `fire` it.
+Systems preserve id/name, power current/max, room, damage, repair/fire/broken state and `ion`, `ioned`, `hacked`. Crew preserve position, species, health and task; fires/intruders identify crisis rooms.
 
-## Enemy (`null` if no combat)
+Player `crew` contains owned crew with health/death facts and original native `id`, `player_owned`, `owner_ship_id`, `current_ship_id` and `controllable`. Survival counts only living crew. Own boarders remain owned; hostile boarders appear separately in `intruders`. Mind-controlled friendly crew remain owned but cannot be moved. `action_feedback` identifies applied/rejected movement commands. The runner requires Lua ownership/control capabilities under `owned-player-crew-v1`.
 
-`{hull, shields, evasion, rooms, rooms_with_crew, crew, weapons, systems, active, targetable,
-fleeing, jump_charge_pct, flagship, super_shield, power_surge_timer}`.
+Rooms preserve available oxygen/fire/breach/rectangle facts. Doors include inner doors **and outer airlocks**, with unique display index, engine id, room endpoints, open/locked/forced/hacked state and `airlock`. Endpoint -1 is space.
 
-- `active`: the enemy is still fighting (its weapons are powered). `false` means it has forfeit and
-  depowered its guns.
-- `targetable`: you can actually aim a weapon at it right now. `false` once it is warping out or
-  gone, in which case firing hits nothing (the agent's equivalent of "no targeting cursor").
-- `fleeing` / `jump_charge_pct`: it has given up and is charging its FTL drive to escape.
-- `rooms_with_crew` and `crew`: enemy crew positions and optional health/species/task fields when
-  the bridge can read them.
-- `flagship`, `super_shield`, `power_surge_timer`: boss-specific facts when the current Hyperspace
-  build exposes them.
+Weapons preserve type, power, charge/max, damage/piercing, ready and pending manual fire. Each fire/beam queues one release; a charging beam retains both endpoints. A held charged weapon does not automatically fire.
 
-## Combat feedback
+Enemy hull, shields, systems/rooms/weapons, crew positions/tasks and drones are exposed when available. Active false means depowered weapons; targetable false means unavailable native target. Neither proves victory. `enemy_ship.destroyed` reports the authoritative native destruction boolean when bound; a lingering wreck object can coexist with legal travel, and hull alone is not used to infer destruction.
 
-- `shots`: how your weapons are doing this fight: `{fired, hit, shields_blocked, missed,
-  damage_dealt, recent[]}`. A high `missed` count means the enemy is dodging (target its engines or
-  expect misses); a high `shields_blocked` means you need to pierce or drop shields.
+Shot telemetry reports observed fired/hit/shield-blocked/missed/damage outcomes. Special-system blocks include cloak, battery, hacking, drones, teleporter and mind control readiness/occupants where bound.
 
 ## Map and screens
 
-- `map`: `{at_exit, jump_charged, jump_charge_pct, hazard (none/nebula/ion_storm/sun/pulsar/
-  asteroids), pds, current_pos, exit_pos, beacons[]}`. Each beacon: `{index, visited, exit, fleet,
-  quest, known, danger_zone, boss, nebula, store, distress, has_event, new_sector, pos,
-  dist_to_exit}`. `sector_choices` appears when the sector picker exposes choices.
-- `event`: non-null only when a popup is blocking the game: `{text, choices[]}`. Choices preserve
-  `index`, `text`, and optional `blue`, `enabled`, `available`, `disabled`, `locked`, and `cost`
-  fields when exposed. Resolve it with `event <choice_index>`.
-- `store`: non-null only on a store beacon: `{buy[], sell[]}`.
+Map includes actual current position/sector, connected beacons, jump charge, exit, hazard and known route metadata. Travel scoring requires changed observed map identity. `economy.sector_navigation_version: 1` and capability `sector_navigation: true` prove the repaired native neighbor-index interface under `native-sector-neighbors-v1`; protocol 5 alone is insufficient. `economy.beacon_navigation_version: 1` and `beacon_navigation: true` add the `native-beacon-readiness-v1` gate. `economy.navigation` exposes `can_jump`, `enemy_defeat_pending`, native `drive_current`/`drive_max` and optional `reason`. `can_jump` combines native button/full-timer/system/fuel/context readiness. Pending defeat is guidance only; it never independently forbids a charged legal jump. A null reason can be omitted by the Lua codec.
 
-See the [Action set](/reference/actions/) for what you can send in response.
+Events preserve full text and original indices, `native_type`, availability, native `open_time` and `dialog_keys`. Type 1 is disabled. Applied feedback confirms queued selection; disabled, delayed, refused and already pending requests are distinct. Unverified blue/cost markers and hidden rewards are not inferred. Stores contain visible indexed transactions. Sector-choice and flagship surge/super-shield facts remain optional.
+
+`economy` preserves native `upgrade_available`, `systems` with original `system_id`, `current_max_power`, `max_level`, `next_upgrade_cost` and `can_upgrade`, plus equivalent reactor facts. Native nullable costs/reactor may be omitted in Lua JSON; missing cost is unknown/unavailable, never free. Costs can stay visible when combat/modal state blocks buying.
+
+`native-enemy-hostility-v1` requires Lua `enemy_hostility: true`. A surrendered ship can retain positive hull, weapons and a native ship pointer; combat and targeting use the native `_targetable.hostile` flag. Non-hostile, destroyed, jumping or unknown-state enemy targets reject enemy-directed weapon requests and clear queued enemy fire. Dispatch feedback records `enemy_hostile`, `enemy_targetable` and accepted queue state. `targetable` and compact `active` never become true from hull or equipment alone. Friendly ships do not independently block a charged native-legal sector exit.
+
+`economy.fuel_recovery` contains `out_of_fuel`, `distress_on`, `can_wait` and `waiting`. Native Wait is a recovery turn resolved by frame progression, with normal encounter/fleet consequences; waiting frames alone do not create fuel. Runner/ruleset v7 requires `native-economy-and-fuel-recovery-v1` and valid upgrade/recovery capabilities.
+
+Raw boss stage/phase counters do not establish completed phases or a win. The current native victory getter confirms the final win; intermediate completed phases remain unreported.
+
+See [actions](/reference/actions/) and [protocol](/introduction/protocol/).

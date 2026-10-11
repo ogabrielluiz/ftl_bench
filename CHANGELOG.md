@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- Integrate the visual benchmark, frozen challenge/full-game controllers,
+  screenshot replays, conservative HUD extraction and cooperative stopping.
+- Preserve the headless reset marker, Linux process detection, WSL CLI output
+  path handling and enriched crew observations when merging shared code.
+- Keep headless dashboards and aggregation aligned with unique nested run
+  directories; preserve previous outputs, expose missing/ambiguous attempts,
+  propagate failures and test effective budget caps and retry exclusions.
+- Run headless output-contract and dashboard regressions in CI.
+- Document partial live results, paused experiments, acceptance boundaries and
+  contributor workflow. Existing frozen cohorts remain tied to their original
+  sources; merged-source experiments need new acceptance and a new cohort.
+- Full-game visual completion and live headless validation of the combined
+  contracts remain WIP. The package version stays at 0.2.0; no release is implied.
+
 ## 0.2.0
 
 Headless Linux + Docker: run the real FTL + the bench Hyperspace mod under Xvfb in Docker, with no
