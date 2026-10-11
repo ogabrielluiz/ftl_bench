@@ -19,6 +19,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v8.2.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build assets required by the editable package
+        working-directory: dashboard
+        run: npm ci && npm run build
       - name: Test Python and real Lua bridge contracts
         run: uv run --directory harness --python ${{ matrix.python }} --extra dev --extra dashboard pytest -q
       - name: Test headless output contracts without a game or container

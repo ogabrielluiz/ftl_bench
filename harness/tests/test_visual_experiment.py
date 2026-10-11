@@ -1,4 +1,5 @@
 """Matrix scheduling preserves matched conditions and never duplicates live trials."""
+from contextlib import nullcontext
 import importlib.util
 import hashlib
 from pathlib import Path
@@ -297,6 +298,7 @@ def test_stop_request_prevents_controller_launch(tmp_path, monkeypatch):
     experiment.write_json(tmp_path / "ledger.json", {"protocol_sha256": "test", "cells": experiment.plan_cells()})
     request_stop(tmp_path / "stop-request.json", str(tmp_path.resolve()), "assistant:test")
     monkeypatch.setattr(experiment, "verify_protocol", lambda protocol: None)
+    monkeypatch.setattr(experiment, "controller_lock", lambda directory: nullcontext())
     monkeypatch.setattr(experiment.subprocess, "Popen", lambda *a, **kw: pytest.fail("stopped controller launched child"))
     experiment.run(tmp_path, 36)
     ledger = experiment.read_json(tmp_path / "ledger.json")
@@ -314,6 +316,7 @@ def test_stop_during_protocol_verification_preserves_planned_cell(tmp_path, monk
         if len(checks) == 2:
             request_stop(tmp_path / "stop-request.json", str(tmp_path.resolve()), "assistant:test")
     monkeypatch.setattr(experiment, "verify_protocol", verify)
+    monkeypatch.setattr(experiment, "controller_lock", lambda directory: nullcontext())
     monkeypatch.setattr(experiment.subprocess, "Popen", lambda *a, **kw: pytest.fail("stop during verify launched child"))
     experiment.run(tmp_path, 36)
     assert len(checks) == 2

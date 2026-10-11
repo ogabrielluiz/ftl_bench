@@ -10,6 +10,8 @@
   directories; preserve previous outputs, expose missing/ambiguous attempts,
   propagate failures and test effective budget caps and retry exclusions.
 - Run headless output-contract and dashboard regressions in CI.
+- Build dashboard assets before editable package installation in each CI job,
+  and isolate Windows locking from portable controller decision tests.
 - Show provisional full-game execution counts while cached summaries lag,
   preserving strict completed-result and cleanup checks.
 - Validate each installation's original save inventory instead of requiring
