@@ -5,12 +5,37 @@ The visual track lets an agent play through FTL's rendered interface. Each decis
 This is an additional track. Existing structured trajectories remain readable, and historical diagnostic runs remain excluded from model-comparison totals. A recorded native score is not evidence that a run is eligible for comparison.
 
 **WIP:** the current challenge comparison is partial and fixture-free full-game
-completion remains unproven. The sector pilot ended in audited native defeat
+completion remains unproven. The historical `2174cc9` sector pilot ended in audited native defeat
 and is excluded from full-game totals. Read [current validation and remaining work](NEXT.md) before treating
 any historical result below as current acceptance. Native binaries, raw runs
 and local acceptance evidence are not included in Git; a fresh checkout still
 needs the matching runtime and evidence described in the
 [experiment protocol](visual-experiment-protocol.md#freezing-and-resumption).
+
+## CLI input isolation
+
+Each request uses a fresh temporary working directory containing the exact PNG
+and response schema, with the explicit frozen manual/task prompt, bounded public
+history and actor memory supplied on stdin. Accepted calls undergo a per-call
+no-tool event audit. The saved d1c18b8 review checked twelve hybrid requests:
+public prompts and recorded events contain no native telemetry or evaluator
+content. Actual generated argv and temporary cwd were not retained per call;
+those details are source-derived, not independently observed process metadata.
+
+The inspected Codex CLI 0.160.0 help defines `read-only` as a shell-command sandbox,
+not blanket filesystem-read denial or tool disabling; `--ephemeral` means no
+session-file persistence, and `--ignore-user-config` skips `config.toml` only.
+It does not establish suppression of instruction discovery or provider/system
+context. The dated 2026-10-11 12:52 UTC existence check found no `AGENTS.md` or
+`AGENTS.override.md` at the named global and relevant ancestor paths, including
+`CODEX_HOME` and the temporary-directory parent. Provider/system context remains
+unverified; these checks establish neither leakage nor expanded acceptance.
+See the official [instruction-discovery documentation](https://learn.chatgpt.com/docs/agent-configuration/agents-md)
+and [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
+Local receipts are `d1c18b8-cli-input-isolation-review.json`,
+`d1c18b8-cli-input-isolation-semantics-review.json` and
+`d1c18b8-cli-instruction-existence-review.json` under
+`dist/store-warp-diagnosis-20261011/`.
 
 ## Running a local visual attempt
 

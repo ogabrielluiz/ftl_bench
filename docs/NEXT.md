@@ -1,6 +1,6 @@
 # Current validation and next work
 
-**WIP / alpha. Snapshot: 2026-10-11 12:23 UTC; independent review update at 12:24 UTC.**
+**WIP / alpha. Challenge snapshot: 2026-10-11 13:07:21 UTC; stop review: 13:10 UTC.**
 
 ## Current admitted cohorts (`d1c18b8`)
 
@@ -17,31 +17,82 @@ Both new cohorts are under `harness/runs/validation/visual-v1/`:
 
 | Cohort | Embedded protocol SHA-256 | Protocol file SHA-256 | Snapshot |
 | --- | --- | --- | --- |
-| `matrix-main-d1c18b8-20261011` | `ccbbb3379639b39af98eb4941139ec3bdb25c312db90641b03e62c1b54680010` | `1d8b42799d7cdf4171a86f6070197d9b3662f84d80b7eee6f234eaa24f922e8f` | Nine image trials finished; hybrid started, 26 planned |
+| `matrix-main-d1c18b8-20261011` | `ccbbb3379639b39af98eb4941139ec3bdb25c312db90641b03e62c1b54680010` | `1d8b42799d7cdf4171a86f6070197d9b3662f84d80b7eee6f234eaa24f922e8f` | 18 Sol finished; 18 Luna planned |
 | `fullgame-main-d1c18b8-20261011` | `7bcba8d7391bb42db40012888c6153425e2afb9ffe12700560e03b84143df9ec` | `9129cfc04d9173b77acfced1a35fcab5053384767b6ddb4ce04f6a7758e708b6` | Pilot plus four conditions planned |
 
-All nine Sol/image trials are finished and eligible, with no exclusions: five
-task successes and four budget failures. Sol/hybrid has just started, Luna is
-unstarted, and both comparison qualification flags remain false.
+All 18 Sol challenge trials are finished and independently reviewed: image 5/9,
+hybrid 6/9 task successes, all 18 eligible, zero exclusions and seven preserved
+budget failures. Luna's 18 cells remain planned; both comparison qualification
+flags remain false. These finite outcomes establish no population or model ranking.
 
-| Challenge | Task successes | Preserved failures | Eligible |
-| --- | --- | --- | --- |
-| Combat | 1/3 | Repeat 01 decision budget; repeat 02 idle budget | 3/3 |
-| Fire | 2/3 | Repeat 02 idle budget | 3/3 |
-| Repair/charge/escape | 2/3 | Repeat 02 idle budget | 3/3 |
+| Mode / challenge | Task successes | Eligible | Calls / PNGs | Latency (seconds) |
+| --- | --- | --- | --- | --- |
+| Image / combat | 1/3 | 3/3 | 112 / 118 | 2,013.810 |
+| Image / fire | 2/3 | 3/3 | 22 / 28 | 354.355 |
+| Image / repair/charge/escape | 2/3 | 3/3 | 22 / 28 | 309.484 |
+| Hybrid / combat | 2/3 | 3/3 | 64 / 70 | 1,225.414 |
+| Hybrid / fire | 3/3 | 3/3 | 11 / 17 | 196.808 |
+| Hybrid / repair/charge/escape | 1/3 | 3/3 | 28 / 34 | 400.066 |
 
-The nine trials contain 156 decisions and 174 audited PNGs. All 156 calls report
-usage and latency: input 2,932,735 (cached subset 1,832,192), output 40,799
-(reasoning subset 14,763), latency 2,677.649 seconds. Combat accounts for 112
-calls / 2,013.810 seconds, fire 22 / 354.355, and repair 22 / 309.484. These
-include task failures; no reconnect notices were recorded. Requested model is
-Sol; CLI events do not report the resolved backend model. Initial gameplay
-signatures match within each challenge. Matching starts do not establish
-deterministic later trajectories or pixel-identical observations. Decoded-pixel
-review of the first three repair images found differences only in CHARGING and
-PAUSED label/caption intensity (under 0.9% of pixels), with identical text and
-gameplay content elsewhere. Animation/glow phase is a plausible cause, not
-instrumented proof; see `d1c18b8-repair-initial-observation-variation-review.json`.
+The seven budget failures followed three enemy escapes (image combat 01/02,
+hybrid combat 02), one incomplete crew heal (image fire 02), and three departures
+before full engine repair (image repair 02, hybrid repair 02/03). The repair
+attempts made real fuel-consuming arrivals, but charged engines at 1/2 health
+did not satisfy the full-repair requirement. Saved control/evidence checks passed;
+the model failures remain in the totals.
+
+All 259 calls report usage and latency: 295 audited PNGs, input 4,869,278
+(cached subset 3,149,440; cache-write 0), output 67,474 (reasoning subset 23,739),
+and latency 4,499.937 seconds, including failed tasks. No reconnect calls or
+notices occurred. Requested model is Sol; resolved backend identity is unreported.
+The exclusive checkpoint is `d1c18b8-sol-18-checkpoint-20261011T1305Z/`:
+summary SHA-256 `31191d737b693cb59ebf9fb1d89b64463ac56ffc0ede93dd6255d1d834793159`,
+comparison `74dab40c444baa9bec354fff60ffb29f7d24b3459c2636f1714aa17c2bc4532d`,
+ledger `ca1b88a5ee46676793d244eefc09d62e5b412f38e31fb8fd8fe6ea07c6771bd9`.
+The summary binds all 18 independent review hashes and per-group token totals.
+
+Current cleanup passed at 13:04:56 UTC, before the next diagnostic: exact seven
+original saves, prior bridge, six runtime files, source pins and no FTL process.
+Receipt `d1c18b8-sol-boundary-current-cleanup-review.json` SHA-256:
+`00f84686968ad21d761a5bc4568b4c6493f463205300b25c06826c471fb7adaa`.
+
+### Current-stack cooperative interruption
+
+The separate `fullgame-stop-d1c18b8-20261011T1305Z` diagnostic passed scoped
+in-flight cancellation. The same CLI process was observed before and after the
+official validation stop request at 13:07:41 UTC. Six decisions had been delivered;
+call seven completed normally and its proposed click was retained, then cancelled
+at `after_actor_before_dispatch` at 13:07:48 UTC. No further inputs, simulation
+advance or screenshot capture were dispatched; absent after-image and actual-frame
+fields remain null, rather than being relabelled as measured zero. All four later
+cells remain planned. Seven calls report usage and latency, separately from the
+18 scored challenges; this diagnostic contributes no full-game ending.
+
+Recorded admission, actor joins and seven-save restoration passed. Independent
+current cleanup at 13:08:49 UTC verified the seven originals, prior Lua, six runtime
+files, source pins and no FTL. The rendered dashboard at 13:10 UTC shows an
+interrupted pilot, the retained response, restored saves and zero native endings.
+The uncaught `CooperativeStop` exception produces child exit `3221225786` on this
+Windows host; the controller exits `1` to refuse interrupted continuation. This
+nonzero exit is a documented stopping limitation, not a successful controller run.
+No process was killed and the diagnostic will not be resumed or retried.
+
+Local receipts in `dist/store-warp-diagnosis-20261011/`:
+`d1c18b8-inflight-stop-final-review.json` (SHA-256
+`fb9652352cfc92639dc5b89500e4e4d381b8a61970cbc9d0d403874d39a2bd06`),
+`d1c18b8-post-stop-current-cleanup-review.json` (SHA-256
+`4c574c7e47da12314beb1f02514c742abe1da24cc6552376ad249bc266af9530`),
+and `d1c18b8-post-stop-rendered-ui-review.json` with its screenshot.
+
+### Preserved nine-image subset
+
+Canonical initial native gameplay matches across all six starts per challenge
+(image and hybrid), checked in `d1c18b8-sol-initial-signature-scope-review.json`. Matching
+starts do not establish deterministic later trajectories or pixel-identical
+observations. The initial repair PNG differences were confined to CHARGING and
+PAUSED label/caption intensity (under 0.9% of pixels); animation/glow phase is
+plausible, not instrumented proof. See
+`d1c18b8-repair-initial-observation-variation-review.json`.
 
 All nine independent saved reviews exist under `dist/store-warp-diagnosis-20261011/`,
 named `d1c18b8-sol-image-{combat,fire,repair}-{01,02,03}-final-review.json`.
@@ -67,14 +118,15 @@ and `d1c18b8-cohort-freeze-review.json`. One current hybrid request passed ten c
 in `d1c18b8-first-hybrid-observation-review.json`: exact actor PNG supports fuel 15,
 scrap 30, missiles 8 and drone parts 2; provenance and public prompt match, with
 no native fallback and hull omitted. `paused=true` is a separate control invariant.
-This is one audited request, not a completed hybrid comparison.
+That earlier receipt covers one request; the 18-Sol checkpoint above now binds
+the nine completed hybrid trials, without qualifying the full comparison.
 
-The strict Sol supervisor uses only unstarted cells through official `--limit 1`
-calls and stops on technical exclusions or cleanup failures. All five pilot/full-game
-cells remain planned; native-ending completion is **0/4**. The full comparison,
-native endings, actual clean-build/setup reproduction and current-stack live
-cooperative-interruption diagnostic remain WIP. Older failures stay separate,
-without retries, relabelling or pooling.
+The strict Sol supervisor finished its 18 declared cells through official
+`--limit 1` calls and exited zero at the Sol boundary. All five main pilot/full-game
+cells remain planned at this snapshot; native-ending completion is **0/4**.
+Next are the Sol sector pilot and two Sol full-game conditions before any Luna
+calls. The full comparison, native endings and actual clean-build/setup reproduction
+remain WIP. Older failures stay separate, without retries, relabelling or pooling.
 
 ## Preserved `463c340` admission (10:47 UTC snapshot)
 

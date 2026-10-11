@@ -1,7 +1,7 @@
 # Visual benchmark acceptance and comparison protocol
 
-Status: WIP. See [current results and remaining work](NEXT.md) for the dated
-`2174cc9` cohort status, retained failures and prospective continuation. Earlier
+Status: WIP. See [current results and remaining work](NEXT.md) for the latest
+dated cohort status, retained failures and prospective continuation. Earlier
 cohorts remain separate; no complete model/observation comparison or fixture-free
 full-game ending is established. The [validation history](validation-history-2026-10-11.md)
 retains superseded evidence.
