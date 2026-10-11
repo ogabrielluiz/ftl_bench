@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path, PureWindowsPath
 import subprocess
 import sys
@@ -32,6 +33,30 @@ CONTRACT = "ftl-fullgame-experiment-v1"
 BUDGETS = {"decisions": 300, "wall_seconds": 14400, "idle_decisions": 8}
 RUNTIME_FILES = ("FTLGame.exe", "ftl.dat", "Hyperspace.dll", "xinput1_4.dll", "lua-5.3.dll")
 read, write, digest, stamp = shared.read_json, shared.write_json, shared.digest, shared.stamp
+
+
+def validate_budgets(budgets):
+    """One exact positive-integer budget map shared by all five conditions."""
+    if (not isinstance(budgets, dict) or set(budgets) != set(BUDGETS)
+            or any(type(value) is not int or value <= 0 for value in budgets.values())):
+        raise ValueError("Full-game budgets must contain exactly positive integer decisions, wall_seconds and idle_decisions")
+    try:
+        wall_seconds = float(budgets["wall_seconds"])
+    except OverflowError:
+        raise ValueError("Full-game wall_seconds cannot be represented by the child") from None
+    if not math.isfinite(wall_seconds) or wall_seconds != budgets["wall_seconds"]:
+        raise ValueError("Full-game wall_seconds cannot be represented exactly by the child")
+    return dict(budgets)
+
+
+def positive_integer(value):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError("Budget must be a positive integer") from None
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("Budget must be a positive integer")
+    return parsed
 
 
 def plan_cells():
@@ -116,7 +141,8 @@ def archive_sources(directory, sources):
             output.write(data)
 
 
-def freeze(directory, *, native_evidence=None, evidence_root=None):
+def freeze(directory, *, native_evidence=None, evidence_root=None, budgets=None):
+    budgets = validate_budgets(BUDGETS if budgets is None else budgets)
     if (native_evidence is None) != (evidence_root is None):
         raise ValueError("--native-evidence and --evidence-root must be provided together")
     if directory.exists():
@@ -139,7 +165,7 @@ def freeze(directory, *, native_evidence=None, evidence_root=None):
         raise RuntimeError("Installed DLL differs from accepted native runtime")
     actor = CodexVisualAgent(model="gpt-6.1-sol").instruction_identity()
     protocol = {"contract": portable.FULLGAME_CONTRACT if selector else CONTRACT, "created_at": stamp(), "seed": 1,
-        "reasoning_effort": "medium", "budgets": dict(BUDGETS), "cells": plan_cells(),
+        "reasoning_effort": "medium", "budgets": budgets, "cells": plan_cells(),
         "source_files": sources, "source_sha256": digest(sources), "codex_cli": codex_runtime_identity(),
         "installed_runtime": installed, "tested_runtime": tested,
         "native_acceptance": accepted, "actor_identity": actor,
@@ -159,11 +185,12 @@ def freeze(directory, *, native_evidence=None, evidence_root=None):
 
 
 def verify_protocol(protocol, *, directory=None, verify_installed=True):
+    validate_budgets(protocol.get("budgets"))
     unsigned = dict(protocol)
     expected = unsigned.pop("protocol_sha256", None)
     if expected != digest(unsigned) or protocol.get("contract") not in (CONTRACT, portable.FULLGAME_CONTRACT):
         raise RuntimeError("Full-game protocol changed")
-    if (protocol.get("seed") != 1 or protocol.get("budgets") != BUDGETS
+    if (protocol.get("seed") != 1
             or protocol.get("reasoning_effort") != "medium" or protocol.get("cells") != plan_cells()):
         raise RuntimeError("Declared full-game conditions changed")
     if protocol["contract"] == portable.FULLGAME_CONTRACT:
@@ -450,7 +477,19 @@ def main(argv=None):
     parser.add_argument("--reason", default="operator_requested")
     parser.add_argument("--native-evidence", type=Path, help="Portable admission spec (freeze only)")
     parser.add_argument("--evidence-root", type=Path, help="Portable evidence root (freeze only)")
+    parser.add_argument("--max-decisions", type=positive_integer, help="Shared decision budget (freeze only; default 300)")
+    parser.add_argument("--max-wall-seconds", type=positive_integer, help="Shared wall-time budget (freeze only; default 14400)")
+    parser.add_argument("--max-idle-decisions", type=positive_integer, help="Shared idle-decision budget (freeze only; default 8)")
     args = parser.parse_args(argv)
+    requested_budgets = {"decisions": args.max_decisions, "wall_seconds": args.max_wall_seconds,
+                         "idle_decisions": args.max_idle_decisions}
+    if args.operation != "freeze" and any(value is not None for value in requested_budgets.values()):
+        parser.error("Budget options are freeze-only")
+    try:
+        budgets = validate_budgets({key: BUDGETS[key] if value is None else value
+                                   for key, value in requested_budgets.items()})
+    except ValueError as error:
+        parser.error(str(error))
     if (args.native_evidence is None) != (args.evidence_root is None):
         parser.error("--native-evidence and --evidence-root must be provided together")
     if args.operation != "freeze" and args.native_evidence is not None:
@@ -461,7 +500,7 @@ def main(argv=None):
     if args.operation == "stop":
         request_stop(directory / "stop-request.json", str(directory), args.initiator, args.reason)
     elif args.operation == "freeze":
-        freeze(directory, native_evidence=args.native_evidence, evidence_root=args.evidence_root)
+        freeze(directory, native_evidence=args.native_evidence, evidence_root=args.evidence_root, budgets=budgets)
     elif args.operation == "run":
         run(directory, args.limit)
     else:

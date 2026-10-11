@@ -392,15 +392,33 @@ The recorded order is fixed:
 | 4 | `gpt-6-luna` | image | Full game. |
 | 5 | `gpt-6-luna` | hybrid | Full game. |
 
-Every cell uses seed 1, medium reasoning, 300 decisions, 14,400 wall-clock
-seconds and eight consecutive empty zero-frame decisions. The ordinary visual
-limits remain four inputs and at most 600 admitted updates per decision. Each
+Every cell uses seed 1 and medium reasoning. Default freeze budgets remain
+300 decisions, 14,400 wall-clock seconds and eight consecutive empty zero-frame
+decisions. `freeze` alone accepts `--max-decisions`, `--max-wall-seconds` and
+`--max-idle-decisions`, each a positive integer. It records one matched budget
+for the pilot and all four model/mode conditions; later `run` and `report` cannot
+override it. The ordinary visual limits remain four inputs and at most 600
+admitted updates per decision. Each
 protected child uses mandatory fixture-free fresh-start v3 admission: the actor
 receives the untouched opening choice in its first archived screenshot. No
 challenge fixture or prerequisite gameplay is inserted. A pilot loss or cutoff
 remains an audited attempt; reaching sector 1 is reported separately and is not
 required by the controller to admit the later full-game attempts. The pilot is
 excluded from full-game totals.
+
+A longer-budget comparison requires a new exclusive cohort containing all four
+full-game conditions, rather than extending the active cohort or retrying selected
+failures. Existing frozen inputs and attempts remain unchanged; retain historical
+incomplete attempts without pooling cohorts or choosing retries for favorable
+outcomes. The changed controller executable requires fresh startup/timing evidence,
+independent review and portable admission before a new model cohort is frozen.
+The following is a prospective example only: it has not been launched and does
+not guarantee a native ending. Replace the admission path with that newly reviewed
+source-bound spec, and choose an unused output directory:
+
+```powershell
+harness/.venv/Scripts/python.exe -B scripts/run_fullgame_experiment.py freeze --output harness/runs/visual/fullgame-long-budget-001 --native-evidence <fresh-admission-spec> --evidence-root . --max-decisions 1500 --max-wall-seconds 86400 --max-idle-decisions 8
+```
 
 `freeze` pins source, prompt/schema, Codex CLI, native acceptance and the tested
 runtime baseline, and copies the pinned bytes into `frozen-source`. In particular,

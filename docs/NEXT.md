@@ -2,6 +2,23 @@
 
 **WIP / alpha. Challenge snapshot: 2026-10-11 13:07:21 UTC; stop review: 13:10 UTC; full-game milestone: 14:24 UTC.**
 
+## Prospective configurable full-game budgets
+
+The controller now accepts freeze-only positive-integer `--max-decisions`,
+`--max-wall-seconds` and `--max-idle-decisions`. Defaults remain 300 / 14,400 / 8;
+one frozen budget applies to the pilot and all four model/mode conditions.
+Runtime overrides and malformed or unrepresentable values are rejected.
+The focused controller suite passes 169 tests, covering custom/default freezes,
+all five child commands, validation before side effects and tamper rejection.
+
+This executable change is not yet admitted for model measurements. The active
+`d1c18b8` trial and its source checkout remain unchanged. If a larger budget is
+needed, collect fresh startup/timing evidence and independent admission, then
+freeze a new complete four-condition cohort. A prospective 1,500 / 86,400 / 8
+example is documented in the [protocol](visual-experiment-protocol.md); it has
+not been launched and does not guarantee native endings. Preserve all prior
+attempts and report cohorts separately, with all Sol calls before Luna.
+
 ## Current admitted cohorts (`d1c18b8`)
 
 Executable commit `d1c18b8fd5a9ac67a1e27da56dd9343a2ec86943` has fresh collection

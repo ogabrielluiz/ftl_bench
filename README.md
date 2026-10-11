@@ -7,6 +7,12 @@ An agent benchmark that drives the real **FTL: Faster Than Light** engine throug
 ## Status: work in progress
 
 The visual benchmark is an **alpha implementation with partial live validation**.
+Future full-game cohorts can declare matched decision, wall-time and idle budgets
+at freeze time; defaults remain 300 / 14,400 seconds / 8. See the
+[full-game protocol](docs/visual-experiment-protocol.md#full-game-progression).
+This controller change has offline coverage but no fresh live admission yet;
+existing measured cohorts keep their original executable and limits.
+
 At the 2026-10-11 13:07:21 UTC snapshot, executable commit `d1c18b8` has
 completed all 18 Sol challenges in `matrix-main-d1c18b8-20261011`: image 5/9 and
 hybrid 6/9 task successes. All 18 are eligible with no exclusions; seven

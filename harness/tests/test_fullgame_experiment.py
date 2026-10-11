@@ -29,7 +29,8 @@ def test_portable_options_are_paired_and_freeze_only(tmp_path, operation, flags)
     assert not (tmp_path / "new").exists()
 
 
-def test_portable_fullgame_freeze_and_child_use_frozen_protocol(tmp_path, monkeypatch):
+@pytest.mark.parametrize("budgets", [None, {"decisions": 1500, "wall_seconds": 86400, "idle_decisions": 12}])
+def test_portable_fullgame_freeze_and_child_use_frozen_protocol(tmp_path, monkeypatch, budgets):
     sources = {"scripts/run_fullgame_experiment.py": "a" * 64}
     runtime = {"dll_sha256": "b" * 64}
     files = {"Hyperspace.dll": runtime["dll_sha256"]}
@@ -49,8 +50,15 @@ def test_portable_fullgame_freeze_and_child_use_frozen_protocol(tmp_path, monkey
     monkeypatch.setattr(controller, "codex_runtime_identity", lambda: {"cli": "pinned"})
     monkeypatch.setattr(controller.CodexVisualAgent, "instruction_identity", lambda self: {"actor": "pinned"})
     directory = tmp_path / "cohort"
-    protocol = controller.freeze(directory, native_evidence=tmp_path / "spec.json", evidence_root=tmp_path)
+    protocol = controller.freeze(directory, native_evidence=tmp_path / "spec.json", evidence_root=tmp_path, budgets=budgets)
     assert protocol["contract"] == controller.portable.FULLGAME_CONTRACT
+    assert protocol["budgets"] == (controller.BUDGETS if budgets is None else budgets)
+    assert controller.read(directory / "protocol.json")["budgets"] == protocol["budgets"]
+    for cell in controller.plan_cells():
+        command = controller.trial_command(directory, cell, protocol)
+        for flag, key in (("--max-decisions", "decisions"), ("--max-wall-seconds", "wall_seconds"),
+                          ("--max-idle-decisions", "idle_decisions")):
+            assert command[command.index(flag) + 1] == str(protocol["budgets"][key])
     assert protocol["admission_selector"] == selector
     assert protocol["tested_runtime"] == {"files_sha256": files}
     assert "deployed_bridge_sha256" not in protocol["installed_runtime"]
@@ -486,3 +494,82 @@ def test_interruption_requests_cooperative_stop_waits_for_cleanup_and_does_not_s
     cells = controller.read(tmp_path / "ledger.json")["cells"]
     assert cells[0]["status"] == "finished" and cells[0]["process"]["creation_filetime"] == 42
     assert all(c["status"] == "planned" for c in cells[1:]) and waits == [1, 1]
+
+
+@pytest.mark.parametrize("operation", ["run", "report", "stop"])
+@pytest.mark.parametrize("flag", ["--max-decisions", "--max-wall-seconds", "--max-idle-decisions"])
+def test_budget_options_are_freeze_only(tmp_path, operation, flag):
+    with pytest.raises(SystemExit) as error:
+        controller.main([operation, "--output", str(tmp_path / "new"), flag, "100"])
+    assert error.value.code == 2
+    assert not (tmp_path / "new").exists()
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "1.5", "nan", "inf", "true", "text"])
+@pytest.mark.parametrize("flag", ["--max-decisions", "--max-wall-seconds", "--max-idle-decisions"])
+def test_invalid_cli_budget_rejected_before_freeze(tmp_path, monkeypatch, flag, value):
+    monkeypatch.setattr(controller, "freeze", lambda *a, **kw: pytest.fail("freeze reached"))
+    with pytest.raises(SystemExit) as error:
+        controller.main(["freeze", "--output", str(tmp_path / "new"), flag, value])
+    assert error.value.code == 2
+    assert not (tmp_path / "new").exists()
+
+
+INVALID_BUDGETS = [None, {}, {"decisions": 1},
+    {**controller.BUDGETS, "extra": 1},
+    *[{**controller.BUDGETS, key: value} for key in controller.BUDGETS
+      for value in (True, False, 0, -1, 1.0, float("nan"), float("inf"), "300")],
+    {**controller.BUDGETS, "wall_seconds": 10 ** 500},
+    {**controller.BUDGETS, "wall_seconds": 2 ** 53 + 1}]
+
+
+@pytest.mark.parametrize("budgets", INVALID_BUDGETS)
+def test_protocol_budget_schema_rejected_before_admission(tmp_path, monkeypatch, budgets):
+    protocol = {"contract": controller.portable.FULLGAME_CONTRACT, "budgets": budgets}
+    # Even repinning a malformed protocol cannot bypass its budget schema.
+    protocol["protocol_sha256"] = controller.digest(protocol)
+    monkeypatch.setattr(controller.portable, "verify_admission", lambda *a, **kw: pytest.fail("admission reached"))
+    monkeypatch.setattr(controller, "source_identity", lambda *a: pytest.fail("source reached"))
+    with pytest.raises(ValueError, match="budget|wall_seconds"):
+        controller.verify_protocol(protocol, directory=tmp_path)
+
+
+@pytest.mark.parametrize("budgets", [value for value in INVALID_BUDGETS if value is not None])
+def test_freeze_budget_schema_rejected_without_output_or_admission(tmp_path, monkeypatch, budgets):
+    monkeypatch.setattr(controller.portable, "freeze_admission", lambda *a, **kw: pytest.fail("admission reached"))
+    directory = tmp_path / "new"
+    with pytest.raises(ValueError, match="budget|wall_seconds"):
+        controller.freeze(directory, budgets=budgets, native_evidence=tmp_path / "spec", evidence_root=tmp_path)
+    assert not directory.exists()
+
+
+def test_cli_custom_budgets_and_defaults_pass_exact_map(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(controller, "freeze", lambda *a, **kw: calls.append(kw["budgets"]))
+    controller.main(["freeze", "--output", str(tmp_path / "custom"), "--max-decisions", "1500",
+                     "--max-wall-seconds", "86400", "--max-idle-decisions", "12"])
+    controller.main(["freeze", "--output", str(tmp_path / "default")])
+    assert calls == [{"decisions": 1500, "wall_seconds": 86400, "idle_decisions": 12}, controller.BUDGETS]
+
+
+def test_unsigned_budget_tampering_blocks_launch_before_admission(tmp_path, monkeypatch):
+    protocol = {"contract": controller.portable.FULLGAME_CONTRACT, "seed": 1,
+                "budgets": dict(controller.BUDGETS), "reasoning_effort": "medium", "cells": controller.plan_cells()}
+    protocol["protocol_sha256"] = controller.digest(protocol)
+    protocol["budgets"]["decisions"] = 1500
+    controller.write(tmp_path / "protocol.json", protocol)
+    controller.write(tmp_path / "ledger.json", {"protocol_sha256": protocol["protocol_sha256"], "cells": controller.plan_cells()})
+    monkeypatch.setattr(controller.portable, "verify_admission", lambda *a, **kw: pytest.fail("admission reached"))
+    monkeypatch.setattr(controller.subprocess, "Popen", lambda *a, **kw: pytest.fail("child launched"))
+    with pytest.raises(RuntimeError, match="protocol changed"):
+        controller.run(tmp_path, 1)
+
+
+@pytest.mark.parametrize("flags", [["--max-decisions"], ["--max-wall-seconds", str(10 ** 500)],
+                                    ["--max-wall-seconds", str(2 ** 53 + 1)]])
+def test_missing_or_unrepresentable_cli_budget_rejected_before_files(tmp_path, monkeypatch, flags):
+    monkeypatch.setattr(controller, "freeze", lambda *a, **kw: pytest.fail("freeze reached"))
+    with pytest.raises(SystemExit) as error:
+        controller.main(["freeze", "--output", str(tmp_path / "new"), *flags])
+    assert error.value.code == 2
+    assert not (tmp_path / "new").exists()
