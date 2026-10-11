@@ -13,9 +13,14 @@ hybrid 6/9 task successes. All 18 are eligible with no exclusions; seven
 budget failures remain recorded. The audits cover 259 calls and 295 PNGs, with
 4,499.937 seconds of reported latency and no reconnects. Reported input is
 4,869,278 tokens (cached subset 3,149,440), output 67,474 (reasoning subset 23,739).
-These finite results establish no population or model ranking. Luna's 18 cells
-remain planned, as do the pilot and four conditions in
-`fullgame-main-d1c18b8-20261011`; native-ending completion remains **0/4**.
+These finite results establish no population or model ranking. Luna's 18 challenge
+cells remain planned. At the 14:24 UTC full-game snapshot, the main pilot ended
+in native defeat after 62 calls (excluded from full-game totals), and Sol/image
+completed an audited crew-loss defeat after 78 calls and 79 PNGs: hull 26, oxygen
+0 and native score 81. Seven saves were restored; independent cleanup and rendered
+UI checks passed. Native-ending completion is **1/4**. Sol/hybrid is running and
+two Luna full games remain planned; its reviewed startup matches image gameplay,
+with different PNG bytes and exact-pixel HUD extraction.
 
 Fresh admission passed eight startup checks, nine timing equality probes,
 protected cleanup and eight executed independent negative probes, binding
@@ -60,8 +65,10 @@ evidence chain and matching runtime. Fresh-checkout setup remains WIP. The teste
 from runtime files, requires a caller-supplied hash-pinned patcher, retains
 exclusive original native build/source archives, and preserves the selected
 checkout. Offline setup checks passed (67 passed; five Windows symlink skips),
-shell syntax and two identical bridge archives. No fresh Docker build, native
-installation or complete clean-install validation has run; no runtime was changed.
+shell syntax and two identical bridge archives. The official FTLMan v0.7.3 archive and extracted executable are now locally
+verified for future setup, without execution. No fresh Docker build, native
+installation or complete clean-install validation has run; acquisition is not
+clean-build/install proof.
 
 A separate corrected viewer fixes an HTTP 500 caused by mixed ISO and numeric
 run timestamps. Its rendered current-cohort outcome and replay check passed

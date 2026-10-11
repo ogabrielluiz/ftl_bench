@@ -2,8 +2,9 @@
 
 Status: WIP. See [current results and remaining work](NEXT.md) for the latest
 dated cohort status, retained failures and prospective continuation. Earlier
-cohorts remain separate; no complete model/observation comparison or fixture-free
-full-game ending is established. The [validation history](validation-history-2026-10-11.md)
+cohorts remain separate; the complete model/observation comparison and all four
+native-ending conditions remain unfinished. One Sol/image native defeat is audited
+at the 2026-10-11 14:24 UTC snapshot; the pilot remains excluded from those totals. The [validation history](validation-history-2026-10-11.md)
 retains superseded evidence.
 
 ## Portable controller protocols

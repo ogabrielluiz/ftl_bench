@@ -1,6 +1,6 @@
 # Current validation and next work
 
-**WIP / alpha. Challenge snapshot: 2026-10-11 13:07:21 UTC; stop review: 13:10 UTC.**
+**WIP / alpha. Challenge snapshot: 2026-10-11 13:07:21 UTC; stop review: 13:10 UTC; full-game milestone: 14:24 UTC.**
 
 ## Current admitted cohorts (`d1c18b8`)
 
@@ -18,7 +18,7 @@ Both new cohorts are under `harness/runs/validation/visual-v1/`:
 | Cohort | Embedded protocol SHA-256 | Protocol file SHA-256 | Snapshot |
 | --- | --- | --- | --- |
 | `matrix-main-d1c18b8-20261011` | `ccbbb3379639b39af98eb4941139ec3bdb25c312db90641b03e62c1b54680010` | `1d8b42799d7cdf4171a86f6070197d9b3662f84d80b7eee6f234eaa24f922e8f` | 18 Sol finished; 18 Luna planned |
-| `fullgame-main-d1c18b8-20261011` | `7bcba8d7391bb42db40012888c6153425e2afb9ffe12700560e03b84143df9ec` | `9129cfc04d9173b77acfced1a35fcab5053384767b6ddb4ce04f6a7758e708b6` | Pilot plus four conditions planned |
+| `fullgame-main-d1c18b8-20261011` | `7bcba8d7391bb42db40012888c6153425e2afb9ffe12700560e03b84143df9ec` | `9129cfc04d9173b77acfced1a35fcab5053384767b6ddb4ce04f6a7758e708b6` | Pilot defeat excluded; Sol/image verified defeat; Sol/hybrid running; two Luna planned |
 
 All 18 Sol challenge trials are finished and independently reviewed: image 5/9,
 hybrid 6/9 task successes, all 18 eligible, zero exclusions and seven preserved
@@ -121,12 +121,55 @@ no native fallback and hull omitted. `paused=true` is a separate control invaria
 That earlier receipt covers one request; the 18-Sol checkpoint above now binds
 the nine completed hybrid trials, without qualifying the full comparison.
 
-The strict Sol supervisor finished its 18 declared cells through official
-`--limit 1` calls and exited zero at the Sol boundary. All five main pilot/full-game
-cells remain planned at this snapshot; native-ending completion is **0/4**.
-Next are the Sol sector pilot and two Sol full-game conditions before any Luna
-calls. The full comparison, native endings and actual clean-build/setup reproduction
-remain WIP. Older failures stay separate, without retries, relabelling or pooling.
+### Full-game milestone (2026-10-11 14:24 UTC)
+
+The main pilot finished at 13:38:53 UTC with audited native defeat after 62 calls;
+it remains excluded from full-game totals. Its reported input is 1,175,359 tokens
+(cached subset 770,048), output 18,849 (reasoning subset 7,523), latency 1,281.388
+seconds (median 21.099), with no reconnects. Saved review at 13:41:26 UTC:
+`d1c18b8-sol-pilot-final-review.json`, SHA-256
+`5ac66fc073487a43a41a7a6d77c0755a9f79f2a5e78c21f6fdf677f0b867d0e4`.
+
+Sol/image full game finished at 14:17:38 UTC with `native_game_over`: all crew
+lost, hull 26/30, oxygen 0%, score 81 from `native_live_v1`. It made two jumps,
+remained in sector 0 and recorded one observed enemy defeat. The native ending,
+78 calls / 79 PNGs, input/action/frame/history joins and child admission passed
+independent review; seven original saves were restored. All 78 calls report
+input 1,470,354 (cached subset 968,320), output 21,920 (reasoning subset 8,100),
+latency 1,558.339 seconds (median 19.016), and no reconnects. Resolved model
+identity remains unreported. This is **1/4 verified full-game endings**, not a win
+or a population/model ranking; full comparison and general determinism remain unproven.
+
+Independent current cleanup at 14:18:23 UTC checked the seven originals, prior
+bridge, six runtime files, source pins and no FTL before hybrid launched. The
+rendered final UI passed at 14:19:34 UTC. Saved final review at 14:21:55 UTC and
+native-fields addendum at 14:22:15 UTC remain separate: the addendum corrects
+initial null oxygen/health projections to `oxygen_pct` / `health_current`, without
+changing the verdict or original artifacts. Exact local receipts:
+
+| Receipt | SHA-256 |
+| --- | --- |
+| `d1c18b8-sol-image-fullgame-final-review.json` | `c15e76d6a612e59131b3636abacd212f1ba3323334c42895c791915398d1de87` |
+| `d1c18b8-sol-image-fullgame-final-review-native-fields-addendum.json` | `56d2f1a4162ce4f0a9ee36d5e80d5b73088b5fd0a1e63745291dae4b026325d5` |
+| `d1c18b8-sol-image-fullgame-current-cleanup-review.json` | `fc686c477a5fdd00e5c6fa9d57edcc3d350fc4c4260af1da0f17677b94ff6fd5` |
+| `d1c18b8-sol-image-fullgame-final-ui-review.json` | `25cb602ae985ef20be8c286861d40234caaba21e8cabbd6d17864eee177fef8b` |
+| `d1c18b8-sol-hybrid-fullgame-startup-review.json` | `74028e2ab1793895f56be276ab089eebf56c210f662552f1adc6a0b46f648b57` |
+
+Sol/hybrid started at 14:23:06 UTC and is running at this snapshot; two Luna
+full games remain planned. Its bounded startup review at 14:24:09 UTC confirms
+canonical initial gameplay matches Sol/image while PNG bytes differ. Exact PNG
+pixels support fuel 16, scrap 30, missiles 8 and drone parts 2; hull is omitted,
+and `paused=true` is a control invariant. This prefix review claims no ending
+or current live cleanup for the active trial.
+
+The 18-Sol challenge checkpoint remains 11 successes, seven budget failures and
+18 eligible trials; Luna's 18 challenge cells are planned. The strict challenge
+supervisor finished its declared cells through official `--limit 1` calls.
+The full comparison, remaining three native endings and actual clean-build/setup
+reproduction remain WIP; older failures remain separate without retries or pooling.
+Official FTLMan v0.7.3 archive/executable verification receipts are now in setup
+`dist/clean-setup-inputs-20261011/ftlman-v0.7.3/`, dated 14:22 UTC. Acquisition and
+local hashing only, with no execution, do not establish clean build or installation.
 
 ## Preserved `463c340` admission (10:47 UTC snapshot)
 

@@ -5,7 +5,9 @@ The visual track lets an agent play through FTL's rendered interface. Each decis
 This is an additional track. Existing structured trajectories remain readable, and historical diagnostic runs remain excluded from model-comparison totals. A recorded native score is not evidence that a run is eligible for comparison.
 
 **WIP:** the current challenge comparison is partial and fixture-free full-game
-completion remains unproven. The historical `2174cc9` sector pilot ended in audited native defeat
+four-condition completion remains unfinished. At the 2026-10-11 14:24 UTC snapshot,
+Sol/image has an audited native crew-loss defeat (1/4 endings); Sol/hybrid is running.
+The historical `2174cc9` sector pilot ended in audited native defeat
 and is excluded from full-game totals. Read [current validation and remaining work](NEXT.md) before treating
 any historical result below as current acceptance. Native binaries, raw runs
 and local acceptance evidence are not included in Git; a fresh checkout still
