@@ -514,8 +514,8 @@ function TopPanel({ data, lastUpdated }: { data: DashboardState; lastUpdated: Da
       </div>
       {data.run.validation?.comparison_eligible === false ? <>
         <div className="source-banner history" role="note">
-          <strong>Diagnostic only</strong>
-          <span>Recorded scores and outcomes are retained. This run is excluded from model-comparison totals.</span>
+          <strong>Diagnostic scoring</strong>
+          <span>Recorded scores and outcomes are retained. Eligibility for frozen comparisons is reported separately in the experiment table.</span>
         </div>
         {data.run.validation.limitations.length ? <ul className="muted">
           {data.run.validation.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}
