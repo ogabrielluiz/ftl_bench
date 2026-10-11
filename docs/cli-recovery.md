@@ -1,20 +1,28 @@
 # Audited Codex CLI recovery
 
-Status at 2026-10-11 10:47 UTC (07:47 in São Paulo): implemented and freshly admitted at executable
-commit `463c340`. The new `matrix-main-463c340-20261011` and
-`fullgame-main-463c340-20261011` cohorts are frozen with all cells planned;
-no model call has yet used this policy at the snapshot. It does not change any
-older frozen trial outcome. See [exact admission and cohort identities](NEXT.md).
+Status at 2026-10-11 11:44 UTC (08:44 in São Paulo): the implemented recovery policy and saved-report
+repair are freshly admitted at executable commit `d1c18b8` in
+`matrix-main-d1c18b8-20261011` and `fullgame-main-d1c18b8-20261011`.
+The first Sol/image combat trial reached the 60-decision budget without task
+success; its evidence is eligible with no exclusions, and all 60 decisions/62
+PNGs passed saved auditing. No reconnect occurred, so this trial does not prove
+live recovery handling. One challenge cell is finished, 35 remain planned, and
+all five pilot/full-game cells remain planned. Independent final saved-trace,
+current-cleanup and rendered UI reviews passed at their dated boundaries.
+See [exact admission, cohort identities and receipts](NEXT.md).
 
-The first subsequent Sol/image combat trial completed 13 model decisions and the
-native task goal. Its comparison exposed a saved-auditor format defect: challenge
-trajectory metadata precedes actor construction, while the manifest and experiment
-retain the policy. The prospective repair joins the manifest policy with every
-present declaration instead of inventing a legacy declaration for an absent
-optional carrier. It rejects conflicting, unknown or undeclared modern policies
-and preserves strict historical behavior. The 301 focused tests and a read-only
-re-audit of the complete saved trial passed. Its original exclusion remains saved;
-fresh source-bound admission and cohorts are required before subsequent calls.
+Fresh collection `main-admission-policy-audit-20261011T110830Z` passed eight startup
+checks, nine timing equality probes, protected cleanup and eight executed negative
+review cases, binding 78 sources and 565 evidence files. The 31 original native
+inputs remain unchanged with reuse disclosed; `production_accepted` remains false.
+
+The preserved `463c340` trial achieved its combat goal after 13 decisions, but its
+original comparison falsely excluded it because challenge trajectory metadata
+precedes actor construction. The repaired reporter uses the manifest policy and
+checks every present declaration, without inventing a conflict for absent optional
+metadata. Unknown, conflicting or undeclared modern policies still reject; strict
+historical behavior remains. Original reports and failures were not regenerated,
+retried or retroactively accepted. The fresh `d1c18b8` cohort now binds this repair.
 
 ## Observed failure
 

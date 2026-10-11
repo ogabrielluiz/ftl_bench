@@ -1,8 +1,59 @@
 # Current validation and next work
 
-**WIP / alpha. Snapshot: 2026-10-11 10:47 UTC (07:47 in São Paulo).**
+**WIP / alpha. Snapshot: 2026-10-11 11:44 UTC (08:44 in São Paulo).**
 
-## Current admitted cohorts (`463c340`)
+## Current admitted cohorts (`d1c18b8`)
+
+Executable commit `d1c18b8fd5a9ac67a1e27da56dd9343a2ec86943` has fresh collection
+`main-admission-policy-audit-20261011T110830Z`: eight startup checks, nine timing
+equality probes, protected cleanup and eight executed independent negative cases
+passed. Admission binds 78 source files and 565 evidence files. The 31 original
+native-build/source-proof inputs remain byte-identical with their original
+identities and timestamps; reuse is disclosed, not a new build or compiler proof.
+`production_accepted` remains false. Admission-spec SHA-256:
+`f5315fce5623e6d0bc9c7f1234c5433ad74d4be50e70dfff2b02452377f2d876`.
+
+Both new cohorts are under `harness/runs/validation/visual-v1/`:
+
+| Cohort | Embedded protocol SHA-256 | Protocol file SHA-256 | Snapshot |
+| --- | --- | --- | --- |
+| `matrix-main-d1c18b8-20261011` | `ccbbb3379639b39af98eb4941139ec3bdb25c312db90641b03e62c1b54680010` | `1d8b42799d7cdf4171a86f6070197d9b3662f84d80b7eee6f234eaa24f922e8f` | One finished, 35 planned |
+| `fullgame-main-d1c18b8-20261011` | `7bcba8d7391bb42db40012888c6153425e2afb9ffe12700560e03b84143df9ec` | `9129cfc04d9173b77acfced1a35fcab5053384767b6ddb4ce04f6a7758e708b6` | Pilot plus four conditions planned |
+
+Sol/image combat repeat one finished at 11:42:20 UTC with `decision_budget`:
+60 decisions, 62 audited PNGs, task success false, `budget_exhausted`, evidence
+eligible and exclusions empty. The saved reporter audit passed all 60 decisions;
+its declaration repair now works prospectively. No reconnect occurred. All 60
+calls report usage: input 1,132,726 (cached subset 680,960), output 17,012
+(reasoning subset 6,351); latency totals 1,065.440 seconds, median 17.122.
+Requested model is Sol; CLI events do not report the resolved backend model.
+The comparison remains unqualified with only one of 36 cells finished.
+
+Local evidence under `dist/store-warp-diagnosis-20261011/` includes
+`d1c18b8-admission-cleanup-review.json`, `d1c18b8-independent-eight-probe-review-result.json`
+and `d1c18b8-cohort-freeze-review.json`. The current-cleanup check at 11:42:58 UTC
+verified seven original saves, prior Lua bridge, six runtime files and no FTL
+process; the rendered completed UI check at 11:43:42 UTC showed one eligible,
+zero excluded and the budget outcome. Their receipts are
+`d1c18b8-sol-image-combat-01-current-cleanup-review.json` and
+`d1c18b8-sol-image-combat-01-completed-ui-review.json`.
+Independent final saved-trace review passed at 11:44:19 UTC, binding all 60
+screenshot/input/history/admission joins and seven backups/restoration receipts
+without changing original bytes. The enemy escaped with three hull and no reward;
+player hull was 20 with all three crew alive. Receipt:
+`d1c18b8-sol-image-combat-01-final-review.json` (SHA-256
+`8e342d123f956bc657203b598ecf4a01c14f17bac0f586d981b929ed6fb65625`).
+The strict Sol supervisor also passed saved-result review; prospective continuation
+uses only unstarted cells through official `--limit 1` calls and stops on technical
+exclusions or cleanup failures, preserving honest budget/defeat outcomes. These are
+dated checks, not continuing live-cleanup or future trial-count claims.
+
+All five pilot/full-game cells remain planned and fixture-free native-ending
+completion is **0/4**. The remaining comparison, native endings and actual clean
+build/setup reproduction remain WIP. Retained older failures are not retried,
+relabelled or pooled into this cohort.
+
+## Preserved `463c340` admission (10:47 UTC snapshot)
 
 Commit `463c340069df9ab1c7786bf6cc0c7b07ab1e8017` passed all five jobs in
 [CI run 38132428078](https://github.com/ogabrielluiz/ftl_bench/actions/runs/38132428078).
@@ -111,8 +162,8 @@ runs remain historical; see the [store-arrival diagnosis](native-store-arrival.m
 | Observation modes | Image-only play and hybrid HUD numerals extracted from the same PNG; no hidden native-state fallback. The comparative model trials remain incomplete. |
 | Repeatable setup | Nine no-model fixture-6 probes passed measured starting-state and step equality across three wall delays. This covers the tested inputs, not every hidden RNG stream or full-game determinism. |
 | Protected lifecycle | Save backups, exact restoration, runtime identities and terminal evidence are recorded. Cooperative-stop probes passed before the actor and during one real CLI request; the returned cancelled response was retained and its actions discarded. |
-| Challenges | Frozen 36-cell controller, versioned public tasks, outcome audits, retained failures and exact replays. All 18 current Sol cells are finished; the separate historical nine-cell results are below. |
-| Full-game support | Fixture-free startup and the five-cell controller are implemented. Startup preserves the opening choice. The historical pilot ended in audited native defeat after 78 decisions; its subsequent Sol/image full-game attempt was interrupted by a confirmed harness store-arrival defect. The current pilot completed in audited native defeat after 53 decisions. The Sol/image full-game attempt then stopped with a preserved CLI protocol error after 46 decisions; three later conditions remain planned, and native-ending full games remain 0/4. |
+| Challenges | Frozen 36-cell controller, versioned public tasks, outcome audits, retained failures and exact replays. The dated `2174cc9` cohort has all 18 Sol cells finished; separate historical nine-cell results are below. |
+| Full-game support | Fixture-free startup and the five-cell controller are implemented. Startup preserves the opening choice. The historical pilot ended in audited native defeat after 78 decisions; its subsequent Sol/image full-game attempt was interrupted by a confirmed harness store-arrival defect. The dated `2174cc9` pilot completed in audited native defeat after 53 decisions. The Sol/image full-game attempt then stopped with a preserved CLI protocol error after 46 decisions; three later conditions remain planned, and native-ending full games remain 0/4. |
 | Dashboard | Saved challenge/full-game overviews, exact screenshots and inputs, outcome reasons, task identities and saved cleanup receipts. The dashboard is read-only. |
 
 The visual track is `visual-v1`; historical structured runs retain runner/ruleset

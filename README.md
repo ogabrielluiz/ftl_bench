@@ -7,88 +7,38 @@ An agent benchmark that drives the real **FTL: Faster Than Light** engine throug
 ## Status: work in progress
 
 The visual benchmark is an **alpha implementation with partial live validation**.
-At the 2026-10-11 10:47 UTC (07:47 in São Paulo) snapshot, executable commit `463c340` has fresh scoped
-admission and two new frozen cohorts: `matrix-main-463c340-20261011` (all 36
-challenge cells planned) and `fullgame-main-463c340-20261011` (pilot plus four
-full-game conditions planned). No model calls or new task/native-ending results
-are claimed at this snapshot. The new [CLI recovery policy](docs/cli-recovery.md)
-is source-bound; earlier cohorts and failed attempts remain separate.
+At the 2026-10-11 11:44 UTC (08:44 in São Paulo) snapshot, the freshly admitted executable commit
+`d1c18b8` has one finished challenge cell and 35 planned in
+`matrix-main-d1c18b8-20261011`. Sol/image combat repeat one reached its
+60-decision budget: task success false, evidence eligible, no exclusions;
+the saved audit checked 60 decisions and 62 PNGs. The separate
+`fullgame-main-d1c18b8-20261011` has its pilot and four full-game conditions
+planned; fixture-free native-ending completion remains **0/4**.
 
-Startup's eight checks, nine timing equality probes and protected cleanup passed,
-followed by eight executed independent negative probes. Admission binds 78 sources
-and 565 evidence files; `production_accepted` remains false. The 31 original native
-build/source inputs were reused unchanged with their identities and reuse disclosed.
-All five [CI jobs at `463c340`](https://github.com/ogabrielluiz/ftl_bench/actions/runs/38132428078)
-passed. This establishes the documented admission scope, not completed model
-comparison, clean-build reproduction or fixture-free native endings.
+Fresh admission passed eight startup checks, nine timing equality probes,
+protected cleanup and eight executed independent negative probes, binding
+78 executable sources and 565 evidence files. The original 31 native build/source
+inputs were reused unchanged with their identities and reuse disclosed;
+`production_accepted` remains false. The new cohort uses the
+[CLI recovery policy](docs/cli-recovery.md) and repaired saved reporter. The first
+trial verifies the reporting repair; no reconnect occurred to exercise live recovery.
+The completed trial's rendered UI and current seven-save/bridge/six-runtime/no-FTL
+checks passed at their recorded boundaries, followed by independent final saved
+trace review at 11:44 UTC. Continuation uses the reviewed supervisor for unstarted Sol
+cells through the official controller; budget failures remain recorded.
 
-The first new Sol/image combat trial subsequently reached its task goal after 13
-model decisions, with 15 audited PNGs and exact save restoration. Its original comparison
-report remains excluded: the saved auditor incorrectly required actor-policy
-metadata in a trajectory header written before actor construction. A prospective
-repair reads the manifest declaration and validates all present declarations;
-it retains strict rejection of missing, unknown or conflicting request policies.
-The original run and report are preserved. Further model trials are held until
-fresh admission and new cohorts bind the repaired reporting sources.
+Historical cohorts remain separate. `2174cc9` retains 18 Sol challenge attempts
+(17 eligible, 12 successes, five budget failures and one technical exclusion),
+a pilot native defeat and an incomplete Sol/image full-game attempt after 46
+decisions. `463c340` retains its 13-decision combat task success and original
+false reporting exclusion. `078a5e2` and all failed attempts also stay unchanged;
+no results are pooled or failed cells silently retried. See the dated evidence,
+exact protocol identities and remaining [WIP](docs/NEXT.md).
 
-The following dated `2174cc9` results are preserved historical evidence.
-
-At the 2026-10-11 09:25 UTC (06:25 in São Paulo) boundary, the frozen
-`2174cc9` matrix has all 18 Sol cells finished and 18 Luna cells remaining:
-**17 eligible, 12 task successes, five budget failures and one preserved technical
-exclusion**. The six fixed-seed challenge conditions are:
-
-| Challenge | Sol/image: success / budget / excluded | Sol/hybrid: success / budget / excluded |
-| --- | --- | --- |
-| Combat | 2 / 1 / 0 | 3 / 0 / 0 |
-| Fire recovery | 1 / 1 / 1 | 1 / 2 / 0 |
-| Repair-charge-escape | 3 / 0 / 0 | 2 / 1 / 0 |
-
-All 79 hybrid requests retain non-null screenshot-bound HUD provenance and pass
-saved derivation checks. Usage is available for 198/199 Sol calls; complete token
-totals remain unknown because the excluded image/fire call reported no usage.
-All five full-game/pilot entries were planned at this boundary; fixture-free
-native-ending full games remain **0/4**. The comparison is unqualified while Luna
-is unstarted, and the retained image/fire repeat-one exclusion will leave that
-four-condition pair incomplete even after the remaining cells finish.
-
-At 2026-10-11 09:50 UTC, the Sol/image sector pilot has completed in native
-defeat in sector index 0: 53 decisions, 54 PNGs and score 20. Saved integrity,
-admission, recorded restoration, current cleanup and rendered UI reviews passed.
-The pilot contributes zero full-game completions; all four full-game conditions
-remain planned and native-ending completion remains **0/4**.
-
-At 10:08 UTC, the first Sol/image full-game attempt stopped after 46 decisions
-with a CLI protocol error. The CLI recovered from a connection interruption and
-completed call 47, but the frozen reject-all-errors policy refused its reconnect
-notification. No call-47 action was delivered. Saved and current restoration
-checks passed; the attempt remains incomplete and the three later full-game
-conditions remain planned. A [prospective recovery policy](docs/cli-recovery.md)
-adds narrow validation and inspectable diagnostics; it requires fresh admission
-and new cohorts before benchmark use. Previous trials and exclusions stay intact.
-
-An audit import created an extra bytecode cache inside frozen-source; the next
-controller rejected it before game/model launch or a new ledger trial. All 78
-pinned executable files remained unchanged. After preserving the extra file and
-original failure, the static recheck matched both original admissions and protocol
-hashes (78 sources, 565 evidence files each). The reviewed helper resumed only
-unstarted Sol/hybrid cells and completed the nine-cell hybrid boundary without
-a new technical exclusion.
-The separate preserved `078a5e2` cohort and failed trials remain unchanged;
-cohorts are not pooled and finished failures are not silently retried.
-See exact identities, receipts and remaining [WIP](docs/NEXT.md).
-
-Screenshot play, conservative image-derived HUD summaries, protected saves,
-frozen challenge/full-game controllers and exact dashboard replays are
-implemented. CI passes on Windows and Linux with Python 3.11 and 3.13. The
-repaired native runtime passed the protected natural store-arrival regression,
-fixture-free startup and all nine timing probes. The admitted collections reuse
-the original native build unchanged and disclose
-that reuse; all ten cleanup inventories and the current seven original saves
-were independently verified. Both saved-report admission fixes, bounded CLI
-failure evidence and the audited recovery policy are included in the newly
-admitted `463c340` sources. These checks establish their documented scopes,
-not completion of the benchmark plan or general determinism.
+The complete 36-cell fair comparison, four native-ending full-game conditions
+and actual clean-build/setup reproduction remain unfinished. Scoped diagnostics,
+passing tests and a challenge outcome do not establish those requirements or
+general determinism.
 
 The optional [portable v2 workflow](docs/native-acceptance.md) archives local
 startup/timing evidence, original build records, reconstructed native sources
