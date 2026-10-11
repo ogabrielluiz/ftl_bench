@@ -60,6 +60,15 @@ Keep the include implementations, patch and manifest consistent.
 `scripts/write_native_provenance.py` records the actual build inputs and DLL.
 Never relabel diagnostic provenance as accepted production evidence.
 
+For build-only preparation, select `STAGES="repos build datamod"` explicitly;
+the positional `build` command continues through installation and deployment.
+Optional `FTLB_BUILD_MEMORY` and `FTLB_BUILD_CPUS` limit the build container and
+are retained in its actual provenance command. They do not bound the whole
+Docker/WSL VM or select Ninja's job count. Distinguish preflight failures from
+compiler failures and successful builds; the documented 3 GiB / one-CPU example
+has no successful-build evidence. Retain failure evidence before recovery, and
+do not reset Docker storage or alter frozen execution checkouts to unblock setup.
+
 For portable source evidence, use `scripts/collect_native_source_evidence.py`
 against an explicit local native repository. The proof authenticates the exact
 manifest base and reconstructs every patched file; it does not attest a compiler

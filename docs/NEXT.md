@@ -1,6 +1,43 @@
 # Current validation and next work
 
-**WIP / alpha. Current status: 2026-10-11 16:18 UTC; challenge snapshot: 13:07:21 UTC; saved Sol full-game checkpoint: 16:02:58 UTC.**
+**WIP / alpha. Current status: 2026-10-11 16:58 UTC; challenge snapshot: 13:07:21 UTC; saved Sol full-game checkpoint: 16:02:58 UTC.**
+
+## Native-build preflight and resource limits
+
+The Windows/WSL build wrapper now accepts optional `FTLB_BUILD_MEMORY` (a
+positive integer with lowercase `m`/`g`) and `FTLB_BUILD_CPUS` (a positive
+integer). Memory sets equal Docker memory and memory-plus-swap limits; CPU sets
+a quota. Unset variables preserve the existing command. Invalid values fail
+before build-stage patching, image pulls or archive creation; earlier selected
+bootstrap stages may already have run. The actual build command, including caps,
+is retained in provenance. These caps do not constrain the whole WSL VM or
+Ninja's job count. All 54 focused staging/setup-input checks passed, including
+shell syntax, unchanged defaults and rejection before build-stage mutations.
+
+The isolated-build preparation acquired Ubuntu Noble's `zip` 3.0-13ubuntu0.2
+package and verified both package and extracted executable hashes, without a
+privileged installation. Its local receipt is
+`/home/ogabrielluiz/projects/ftl_bench-clean-builds/20261011T165000Z/tools/zip-acquisition.json`
+(SHA-256 `2b69da72547e36ed66c68906b19a0df59b0aa00b66fbcfc0a92f5ca5007b87f4`).
+This is tool acquisition only, not a clean-build result.
+
+Docker Desktop's backend crashed at 16:48:32 UTC while initializing its inference
+service because its local `run/dockerInference` file could not be accessed.
+Compilation never started; there is no new DLL, installation or runtime admission.
+The bounded, redacted preflight note is
+`dist/store-warp-diagnosis-20261011/docker-preflight-20261011T164832Z.json`
+(SHA-256 `082bd56d256f546d0a7b5470afac60e62db0e3c2f2a781d455a00601278b1c24`).
+The local receipts are generated artifacts and are not shipped in Git.
+The 3 GiB / one-CPU example remains unvalidated for a complete build.
+Docker recovery and sufficient available host memory are required before the
+next attempt. No factory reset or Docker-storage deletion was performed.
+
+Steam's pending-launch cancellation remains a separate prerequisite for game
+diagnostics below. No game or model run was started during build preparation.
+The existing `main` checkpoint `c74aed4` passed all five
+[CI jobs](https://github.com/ogabrielluiz/ftl_bench/actions/runs/38156659096),
+including package and documentation builds. Offline validation does not supply
+the missing live acceptance or complete-game results.
 
 ## Prospective configurable full-game budgets
 

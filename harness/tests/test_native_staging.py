@@ -104,7 +104,7 @@ def test_setup_script_has_valid_bash_syntax():
 
 @pytest.mark.parametrize("image,failure,expected", [(IMAGE, "", 0), ("ghcr.io/example/toolchain:v2", "", 1),
     ("sha256:" + "a" * 64, "", 1), (IMAGE, "pull", 1), (IMAGE, "base", 1)])
-def test_build_stage_uses_pinned_commands_and_stages_visual_pair_only(tmp_path, image, failure, expected):
+def test_build_stage_uses_pinned_commands_and_stages_visual_pair_only(tmp_path, image, failure, expected, caps=None):
     project = tmp_path / "projects"
     dll = project / "FTL-Hyperspace/build-windows-release/Hyperspace.dll"
     dll.parent.mkdir(parents=True)
@@ -112,6 +112,9 @@ def test_build_stage_uses_pinned_commands_and_stages_visual_pair_only(tmp_path, 
     trace = tmp_path / "calls.txt"
     env = dict(os.environ, PROJ=str(project), FTLB_ROOT=str(project / "ftl_bench"), STAGES="build", DEVCONTAINER=image,
                TEST_TRACE=str(trace), TEST_FAILURE=failure)
+    env.pop("FTLB_BUILD_MEMORY", None)
+    env.pop("FTLB_BUILD_CPUS", None)
+    env.update(caps or {})
     script = r'''
 docker() { printf 'docker'; printf ' [%s]' "$@"; printf '\n';
   [ "$TEST_FAILURE" != "$1" ]; } >> "$TEST_TRACE"
@@ -141,10 +144,38 @@ source "$1"
         assert calls.index("archive_native_build.py] [finish]") < calls.index("] [stage] [--dll]")
         assert "/artifacts/Hyperspace.visual-v1.dll] [--provenance]" in calls
         assert "/artifacts/native-build.visual-v1.json]" in calls
+        for key, flag in (("FTLB_BUILD_MEMORY", "--memory"), ("FTLB_BUILD_CPUS", "--cpus")):
+            if key in (caps or {}):
+                assert f"[{flag}] [{caps[key]}]" in calls
+            else:
+                assert f"[{flag}]" not in calls
+        if "FTLB_BUILD_MEMORY" in (caps or {}):
+            assert f"[--memory-swap] [{caps['FTLB_BUILD_MEMORY']}]" in calls
+        else:
+            assert "[--memory-swap]" not in calls
         assert "native-build.protocol5.json" not in calls and "build-releaseonly-from-docker.sh" not in calls
     else:
         assert "] [stage]" not in calls and "write_native_provenance.py" not in calls
         assert "docker [run]" not in calls
+
+
+@pytest.mark.parametrize("caps", [
+    {"FTLB_BUILD_MEMORY": "3g"}, {"FTLB_BUILD_CPUS": "1"},
+    {"FTLB_BUILD_MEMORY": "3072m", "FTLB_BUILD_CPUS": "2"},
+])
+def test_optional_build_caps_are_exact_docker_arguments(tmp_path, caps):
+    test_build_stage_uses_pinned_commands_and_stages_visual_pair_only(tmp_path, IMAGE, "", 0, caps)
+
+
+@pytest.mark.parametrize("key,value", [
+    ("FTLB_BUILD_MEMORY", value) for value in ("", "0g", "-1g", "3", "3.5g", "3g --privileged", " 3g")
+] + [("FTLB_BUILD_CPUS", value) for value in ("", "0", "-1", "1.5", "1;true", " 1")])
+def test_invalid_build_caps_reject_before_mutation(tmp_path, key, value):
+    test_build_stage_uses_pinned_commands_and_stages_visual_pair_only(tmp_path, IMAGE, "", 1, {key: value})
+    calls = (tmp_path / "calls.txt").read_text() if (tmp_path / "calls.txt").exists() else ""
+    assert "apply_native_patch.py" not in calls
+    assert "docker [pull]" not in calls and "docker [run]" not in calls
+    assert "archive_native_build.py" not in calls
 
 
 def test_other_stages_do_not_require_image_and_install_consumes_verified_staged_pair():

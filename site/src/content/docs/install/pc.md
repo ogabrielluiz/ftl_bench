@@ -16,9 +16,25 @@ docker manifest inspect --verbose "$DEVCONTAINER"
 docker pull --platform linux/amd64 "$DEVCONTAINER"
 docker image inspect "$DEVCONTAINER" --format '{{.Id}} {{json .RepoDigests}}'
 
-# Clone the declared native base, build, and stage artifacts without installing.
-STAGES="repos build" bash scripts/setup_pc.sh
+# Clone the declared native base, build/stage and package mods without installing.
+FTLB_BUILD_MEMORY=3g FTLB_BUILD_CPUS=1 STAGES="repos build datamod" bash scripts/setup_pc.sh
 ```
+
+The build wrapper defaults to no explicit container resource caps. Optional
+`FTLB_BUILD_MEMORY=3g` sets both Docker `--memory 3g` and `--memory-swap 3g`,
+allowing no additional container swap; optional `FTLB_BUILD_CPUS=1` sets a numeric
+CPU quota, not a single compiler job. Memory must be a positive integer with an
+explicit lowercase `m` or `g` suffix; CPU quota must be a positive integer.
+These limits apply to the build container, not the whole WSL/Docker VM. The
+3 GiB / one-CPU example has not established sufficient resources. The current
+local attempt stopped during Docker startup, before compilation began.
+Resource caps do not change the pinned image or declared native base.
+
+Python 3, Git, Docker and `zip` must be available for this build/package window
+(along with the shell utilities listed below). A locally supplied official `zip`
+package on `PATH` is acceptable. Use the explicit `repos build datamod` stage list
+above to avoid modifying the game installation or launching FTL; the wrapper
+still patches the selected native sources and stages benchmark artifacts.
 
 Run the script from the benchmark revision you intend to build. It selects its
 own real repository root by default, including a Git worktree whose `.git` is a
@@ -39,7 +55,7 @@ On 2026-10-11, a remote metadata query verified that the immutable manifest abov
 
 The local evidence is `dist/native-toolchain-mapping-20261011T034047Z/mapping-receipt.json` (SHA-256 `3f5c98ba7b4f6468fdb51271d1bf1f8e11f98cf7cca89fbda98e246af43a0ac4`), with the cached image inspection, remote manifest and historical build-manifest snapshot beside it. This generated receipt is not included in a fresh clone. It adds a verified registry-to-image mapping; the old provenance still records its original mutable tag and image ID and remains unchanged.
 
-This is **metadata verification**, not a fresh build or bit-for-bit DLL reproduction. No image layers were downloaded, and their remote availability was not checked. The isolated cached-only build plan remains unexecuted; complete offline dependency availability, the resulting DLL bytes and acceptance of a newly built runtime remain unproven.
+This is **metadata verification**, not a fresh build or bit-for-bit DLL reproduction. No image layers were downloaded, and their remote availability was not checked. On 2026-10-11, preparation for an isolated build stopped when Docker Desktop crashed while initializing its inference service, before any native compilation. A local Ubuntu `zip` package was acquired and hash-verified; that does not establish complete dependency availability, successful compilation, resulting DLL bytes or acceptance of a newly built runtime. See [current build blockers](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/NEXT.md#native-build-preflight-and-resource-limits) for the retained evidence. Cached toolchain inputs do not establish an independently acquired clean environment.
 
 For an existing Hyperspace source checkout:
 

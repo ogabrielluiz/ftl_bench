@@ -159,6 +159,17 @@ fi
 # ===========================================================================
 if want build; then
   log "build: Hyperspace.dll (Docker devcontainer, MinGW cross-compile)"
+  BUILD_RESOURCES=()
+  if [ "${FTLB_BUILD_MEMORY+x}" = x ]; then
+    [[ "$FTLB_BUILD_MEMORY" =~ ^[1-9][0-9]*[mg]$ ]] \
+      || die "FTLB_BUILD_MEMORY must be a positive integer with explicit m/g suffix"
+    BUILD_RESOURCES+=(--memory "$FTLB_BUILD_MEMORY" --memory-swap "$FTLB_BUILD_MEMORY")
+  fi
+  if [ "${FTLB_BUILD_CPUS+x}" = x ]; then
+    [[ "$FTLB_BUILD_CPUS" =~ ^[1-9][0-9]*$ ]] \
+      || die "FTLB_BUILD_CPUS must be a positive integer"
+    BUILD_RESOURCES+=(--cpus "$FTLB_BUILD_CPUS")
+  fi
   [[ "$DEVCONTAINER" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*@sha256:[0-9a-f]{64}$ ]] \
     || die "set DEVCONTAINER to an immutable registry/repository@sha256:<digest>; a tag or local image ID is insufficient"
   command -v docker >/dev/null 2>&1 || die "docker not found in WSL. Install Docker Desktop (enable WSL integration) or 'sudo apt-get install -y docker.io && sudo usermod -aG docker $USER' then re-login."
@@ -174,6 +185,7 @@ if want build; then
     || die "could not exclusively archive original native build sources"
   # Bypass the upstream Docker wrapper, which selects a mutable v2 tag.
   BUILD_CMD=(docker run --rm --platform linux/amd64
+    "${BUILD_RESOURCES[@]}"
     -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/workspaces/FTL-Hyperspace \
     -v "$HS:/workspaces/FTL-Hyperspace" -w /workspaces/FTL-Hyperspace
     "$DEVCONTAINER" bash -c 'source .devcontainer/devcontainer-fixes.sh && buildscripts/windows/build-releaseonly.sh')

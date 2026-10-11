@@ -94,7 +94,11 @@ checkout. Offline setup checks passed (67 passed; five Windows symlink skips),
 shell syntax and two identical bridge archives. The official FTLMan v0.7.3 archive and extracted executable are now locally
 verified for future setup, without execution. No fresh Docker build, native
 installation or complete clean-install validation has run; acquisition is not
-clean-build/install proof.
+clean-build/install proof. Setup now accepts optional container memory and CPU
+limits, retaining their exact command in build provenance; 54 focused offline
+checks passed. Docker Desktop crashed during the isolated-build preflight, before
+compilation. The setup recipe and [WIP notes](docs/NEXT.md) record the blocker
+and the unverified resource requirements.
 
 A separate corrected viewer fixes an HTTP 500 caused by mixed ISO and numeric
 run timestamps. Its rendered current-cohort outcome and replay check passed
