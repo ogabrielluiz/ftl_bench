@@ -1,10 +1,12 @@
 # Visual benchmark acceptance and comparison protocol
 
-Status: WIP; experiments resumed in the unchanged original checkout. At
-2026-10-11 03:40 UTC, nine of 36 challenge cells were complete, the sector pilot
-had ended in audited native defeat, and Sol/image full-game was running. The
-other three full-game cells remained planned. No complete
-model/observation comparison or fixture-free full-game ending is established.
+Status: WIP. At 2026-10-11 04:52 UTC, nine of 36 challenge cells were complete,
+the sector pilot had ended in audited native defeat, and Sol/image full-game was
+cooperatively interrupted at 276 decisions after a confirmed harness store-arrival
+stall. The other three full-game cells remain unstarted. Original saves were
+verified restored. No complete model/observation comparison or fixture-free
+full-game ending is established. The failed cohort stays frozen; native repairs
+require new prospective cohorts and fresh validation.
 See [current results and remaining work](NEXT.md) for the dated status and
 [validation history](validation-history-2026-10-11.md) for superseded evidence.
 

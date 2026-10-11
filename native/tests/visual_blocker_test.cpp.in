@@ -32,8 +32,90 @@ struct CommandGui {
 struct WorldManager { bool bStartedGame=true; CompleteShip* playerShip=&ship; StarMap starMap; } world;
 struct CApp { CommandGui* gui=&::gui; WorldManager* world=&::world; } app;
 @BLOCKER@
+void reset_native_double()
+{
+    manager=ShipManager(); ship=CompleteShip(); gui=CommandGui();
+    world=WorldManager(); app=CApp(); other_window=FocusWindow();
+}
+unsigned simulated_warp_budget(BenchmarkVisual::FrameClock& clock,
+                               unsigned requested,unsigned& remaining_jump_renders)
+{
+    // Only FrameClock and visual_blocked_reason are shipped implementations.
+    // The arrival/controller loop is a double: it checks visibility between
+    // frames and ends its simulated jump after three permitted renders. This
+    // does not establish real EXE renderer timing or live store visibility.
+    const auto before=clock.world_updates;
+    clock.control(true,requested>0 && visual_blocked_reason(&app)[0]=='\0');
+    while (clock.advancing && clock.world_updates-before<requested) {
+        clock.begin_frame();
+        if (clock.update_permitted()) clock.completed_world_update();
+        if (clock.render_permitted() && manager.bJumping && remaining_jump_renders>0) {
+            if (--remaining_jump_renders==0) manager.bJumping=false;
+        }
+        clock.finish_render();
+        if (visual_blocked_reason(&app)[0]!='\0' || clock.world_updates-before==requested)
+            clock.control(true,false);
+    }
+    return static_cast<unsigned>(clock.world_updates-before);
+}
+int store_warp_regressions()
+{
+    reset_native_double();
+    gui.storeScreens.bOpen=true; manager.bJumping=true;
+    gui.focusWindows={&gui.storeScreens};
+    BenchmarkVisual::FrameClock clock;
+    clock.control(true,false);
+    unsigned remaining_jump_renders=3;
+    // Zero-frame observations never advance the hidden store arrival.
+    for (unsigned i=0;i<180;++i) {
+        clock.begin_frame();
+        CHECK(!clock.update_permitted() && !clock.render_permitted());
+        clock.finish_render();
+    }
+    CHECK(clock.world_updates==0 && remaining_jump_renders==3 && manager.bJumping);
+    const unsigned actual=simulated_warp_budget(clock,8,remaining_jump_renders);
+    std::cout << "store-warp double: requested=8 actual=" << actual
+              << " jumping=" << manager.bJumping << " store_open=" << gui.storeScreens.bOpen
+              << " remaining_jump_renders=" << remaining_jump_renders
+              << " blocker=" << visual_blocked_reason(&app) << '\n';
+    CHECK(actual==3 && clock.world_updates==3 && remaining_jump_renders==0);
+    CHECK(!manager.bJumping && gui.storeScreens.bOpen && !clock.advancing);
+    CHECK(std::strcmp(visual_blocked_reason(&app),"store_open")==0);
+    CHECK(simulated_warp_budget(clock,8,remaining_jump_renders)==0);
+    CHECK(clock.world_updates==3); // visible store consumes none of a later budget
+
+    reset_native_double(); gui.storeScreens.bOpen=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"store_open")==0);
+    world.starMap.bOpen=true; world.starMap.readyToTravel=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"store_open")==0); // queued travel is not an actual jump
+    world.playerShip=nullptr;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"store_open")==0);
+    world.playerShip=&ship; ship.shipManager=nullptr;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"store_open")==0);
+    ship.shipManager=&manager; manager.bJumping=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"")==0);
+    CHECK(gui.storeScreens.bOpen && manager.bJumping); // predicate never fixes state by mutation
+    const unsigned long long unchanged=clock.world_updates;
+    for (unsigned i=0;i<10;++i) CHECK(std::strcmp(visual_blocked_reason(&app),"")==0);
+    CHECK(clock.world_updates==unchanged && gui.storeScreens.bOpen && manager.bJumping);
+    gui.menuBox.bOpen=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"menu_open")==0); gui.menuBox.bOpen=false;
+    gui.optionsBox.bOpen=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"options_open")==0); gui.optionsBox.bOpen=false;
+    gui.inputBox.bOpen=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"input_open")==0); gui.inputBox.bOpen=false;
+    gui.writeErrorDialog.bOpen=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"write_error_dialog")==0); gui.writeErrorDialog.bOpen=false;
+    gui.gameover=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"terminal")==0); gui.gameover=false;
+    gui.alreadyWon=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"terminal")==0);
+    reset_native_double();
+    return 0;
+}
 int main()
 {
+    CHECK(store_warp_regressions()==0);
     CHECK(std::strcmp(visual_blocked_reason(&app),"")==0);
     gui.choiceBox.bOpen=true;
     gui.focusWindows={&gui.choiceBox};

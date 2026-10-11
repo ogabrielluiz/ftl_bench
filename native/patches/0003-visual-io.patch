@@ -1715,7 +1715,7 @@ index 0000000..71a346e
 +} // namespace BenchmarkVisual
 diff --git a/Benchmark_VisualEngine.inc b/Benchmark_VisualEngine.inc
 new file mode 100644
-index 0000000..6c8d2ed
+index 0000000..47c9dd0
 --- /dev/null
 +++ b/Benchmark_VisualEngine.inc
 @@ -0,0 +1,402 @@
@@ -1978,7 +1978,7 @@ index 0000000..6c8d2ed
 +    if (gui.inputBox.bOpen) return "input_open";
 +    if (gui.gameOverScreen.bOpen) return "game_over_screen";
 +    if (gui.shipScreens.bOpen) return "ship_screen_open";
-+    if (gui.storeScreens.bOpen) return "store_open";
++    if (!jumping && gui.storeScreens.bOpen) return "store_open";
 +    if (gui.upgradeScreen.bOpen) return "upgrade_open";
 +    if (gui.crewScreen.bOpen) return "crew_screen_open";
 +    if (gui.equipScreen.bOpen) return "equipment_open";

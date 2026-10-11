@@ -195,7 +195,7 @@ def visual_blocker_test_source():
     return (ROOT / "native/tests/visual_blocker_test.cpp.in").read_text().replace("@BLOCKER@", function)
 
 
-def test_hidden_staged_arrival_choice_cannot_block_reverse_warp(tmp_path):
+def test_hidden_staged_arrival_modals_allow_bounded_warp_then_block_when_visible(tmp_path):
     source = tmp_path / "blocker.cpp"
     source.write_text(visual_blocker_test_source())
     compiler = shutil.which("g++")

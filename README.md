@@ -2,18 +2,20 @@
 
 An agent benchmark that drives the real **FTL: Faster Than Light** engine through a paused observation/action interface. Agents set power, move crew, target weapons, resolve events, navigate, trade, and advance the clock. The runner records every attempt and reports FTL's native score, goal progress, and verified wins.
 
-[Documentation](https://ogabrielluiz.github.io/ftl_bench/) · [Protocol](https://ogabrielluiz.github.io/ftl_bench/introduction/protocol/)
+[Documentation](https://ogabrielluiz.github.io/ftl_bench/) Â· [Protocol](https://ogabrielluiz.github.io/ftl_bench/introduction/protocol/)
 
 ## Status: work in progress
 
 The visual benchmark is an **alpha implementation with partial live validation**.
-At the 2026-10-11 03:40 UTC snapshot, nine of the 36 planned challenge trials were
+At the 2026-10-11 04:52 UTC snapshot, nine of the 36 planned challenge trials were
 finished, all with Sol in image mode: combat 1/3, fire/crew recovery 3/3 and
-repair/charge/escape 2/3 task successes. The sector pilot ended in an audited
-native defeat after 78 decisions, with exact save restoration. The remaining
-27 challenge trials are unstarted. Sol's image-only full-game attempt is running;
-the other three full-game conditions are planned. The pilot is excluded from
-full-game totals.
+repair/charge/escape 2/3 task successes. The sector pilot ended in audited native
+defeat after 78 decisions. Sol's first full-game attempt was cooperatively
+stopped after 276 decisions because a harness defect froze store arrival during
+warp. All seven original saves were restored. The remaining 27 challenge trials
+and three full-game conditions are unstarted; no full-game completion is claimed.
+The [store-arrival diagnosis](docs/native-store-arrival.md) records the prospective
+fix and its validation limits. Failed runs and their original sources remain preserved.
 
 Screenshot play, conservative image-derived HUD summaries, protected saves,
 frozen experiment controllers and dashboard replays are implemented. A complete

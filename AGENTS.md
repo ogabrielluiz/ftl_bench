@@ -99,6 +99,12 @@ native score provenance; enemy lifecycle flags and raw kill counters alone do
 not prove a combat kill. Task success must retain its declared evaluator proof.
 Finite setup/trajectory equality does not prove general full-game determinism.
 
+Modal blockers must follow native visibility during transitions. An open store
+or event may be staged while warp still hides it; blocking that transition can
+deadlock arrival. Check both the hidden transition and the settled visible modal,
+including real rendering and bounded frame counts. See
+`docs/native-store-arrival.md`; artifact integrity alone cannot detect this stall.
+
 Check a cohort's `protocol.json` source pins before editing experiment inputs.
 Do not mutate frozen sources or saved runs to make an existing cohort pass.
 Changed sources, tasks or budgets require a new freeze/output directory.

@@ -1,11 +1,13 @@
 # Current validation and next work
 
-**WIP / alpha. Snapshot: 2026-10-11 03:40 UTC (00:40 in São Paulo).**
-The visual benchmark is implemented and partially validated. Nine of 36 challenge
-cells are finished; the sector pilot ended in native defeat, Sol/image full-game
-is running, and three full-game cells remain planned. The pilot ran in the original unchanged
-`visual-benchmark-progress` checkout; development continues separately on `main`.
-
+**WIP / alpha. Snapshot: 2026-10-11 04:52 UTC (01:52 in São Paulo).**
+Nine of 36 challenge cells are finished. The sector pilot ended in native defeat;
+Sol/image full-game was cooperatively stopped at 276 decisions after a confirmed
+native store-arrival blocker froze warp. Three full-game cells remain unstarted.
+All seven original saves and all 15 baseline paths match after cleanup. No
+fixture-free full-game ending or complete model comparison has been established.
+The original checkout and failed cohort remain frozen; development continues on
+`main`. See [store-arrival diagnosis](native-store-arrival.md).
 ## Implemented and verified scope
 
 | Area | Evidence and limits |
@@ -15,7 +17,7 @@ is running, and three full-game cells remain planned. The pilot ran in the origi
 | Repeatable setup | Nine no-model fixture-6 probes passed measured starting-state and step equality across three wall delays. This covers the tested inputs, not every hidden RNG stream or full-game determinism. |
 | Protected lifecycle | Save backups, exact restoration, runtime identities and terminal evidence are recorded. Cooperative-stop probes passed before the actor and during one real CLI request; the returned cancelled response was retained and its actions discarded. |
 | Challenges | Frozen 36-cell controller, versioned public tasks, outcome audits, retained failures and exact replays. Nine Sol/image cells are complete; results are below. |
-| Full-game support | Fixture-free startup and the five-cell controller are implemented. Startup preserves the opening choice. The pilot ended in audited native defeat after 78 decisions; the Sol/image full-game attempt is running. |
+| Full-game support | Fixture-free startup and the five-cell controller are implemented. Startup preserves the opening choice. The pilot ended in audited native defeat after 78 decisions; the Sol/image full-game attempt was interrupted by a confirmed harness store-arrival defect. |
 | Dashboard | Saved challenge/full-game overviews, exact screenshots and inputs, outcome reasons, task identities and saved cleanup receipts. The dashboard is read-only. |
 
 The visual track is `visual-v1`; historical structured runs retain runner/ruleset
@@ -76,7 +78,7 @@ Protocol SHA-256:
 All 78 source/runtime pins matched at the 03:23 UTC terminal audit. The declared cells are:
 
 1. Sol/image sector-one pilot, native defeat at 03:21 UTC.
-2. Sol/image full game, running since 03:40 UTC.
+2. Sol/image full game, cooperatively interrupted at 04:52 UTC after 276 decisions.
 3. Sol/hybrid full game.
 4. Luna/image full game.
 5. Luna/hybrid full game.
@@ -103,16 +105,30 @@ live-save audit. Its local receipt is
 under the full-game cohort. The pilot remains excluded from full-game totals.
 
 The controller rechecked pilot cleanup at 03:40:11 UTC before launching the
-first full-game cell. The resumed invocation is limited to the two Sol
-conditions, sequentially, with another audit gate before hybrid starts. A
-running cell remains provisional; no full-game completion is claimed yet.
+first full-game cell. A provisional artifact check at 04:37 UTC passed 219
+completed decisions and the 78 source pins, but did not detect the semantic
+stall. Its preserved receipt is
+`provisional-audits/sol-image-active-20261011T043732076403Z.json`. Artifact integrity
+alone does not prove gameplay can progress.
 
-A provisional artifact check at 04:37 UTC found 219 completed decisions, sector
-index 1, hull 22/30, oxygen 100%, four crew and native score 354. All 78 source
-pins matched, with no reported artifact-integrity issues. The game was still
-running without a native ending. The retained receipt is
-`provisional-audits/sol-image-active-20261011T043732076403Z.json`; it does not
-claim terminal cleanup or inspect current live saves.
+Independent review of the 04:50 UTC snapshot found decision 151 spent one fuel
+and advanced 122 frames toward a store. The native state then stayed jumping
+with `store_open`; decisions 152–268 requested 46,621 frames and advanced zero.
+Exact screenshots show an empty starfield, without the ship or store dialog.
+The shipped blocker treated the hidden store as visible, cancelling the updates
+needed to finish arrival. The confirmed defect and proposed repair are documented
+in [native-store-arrival.md](native-store-arrival.md).
+
+The official stop was requested at 04:51:58 UTC and observed after an actor call,
+before action dispatch. The child completed protected cleanup at 04:52:10 UTC;
+its result remains `interrupted` / `cooperative_stop_requested`. The controller
+refused to continue to hybrid. A separate post-exit audit passed all retained
+artifact checks, all seven live saves and the exact inventory, all 15 original
+baseline hashes, and found no FTL process. Receipt:
+`dist/store-warp-diagnosis-20261011/interrupted-cleanup.json` in the integration
+checkout. The interruption contributes zero full-game completions and must not
+be reported as a model defeat or budget failure. Runtime changes require new
+prospective cohorts; do not resume this frozen cohort with a replacement DLL.
 
 The declared settings are seed 1, medium reasoning, 300 decisions, 14,400 seconds
 and eight idle decisions. Only audited native victory or defeat completes a
@@ -136,8 +152,8 @@ and 17 dashboard tests plus its build. These scopes do not establish complete
 gameplay. The main integration adds dashboard tests before CI/release builds
 and runs the headless output-contract regressions in the harness CI matrix.
 
-The accepted local visual DLL starts with SHA-256 `a33b9984`; the authoritative
-full identities are in `native/manifest.json`, the native build provenance and
+The historical local visual DLL starts with SHA-256 `a33b9984`; its original
+identities are retained in frozen source archives, the native build provenance and
 `dist/native-validation.visual-v1.json`. The latter receipt's SHA-256 is
 `2fe556557cc00a2cfa23cb0cd67a58e21ac9b4209b1126c669d588b5f90c97da`.
 Runtime admission checks the exact accepted files, not the prefix in this note.
@@ -201,7 +217,7 @@ scope. The legacy v1 cohorts keep their original behavior.
 
 This implementation has no fresh live v2 acceptance receipt yet. Source changes
 invalidate the earlier main collection for prospective admission. After the
-active frozen controller finishes and cleanup is verified, collect a new
+store-arrival repair has passed live regression and cleanup checks, collect a new
 fixture-free startup plus nine timing probes on settled main sources, retain
 original build-source evidence, and independently review that exact collection
 before freezing a portable cohort. The [workflow](native-acceptance.md) gives the
