@@ -257,7 +257,7 @@ const char* visual_blocked_reason(CApp* app)
     if (gui.inputBox.bOpen) return "input_open";
     if (gui.gameOverScreen.bOpen) return "game_over_screen";
     if (gui.shipScreens.bOpen) return "ship_screen_open";
-    if (!jumping && gui.storeScreens.bOpen) return "store_open";
+    if (!jumping && !queued_choice && gui.storeScreens.bOpen) return "store_open";
     if (gui.upgradeScreen.bOpen) return "upgrade_open";
     if (gui.crewScreen.bOpen) return "crew_screen_open";
     if (gui.equipScreen.bOpen) return "equipment_open";
@@ -267,7 +267,8 @@ const char* visual_blocked_reason(CApp* app)
     if (!jumping) {
         for (FocusWindow* window : gui.focusWindows)
             if (window && window->bOpen && !(window == &map && map_progress) &&
-                !(window == &gui.choiceBox && queued_choice)) return "focus_window_open";
+                !(window == &gui.choiceBox && queued_choice) &&
+                !(window == &gui.storeScreens && queued_choice)) return "focus_window_open";
     }
     return "";
 }

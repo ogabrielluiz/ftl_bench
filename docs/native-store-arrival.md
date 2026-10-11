@@ -1,7 +1,7 @@
 # Hidden store arrival diagnosis
 
-Status: source repair implemented; new native build and protected live validation
-remain pending. This is a harness defect, not a model gameplay failure.
+Status: source repairs implemented; complete protected live validation remains
+pending. This is a harness defect, not a model gameplay failure.
 
 ## Retained failure
 
@@ -52,6 +52,42 @@ their existing guards. The fix does not close the store, set jump flags, alter
 fuel, reset timers, or give the actor hidden state. The include, cumulative patch
 and manifest hash change together, so the old runtime cannot be silently reused
 for a repaired cohort.
+
+A second boundary occurs after warp. The ordinary Continue click queues a choice
+for `WorldManager::PauseLoop`; it does not resolve the event inside the input
+handler. A staged store must therefore also permit that queued choice through
+both the explicit store check and the generic focus-window check. Once the choice
+closes, the ordinary store blocker applies again. Unselected or out-of-range
+choices cannot bypass it, and unrelated modal/error guards remain in force.
+
+The first candidate DLL (`5280405c...`) completed the natural arrival in 243
+frames, then exposed this second defect: Continue selected choice 0 but consumed
+zero of its requested update, leaving both the choice and store open. That
+candidate and its rejection remain preserved; it has no controller admission.
+
+## Short live reproduction
+
+`scripts/validate_store_arrival.py` reaches the natural first seed-one destination
+at `(49, 231)` using ordinary deterministic setup, drive charge and a connected
+jump. It deploys the production bridge unchanged. There is no injected encounter,
+model call, direct jump/store flag write or timer override.
+
+```powershell
+uv run --directory harness python ../scripts/validate_store_arrival.py --output runs/validation/visual-v1/store-arrival-unique-name
+```
+
+The old DLL reproduced the stall with advances of 122, 0 and 0 frames, one fuel
+spent and jumping still true. The probe preserves source/runtime identities,
+native packets and receipts, exact PNGs, frame accounting, failure reasons, and
+post-cleanup save/bridge/runtime inventories. The retained old-runtime run is
+`harness/runs/validation/visual-v1/store-arrival-natural-old-20261011T051109Z`.
+
+The prospective passing path must finish arrival, acknowledge the screenshot-
+verified single Continue choice through ordinary input, stop simulation at the
+visible store, and close it through the native CLOSE button. Unknown choices
+produce `review_required` rather than guessed inputs or acceptance. A driver
+error and an injected diagnostic encountered during minimization remain in
+separate output directories; neither is relabelled as this natural reproduction.
 
 ## Regression scope and remaining validation
 

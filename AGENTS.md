@@ -102,7 +102,7 @@ Finite setup/trajectory equality does not prove general full-game determinism.
 Modal blockers must follow native visibility during transitions. An open store
 or event may be staged while warp still hides it; blocking that transition can
 deadlock arrival. Check both the hidden transition and the settled visible modal,
-including real rendering and bounded frame counts. See
+including queued arrival-choice resolution, real rendering and bounded frame counts. See
 `docs/native-store-arrival.md`; artifact integrity alone cannot detect this stall.
 
 Check a cohort's `protocol.json` source pins before editing experiment inputs.

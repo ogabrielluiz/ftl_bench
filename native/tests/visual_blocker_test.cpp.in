@@ -113,9 +113,62 @@ int store_warp_regressions()
     reset_native_double();
     return 0;
 }
+int queued_store_choice_regressions()
+{
+    reset_native_double();
+    gui.storeScreens.bOpen=true;
+    gui.choiceBoxOpen=true; gui.choiceBox.bOpen=true;
+    gui.choiceBox.choices={0};
+    gui.focusWindows={&gui.choiceBox,&gui.storeScreens};
+    CHECK(!manager.bJumping);
+    CHECK(std::strcmp(visual_blocked_reason(&app),"choice_open")==0);
+    gui.choiceBox.selectedChoice=1; // out of range cannot bypass either modal
+    CHECK(std::strcmp(visual_blocked_reason(&app),"choice_open")==0);
+    gui.choiceBox.selectedChoice=-2;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"choice_open")==0);
+    gui.choiceBox.selectedChoice=0;
+    // Actual clock/predicate, simulated native PauseLoop choice consumption.
+    // This verifies the permission seam, not live dialog or renderer behavior.
+    BenchmarkVisual::FrameClock clock;
+    clock.control(true,false);
+    clock.begin_frame();
+    CHECK(!clock.update_permitted()); clock.finish_render();
+    CHECK(gui.choiceBoxOpen && gui.choiceBox.bOpen && clock.world_updates==0);
+    clock.control(true,visual_blocked_reason(&app)[0]=='\0');
+    while (clock.advancing && clock.world_updates<8) {
+        clock.begin_frame();
+        if (clock.update_permitted()) {
+            gui.choiceBoxOpen=false; gui.choiceBox.bOpen=false;
+            gui.choiceBox.selectedChoice=-1;
+            clock.completed_world_update();
+        }
+        clock.finish_render();
+        if (visual_blocked_reason(&app)[0]!='\0') clock.control(true,false);
+    }
+    std::cout << "queued-store-choice double: requested=8 actual=" << clock.world_updates
+              << " choice_open=" << gui.choiceBoxOpen
+              << " store_open=" << gui.storeScreens.bOpen
+              << " blocker=" << visual_blocked_reason(&app) << '\n';
+    CHECK(clock.world_updates==1 && !gui.choiceBoxOpen && !gui.choiceBox.bOpen);
+    CHECK(gui.storeScreens.bOpen && !clock.advancing);
+    CHECK(std::strcmp(visual_blocked_reason(&app),"store_open")==0);
+    gui.choiceBoxOpen=true; gui.choiceBox.bOpen=true; gui.choiceBox.selectedChoice=0;
+    other_window.bOpen=true; gui.focusWindows.push_back(&other_window);
+    CHECK(std::strcmp(visual_blocked_reason(&app),"focus_window_open")==0);
+    gui.focusWindows.pop_back();
+    gui.writeErrorDialog.bOpen=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"write_error_dialog")==0);
+    gui.writeErrorDialog.bOpen=false; gui.menuBox.bOpen=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"menu_open")==0);
+    gui.menuBox.bOpen=false; gui.gameover=true;
+    CHECK(std::strcmp(visual_blocked_reason(&app),"terminal")==0);
+    reset_native_double();
+    return 0;
+}
 int main()
 {
     CHECK(store_warp_regressions()==0);
+    CHECK(queued_store_choice_regressions()==0);
     CHECK(std::strcmp(visual_blocked_reason(&app),"")==0);
     gui.choiceBox.bOpen=true;
     gui.focusWindows={&gui.choiceBox};

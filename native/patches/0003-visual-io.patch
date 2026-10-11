@@ -1715,10 +1715,10 @@ index 0000000..71a346e
 +} // namespace BenchmarkVisual
 diff --git a/Benchmark_VisualEngine.inc b/Benchmark_VisualEngine.inc
 new file mode 100644
-index 0000000..47c9dd0
+index 0000000..6e08697
 --- /dev/null
 +++ b/Benchmark_VisualEngine.inc
-@@ -0,0 +1,402 @@
+@@ -0,0 +1,403 @@
 +// Included in Benchmark_Extend.cpp after the existing observation transport.
 +// The SIL functions are the game's backend-neutral renderer API, used by both
 +// D3D11 and OpenGL. Reading before finish_frame captures the current client frame.
@@ -1978,7 +1978,7 @@ index 0000000..47c9dd0
 +    if (gui.inputBox.bOpen) return "input_open";
 +    if (gui.gameOverScreen.bOpen) return "game_over_screen";
 +    if (gui.shipScreens.bOpen) return "ship_screen_open";
-+    if (!jumping && gui.storeScreens.bOpen) return "store_open";
++    if (!jumping && !queued_choice && gui.storeScreens.bOpen) return "store_open";
 +    if (gui.upgradeScreen.bOpen) return "upgrade_open";
 +    if (gui.crewScreen.bOpen) return "crew_screen_open";
 +    if (gui.equipScreen.bOpen) return "equipment_open";
@@ -1988,7 +1988,8 @@ index 0000000..47c9dd0
 +    if (!jumping) {
 +        for (FocusWindow* window : gui.focusWindows)
 +            if (window && window->bOpen && !(window == &map && map_progress) &&
-+                !(window == &gui.choiceBox && queued_choice)) return "focus_window_open";
++                !(window == &gui.choiceBox && queued_choice) &&
++                !(window == &gui.storeScreens && queued_choice)) return "focus_window_open";
 +    }
 +    return "";
 +}
