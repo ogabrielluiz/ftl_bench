@@ -5,7 +5,7 @@ The visual track lets an agent play through FTL's rendered interface. Each decis
 This is an additional track. Existing structured trajectories remain readable, and historical diagnostic runs remain excluded from model-comparison totals. A recorded native score is not evidence that a run is eligible for comparison.
 
 **WIP:** the current challenge comparison is partial and fixture-free full-game
-completion remains unproven. Experiments are paused at the latest documented
+completion remains unproven. The sector pilot is running at the latest documented
 snapshot. Read [current validation and remaining work](NEXT.md) before treating
 any historical result below as current acceptance. Native binaries, raw runs
 and local acceptance evidence are not included in Git; a fresh checkout still

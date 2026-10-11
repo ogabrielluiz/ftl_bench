@@ -252,17 +252,29 @@ def fullgame_view(root, directory, key, protocol, ledger, protocol_hash, ledger_
         "fullgame_attempts": len(full), "verified_fullgame_completions": len(verified),
         "victories": sum(r["native_outcome"] == "victory" for r in verified),
         "defeats": sum(r["native_outcome"] == "defeat" for r in verified), "incomplete_fullgames": len(full) - len(verified)}
-    if report and (report.get("counts") != expected_counts or not isinstance(report.get("counts"), dict)
-                   or any(type(n) is not int or n < 0 for n in report["counts"].values())):
+    saved_counts = report.get("counts")
+    typed_counts = (isinstance(saved_counts, dict) and set(saved_counts) == set(expected_counts)
+                    and all(type(n) is int and n >= 0 for n in saved_counts.values()))
+    # The controller writes planned -> running to the ledger before launching
+    # the protected child, and refreshes comparison.json only after it exits.
+    # Allow that execution-only lag; every saved terminal total must still join
+    # the audited rows above. Never excuse a finished/unknown result mismatch.
+    live_progress = (typed_counts and not issues
+        and 0 < saved_counts["planned"] - expected_counts["planned"]
+            == expected_counts["running"] - saved_counts["running"]
+        and all(saved_counts[k] == v for k, v in expected_counts.items() if k not in ("planned", "running")))
+    if report and (not typed_counts or saved_counts != expected_counts) and not live_progress:
         issues.append("Saved full-game totals disagree with joined trial evidence.")
+    refresh = "unavailable" if not report else "inconsistent" if issues else "live_progress" if live_progress else "current"
     return {"key": key, "name": directory.name, "experiment_kind": "full_game", "protocol_sha256": identity,
         "scope": report.get("scope", protocol.get("scope")), "partial": counts["finished"] < 5 or bool(issues),
         "qualified_scoped_comparison": False, "valid_for_full_game_comparison": False,
         "counts": counts, "reported_trials": len(trials), "requested_models": models,
         "budgets": protocol.get("budgets"), "seed": protocol.get("seed"), "conditions": [], "trials": rows,
-        "fullgame_summary": report.get("counts") if report and not issues else None,
+        "fullgame_summary": expected_counts if report and not issues else None,
+        "summary_refresh": refresh,
         "limitations": report.get("limitations", []), "issues": issues,
-        "source": "Saved run_fullgame_experiment comparison.json and hash-joined cleanup receipts; no live audit or scoring by the dashboard.",
+        "source": "Execution progress comes from the ledger; terminal totals come from saved run_fullgame_experiment comparison.json and hash-joined cleanup receipts. Running progress is provisional; no live audit or scoring by the dashboard.",
         "artifact_sha256": {"protocol.json": protocol_hash, "ledger.json": ledger_hash, "comparison.json": report_hash}}
 
 

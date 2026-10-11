@@ -1,10 +1,10 @@
 # Current validation and next work
 
-**WIP / alpha. Snapshot: 2026-10-11 02:32 UTC (2026-10-10 23:32 in São Paulo).**
+**WIP / alpha. Snapshot: 2026-10-11 03:06 UTC (00:06 in São Paulo).**
 The visual benchmark is implemented and partially validated. Nine of 36 challenge
-cells are finished; the sector pilot and all four full-game cells are unstarted.
-Development experiments are paused. At this snapshot no recorded benchmark child,
-FTL process or Python controller was live. Documentation updates do not resume them.
+cells are finished; the sector pilot is running and four full-game cells are
+unstarted. The goal has resumed. The pilot runs in the original unchanged
+`visual-benchmark-progress` checkout; development continues separately on `main`.
 
 ## Implemented and verified scope
 
@@ -15,7 +15,7 @@ FTL process or Python controller was live. Documentation updates do not resume t
 | Repeatable setup | Nine no-model fixture-6 probes passed measured starting-state and step equality across three wall delays. This covers the tested inputs, not every hidden RNG stream or full-game determinism. |
 | Protected lifecycle | Save backups, exact restoration, runtime identities and terminal evidence are recorded. Cooperative-stop probes passed before the actor and during one real CLI request; the returned cancelled response was retained and its actions discarded. |
 | Challenges | Frozen 36-cell controller, versioned public tasks, outcome audits, retained failures and exact replays. Nine Sol/image cells are complete; results are below. |
-| Full-game support | Fixture-free startup and the five-cell controller are implemented. Startup preserves the opening choice. No cell in the current full-game cohort has started. |
+| Full-game support | Fixture-free startup and the five-cell controller are implemented. Startup preserves the opening choice. The Sol/image sector pilot is running; no full-game cell has started. |
 | Dashboard | Saved challenge/full-game overviews, exact screenshots and inputs, outcome reasons, task identities and saved cleanup receipts. The dashboard is read-only. |
 
 The visual track is `visual-v1`; historical structured runs retain runner/ruleset
@@ -27,7 +27,8 @@ ending as a fixture-free full game.
 Cohort: `harness/runs/validation/visual-v1/matrix-task-v2-stop-v1-20261011`.
 Protocol SHA-256:
 `9cab4b1629ebefef5f6686d3865ea19966793a2d6013801d471e51a14f062087`.
-All 76 source/runtime pins match the retained archive and checkout at this update.
+All 76 source/runtime pins matched the retained archive and original checkout at
+the 02:55 UTC preflight. These pins do not describe merged `main`.
 
 All completed cells requested `gpt-6.1-sol`, image mode, Kestrel A/easy, seed 1,
 medium reasoning, 60 decisions, 1,800 seconds and eight consecutive empty
@@ -72,13 +73,19 @@ weights and cost are unavailable and must not be inferred.
 Cohort: `harness/runs/validation/visual-v1/fullgame-stop-v1-20261011`.
 Protocol SHA-256:
 `da498515a486baf0eff09564f880342106ce2e156d3a65a24df1b468f844c1fc`.
-All 78 source/runtime pins match at this update. All five cells are planned:
+All 78 source/runtime pins matched at the 02:55 UTC preflight. The declared cells are:
 
-1. Sol/image sector-one pilot.
+1. Sol/image sector-one pilot, running since 02:56 UTC.
 2. Sol/image full game.
 3. Sol/hybrid full game.
 4. Luna/image full game.
 5. Luna/hybrid full game.
+
+The preflight verified all seven original saves, all 15 baseline paths and no
+FTL process before launch. At 03:06 UTC the recorded pilot child was live, with
+32 decisions in sector index 0. This is provisional progress, not a terminal
+result or a live save-restoration check during gameplay. Audit and cleanup are
+required after the pilot exits.
 
 The declared settings are seed 1, medium reasoning, 300 decisions, 14,400 seconds
 and eight idle decisions. Only audited native victory or defeat completes a
@@ -144,14 +151,21 @@ outputs and propagates failed shard/aggregate status.
 Live Linux/headless compatibility and complete visual games remain WIP; neither
 is established by merging source or passing offline tests. The headless docs
 retain the existing Linux restart and scratch-save limitations. No game or model
-run is part of this integration, and the benchmark goal remains paused.
+run was part of that integration validation. The goal subsequently resumed in
+the unchanged original checkout, as recorded above.
 
-## Next work when experiments resume
+The dashboard now allows a balanced planned-to-running count lag while a
+full-game controller is active. It labels those counts provisional and retains
+strict joins for completed outcomes, native endings and cleanup. The controller
+also checks the actual original save inventory instead of requiring the seven
+files present on the development machine; an explicitly empty profile is valid,
+but missing receipts, changed bytes and unexpected live saves still fail.
 
-1. Recheck source/runtime pins, exclusive game ownership and original-save cleanup
-   before starting the first sector pilot. Use the existing cohort only if all
-   admission checks pass; changes require a newly declared cohort.
-2. Audit the pilot, then execute the remaining 27 challenge cells and four
+## Remaining work
+
+1. Finish and audit the active pilot, including original-save restoration and
+   exclusive game ownership. Changes require a newly declared cohort.
+2. Execute the remaining 27 challenge cells and four
    fixture-free full-game conditions sequentially. Preserve every attempted
    outcome and stop for technical failures or ambiguous cleanup.
 3. Report matched conditions with denominators, exclusions, outcome reasons,

@@ -121,7 +121,7 @@ def test_missing_process_identity_and_missing_terminal_never_retry(tmp_path, mon
     assert cell["status"] == "interrupted_unknown"
 
 
-def trial_fixture(tmp_path, reason="native_game_over"):
+def trial_fixture(tmp_path, reason="native_game_over", *, save_count=7):
     cell = controller.plan_cells()[1]
     path = controller.trial_directory(tmp_path, cell)
     rows = saved_run(path, reason=reason)
@@ -154,7 +154,10 @@ def trial_fixture(tmp_path, reason="native_game_over"):
     controller.write(setup / "admission.json", {"passed": True, "first_observation": rows[1]["obs"],
         "first_image": rows[1]["visual"]["before"]})
     backup = controller.read(path / "save-backup/manifest.json")
-    for i in range(6):
+    if save_count == 0:
+        (path / "save-backup/original.sav").unlink()
+        backup["files"] = {}
+    for i in range(save_count - 1):
         name = f"other{i}.sav"
         data = name.encode()
         (path / "save-backup" / name).write_bytes(data)
@@ -257,8 +260,8 @@ def test_changed_trial_evidence_blocks_completion_and_next_trial(tmp_path, mutat
         controller.require_audited_cleanup(tmp_path, cell, protocol)
 
 
-def progression_fixture(tmp_path, monkeypatch, reason="decision_budget"):
-    cell, protocol, path = trial_fixture(tmp_path, reason)
+def progression_fixture(tmp_path, monkeypatch, reason="decision_budget", *, save_count=7):
+    cell, protocol, path = trial_fixture(tmp_path, reason, save_count=save_count)
     cell.update(status="finished", exit_code=0)
     backup = controller.read(path / "save-backup/manifest.json")
     live = tmp_path / "live-saves"
@@ -285,6 +288,20 @@ def test_clean_native_outcomes_and_budgets_allow_progression(tmp_path, monkeypat
     assert len(receipt["live_save_inventory_sha256"]) == 7
     assert receipt["child_verification"] == "recorded_zero_exit"
     assert receipt["controller_sha256"] == hashlib.sha256(Path(controller.__file__).read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize("save_count", [0, 1, 3, 8])
+def test_cleanup_accepts_exact_machine_specific_save_inventory(tmp_path, monkeypatch, save_count):
+    cell, protocol, path, live = progression_fixture(tmp_path, monkeypatch, save_count=save_count)
+    reference = controller.require_audited_cleanup(tmp_path, cell, protocol)
+    receipt = controller.read(tmp_path / reference["path"])
+    assert len(receipt["expected_save_inventory_sha256"]) == save_count
+    assert receipt["expected_save_inventory_sha256"] == receipt["live_save_inventory_sha256"]
+    assert receipt["live_save_audit"]["restored_files"] == save_count
+    # Exact inventory still matters on an empty or small profile.
+    (live / "unexpected.sav").write_bytes(b"unrestored generated save")
+    with pytest.raises(RuntimeError, match="inventory differs"):
+        controller.require_audited_cleanup(tmp_path, cell, protocol)
 
 
 def test_cleanup_check_preserves_each_receipt_even_at_same_timestamp(tmp_path, monkeypatch):

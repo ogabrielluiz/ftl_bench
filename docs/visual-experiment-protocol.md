@@ -1,7 +1,8 @@
 # Visual benchmark acceptance and comparison protocol
 
-Status: WIP; experiments paused. At 2026-10-11 02:32 UTC, nine of 36 challenge
-cells were complete and all five full-game cells were unstarted. No complete
+Status: WIP; experiments resumed in the unchanged original checkout. At
+2026-10-11 03:06 UTC, nine of 36 challenge cells were complete, the sector pilot
+was running, and the four full-game cells were unstarted. No complete
 model/observation comparison or fixture-free full-game ending is established.
 See [current results and remaining work](NEXT.md) for the dated status and
 [validation history](validation-history-2026-10-11.md) for superseded evidence.

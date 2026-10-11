@@ -252,7 +252,10 @@ def audit_trial(directory, cell, protocol, *, verify_live_saves=False):
                   and audit.get("instruction_sha256") == [identity["instructions_sha256"]]
                   and audit.get("schema_sha256") == [protocol["schema_sha256"]]
                   and audit.get("tasks") == [identity["task"]], "actual actor input boundary differs")
-        check(audit.get("terminal_cleanup", {}).get("restored_files") == 7, "seven original saves not verified")
+        # The audit verifies every original in this run's backup inventory.
+        # Save counts vary by installation, including an initially empty profile.
+        check(audit.get("terminal_cleanup", {}).get("complete") is True,
+              "original save inventory was not verified")
     except (OSError, ValueError, KeyError, StopIteration, TypeError) as error:
         issues.append("missing_or_invalid_trial_evidence: " + str(error))
     outcome = classify_outcome(cell, terminal, last)

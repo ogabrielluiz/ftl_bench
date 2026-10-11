@@ -10,6 +10,10 @@
   directories; preserve previous outputs, expose missing/ambiguous attempts,
   propagate failures and test effective budget caps and retry exclusions.
 - Run headless output-contract and dashboard regressions in CI.
+- Show provisional full-game execution counts while cached summaries lag,
+  preserving strict completed-result and cleanup checks.
+- Validate each installation's original save inventory instead of requiring
+  the development machine's seven saves.
 - Document partial live results, paused experiments, acceptance boundaries and
   contributor workflow. Existing frozen cohorts remain tied to their original
   sources; merged-source experiments need new acceptance and a new cohort.

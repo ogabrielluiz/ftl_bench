@@ -371,7 +371,7 @@ def require_restoration(directory, cell):
         files = originals.get("files")
         if (run.get("save_restoration") != "verified" or run.get("production_source_unchanged") is not True
                 or run.get("status") not in {"completed", "error", "interrupted"}
-                or restoration.get("verified") is not True or not isinstance(files, dict) or not files
+                or restoration.get("verified") is not True or not isinstance(files, dict)
                 or restoration.get("files") != {name: True for name in files}):
             raise ValueError("incomplete restoration receipt")
     except (OSError, ValueError, TypeError) as error:

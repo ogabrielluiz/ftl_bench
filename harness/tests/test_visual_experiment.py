@@ -123,6 +123,20 @@ def test_restoration_requires_every_original_in_receipt(tmp_path):
         experiment.require_restoration(tmp_path, cell)
 
 
+def test_restoration_accepts_explicitly_empty_original_inventory(tmp_path):
+    cell = experiment.plan_cells()[0]
+    backup = experiment.saved_trial(tmp_path, cell) / "save-backup"
+    backup.mkdir(parents=True)
+    experiment.write_json(backup.parent / "run.json", {"status": "completed", "save_restoration": "verified",
+                                                       "production_source_unchanged": True})
+    experiment.write_json(backup / "manifest.json", {"files": {}})
+    experiment.write_json(backup / "restoration.json", {"verified": True, "files": {}})
+    experiment.require_restoration(tmp_path, cell)
+    experiment.write_json(backup / "restoration.json", {"verified": True})
+    with pytest.raises(RuntimeError, match="restoration is not verified"):
+        experiment.require_restoration(tmp_path, cell)
+
+
 def accepted_files(root, changes=()):
     """Small immutable evidence chain: deliberately no live game or source access."""
     def write(path, value):

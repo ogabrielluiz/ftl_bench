@@ -83,6 +83,63 @@ def test_fullgame_catalog_and_real_api_expose_all_five_conditions(fullgame, monk
     assert view["artifact_sha256"]["comparison.json"] == hashlib.sha256((directory / "comparison.json").read_bytes()).hexdigest()
 
 
+@pytest.mark.parametrize("first_pilot", [False, True])
+def test_running_cell_uses_live_ledger_progress_without_rejecting_unchanged_saved_outcomes(fullgame, monkeypatch, first_pilot):
+    root, directory, _, ledger, report = fullgame
+    if first_pilot:
+        # Real controller order: save a summary, then admit the child by updating
+        # only the ledger. The summary is refreshed after the child exits.
+        for cell in ledger["cells"]:
+            cell["status"] = "planned"
+            cell.pop("cleanup_checks", None)
+        ledger["cells"][0]["status"] = "running"
+        report["trials"] = []
+        report["counts"] = {key: 0 for key in report["counts"]}
+        report["counts"]["planned"] = 5
+    else:
+        report["counts"].update(planned=2, running=0)
+    save(directory / "ledger.json", ledger)
+    save(directory / "comparison.json", report)
+    saved_bytes = (directory / "comparison.json").read_bytes()
+    monkeypatch.setattr(api, "BENCH", root)
+    status, view = asgi_request(api.create_app(), "/api/comparisons", "key=fullgame")
+    assert status == 200 and view["issues"] == [] and view["partial"]
+    assert view["counts"]["running"] == 1
+    assert view["fullgame_summary"]["running"] == 1
+    assert view["fullgame_summary"]["planned"] == report["counts"]["planned"] - 1
+    assert view["fullgame_summary"]["verified_fullgame_completions"] == report["counts"]["verified_fullgame_completions"]
+    assert view["summary_refresh"] == "live_progress"
+    assert "ledger" in view["source"]
+    assert (directory / "comparison.json").read_bytes() == saved_bytes
+    assert view["artifact_sha256"]["comparison.json"] == hashlib.sha256(saved_bytes).hexdigest()
+
+
+@pytest.mark.parametrize("mutation", ["wrong_finished", "wrong_victories", "wrong_planned", "boolean_running", "missing_count", "extra_count", "ledger_finished", "ledger_unknown", "ledger_rollback", "native_contradiction"])
+def test_live_refresh_allowance_never_hides_completed_or_inconsistent_evidence(fullgame, mutation):
+    root, directory, _, ledger, report = fullgame
+    report["counts"].update(planned=2, running=0)
+    if mutation == "wrong_finished": report["counts"]["finished_attempts"] = 2
+    elif mutation == "wrong_victories": report["counts"]["victories"] = 0
+    elif mutation == "wrong_planned": report["counts"]["planned"] = 3
+    elif mutation == "boolean_running": report["counts"]["running"] = False
+    elif mutation == "missing_count": report["counts"].pop("victories")
+    elif mutation == "extra_count": report["counts"]["other"] = 0
+    elif mutation == "ledger_finished": ledger["cells"][3]["status"] = "finished"
+    elif mutation == "ledger_unknown": ledger["cells"][3]["status"] = "interrupted_unknown"
+    elif mutation == "ledger_rollback":
+        ledger["cells"][3]["status"] = "planned"
+        report["counts"].update(planned=1, running=1)
+    else:
+        # A completed audit contradiction remains an error even while a later
+        # condition starts and its cached execution counts lag.
+        report["trials"][1]["audit"]["complete"] = False
+    save(directory / "ledger.json", ledger)
+    save(directory / "comparison.json", report)
+    view = comparison.comparison_view(root, "fullgame")
+    assert view["fullgame_summary"] is None and view["issues"]
+    assert view["summary_refresh"] == "inconsistent"
+
+
 @pytest.mark.parametrize("row", [0, 2])
 def test_pilot_or_budget_cannot_be_promoted_to_fullgame_completion(fullgame, row):
     root, directory, _, _, report = fullgame
