@@ -7,13 +7,15 @@ An agent benchmark that drives the real **FTL: Faster Than Light** engine throug
 ## Status: work in progress
 
 The visual benchmark is an **alpha implementation with partial live validation**.
-At the 2026-10-11 11:44 UTC (08:44 in São Paulo) snapshot, the freshly admitted executable commit
-`d1c18b8` has one finished challenge cell and 35 planned in
-`matrix-main-d1c18b8-20261011`. Sol/image combat repeat one reached its
-60-decision budget: task success false, evidence eligible, no exclusions;
-the saved audit checked 60 decisions and 62 PNGs. The separate
-`fullgame-main-d1c18b8-20261011` has its pilot and four full-game conditions
-planned; fixture-free native-ending completion remains **0/4**.
+At the 2026-10-11 12:23 UTC snapshot, freshly admitted executable commit
+`d1c18b8` has completed nine Sol/image challenges in
+`matrix-main-d1c18b8-20261011`: combat 1/3, fire 2/3 and repair/charge/escape
+2/3 task successes. All nine are evidence eligible with no exclusions; four
+failures exhausted decision or idle budgets. The audits cover 156 decisions and
+174 PNGs. Initial gameplay signatures match within each challenge, while initial
+PNG bytes differ. Sol/hybrid has started; no completed hybrid or Luna comparison
+is claimed. `fullgame-main-d1c18b8-20261011` still has its pilot and four full-game
+conditions planned; native-ending completion remains **0/4**.
 
 Fresh admission passed eight startup checks, nine timing equality probes,
 protected cleanup and eight executed independent negative probes, binding
@@ -22,10 +24,14 @@ inputs were reused unchanged with their identities and reuse disclosed;
 `production_accepted` remains false. The new cohort uses the
 [CLI recovery policy](docs/cli-recovery.md) and repaired saved reporter. The first
 trial verifies the reporting repair; no reconnect occurred to exercise live recovery.
-The completed trial's rendered UI and current seven-save/bridge/six-runtime/no-FTL
-checks passed at their recorded boundaries, followed by independent final saved
-trace review at 11:44 UTC. Continuation uses the reviewed supervisor for unstarted Sol
-cells through the official controller; budget failures remain recorded.
+The first trial's rendered UI and seven-save/bridge/six-runtime/no-FTL checks
+passed at their recorded boundaries. All nine image trials now have independent
+saved-trace reviews (the ninth arrived at 12:24 UTC); recorded restoration is not
+a current live-cleanup claim during the running supervisor. Reported usage and
+latency cover all 156 calls, totaling 2,677.649 seconds. One current hybrid request
+also passed exact-PNG/provenance/prompt review. Continuation uses the reviewed
+supervisor for unstarted Sol cells through the official controller; budget failures
+remain recorded.
 
 Historical cohorts remain separate. `2174cc9` retains 18 Sol challenge attempts
 (17 eligible, 12 successes, five budget failures and one technical exclusion),
@@ -36,7 +42,8 @@ no results are pooled or failed cells silently retried. See the dated evidence,
 exact protocol identities and remaining [WIP](docs/NEXT.md).
 
 The complete 36-cell fair comparison, four native-ending full-game conditions
-and actual clean-build/setup reproduction remain unfinished. Scoped diagnostics,
+and actual clean-build/setup reproduction remain unfinished. A current-stack live
+cooperative-interruption diagnostic is also pending. Scoped diagnostics,
 passing tests and a challenge outcome do not establish those requirements or
 general determinism.
 
