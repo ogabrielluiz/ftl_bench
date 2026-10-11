@@ -162,6 +162,17 @@ def test_record_obs_none_is_none(tmp_path):
     assert body["obs"] is None
 
 
+def test_additive_input_and_pre_dispatch_snapshots_round_trip(tmp_path):
+    rec = TrajectoryRecorder(tmp_path / "traj.jsonl")
+    result = _make_obs(raw={"tick": 3})
+    pre = _make_obs(raw={"tick": 2})
+    rec.record("step_timeout", [], result, pre_obs=pre, decision_obs={"tick": 1})
+    record = load_trajectory(rec.path)[1]
+    assert record["obs"] == {"tick": 3}
+    assert record["pre_obs"] == {"tick": 2}
+    assert record["decision_obs"] == {"tick": 1}
+
+
 def test_record_none_actions_becomes_empty_list(tmp_path):
     p = tmp_path / "traj.jsonl"
     rec = TrajectoryRecorder(p)

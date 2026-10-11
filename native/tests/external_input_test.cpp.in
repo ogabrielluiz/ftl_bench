@@ -1,0 +1,86 @@
+#include "Benchmark_Visual.h"
+#include <cstring>
+#include <iostream>
+#define CHECK(value) do { if (!(value)) { std::cerr << "failed: " #value "\n"; return 1; } } while (0)
+// Native SIL enum values from FTLGameWin32.h; the hook body below is extracted
+// from the engine source shipped in the patch, rather than reimplemented here.
+enum { INPUT_EVENT_JOYSTICK=1,INPUT_EVENT_KEYBOARD=2,INPUT_EVENT_MEMORY=3,
+       INPUT_EVENT_MOUSE=4,INPUT_EVENT_TEXT=5,INPUT_EVENT_TOUCH=6 };
+enum { INPUT_JOYSTICK_CONNECTED=1,INPUT_JOYSTICK_DISCONNECTED=2,
+       INPUT_JOYSTICK_BUTTON_DOWN=3,INPUT_JOYSTICK_BUTTON_UP=4,
+       INPUT_JOYSTICK_DPAD_CHANGE=5,INPUT_JOYSTICK_STICK_CHANGE=6,
+       INPUT_KEYBOARD_KEY_DOWN=7,INPUT_KEYBOARD_KEY_UP=8,
+       INPUT_KEYBOARD_SYSTEM_KEY_DOWN=9,INPUT_KEYBOARD_SYSTEM_KEY_UP=10,
+       INPUT_MEMORY_LOW=11,INPUT_MOUSE_MOVE=12,INPUT_MOUSE_LMB_DOWN=13,
+       INPUT_MOUSE_LMB_UP=14,INPUT_MOUSE_MMB_DOWN=15,INPUT_MOUSE_MMB_UP=16,
+       INPUT_MOUSE_RMB_DOWN=17,INPUT_MOUSE_RMB_UP=18,INPUT_MOUSE_SCROLL_H=19,
+       INPUT_MOUSE_SCROLL_V=20,INPUT_TEXT_INPUT=21,INPUT_TEXT_DONE=22,
+       INPUT_TEXT_CANCELLED=23,INPUT_TOUCH_DOWN=31,INPUT_TOUCH_MOVE=32,INPUT_TOUCH_UP=33 };
+struct MouseInputEvent { float x,y,scroll; };
+struct InputEvent { int type,detail; MouseInputEvent event; };
+struct CEvent {
+    unsigned delivered=0;
+    void super(const InputEvent*) { ++delivered; }
+    void monitor(const InputEvent* event);
+};
+struct CApp : CEvent {} app;
+struct Global {
+    static Global* GetInstance() { static Global global; return &global; }
+    CApp* GetCApp() { return &app; }
+};
+namespace BenchmarkVisualEngine { BenchmarkVisual::ExternalInputGuard external_input; }
+void CEvent::monitor(const InputEvent* event)
+@EVENT_HOOK@
+int main()
+{
+    using namespace BenchmarkVisualEngine;
+    InputEvent event={INPUT_EVENT_KEYBOARD,INPUT_KEYBOARD_KEY_DOWN,{0,0,0}};
+    app.monitor(&event); // setup key before the first screenshot
+    CHECK(external_input.generation==0 && app.delivered==1);
+    external_input.arm(0.25f,0.75f);
+    event={INPUT_EVENT_MOUSE,INPUT_MOUSE_MOVE,{0.25f,0.75f,0}};
+    app.monitor(&event);
+    CHECK(external_input.generation==0);
+    {
+        BenchmarkVisual::SyntheticInputScope input(external_input);
+        event={INPUT_EVENT_MOUSE,INPUT_MOUSE_LMB_DOWN,{0.9f,0.1f,0}};
+        app.monitor(&event); // defensively exclude nested synthetic event routes
+        event={INPUT_EVENT_MOUSE,INPUT_MOUSE_MOVE,{0.9f,0.1f,0}};
+        app.monitor(&event);
+    }
+    event={INPUT_EVENT_MOUSE,INPUT_MOUSE_MOVE,{0.25f,0.75f,0}};
+    app.monitor(&event); // physical position unchanged after synthetic cursor move
+    CHECK(external_input.generation==0 && external_input.mouse_x==0.25f);
+    event={INPUT_EVENT_MOUSE,INPUT_MOUSE_MOVE,{0.3f,0.75f,0}};
+    app.monitor(&event); // first external movement invalidates the captured state
+    CHECK(external_input.generation==1 && external_input.detected);
+    app.monitor(&event); // no-op motion events are ordinary stationary reports
+    CHECK(external_input.generation==1);
+    event={INPUT_EVENT_MOUSE,INPUT_MOUSE_SCROLL_V,{0.3f,0.75f,0}};
+    app.monitor(&event);
+    CHECK(external_input.generation==1);
+    event.event.scroll=1.f; app.monitor(&event);
+    CHECK(external_input.generation==2);
+    const int button_events[]={INPUT_MOUSE_LMB_DOWN,INPUT_MOUSE_LMB_UP,
+        INPUT_MOUSE_MMB_DOWN,INPUT_MOUSE_MMB_UP,INPUT_MOUSE_RMB_DOWN,INPUT_MOUSE_RMB_UP};
+    for (const int detail:button_events) { event.detail=detail; app.monitor(&event); }
+    CHECK(external_input.generation==8);
+    event={INPUT_EVENT_MEMORY,INPUT_MEMORY_LOW,{0,0,0}}; app.monitor(&event);
+    event={INPUT_EVENT_JOYSTICK,INPUT_JOYSTICK_CONNECTED,{0,0,0}}; app.monitor(&event);
+    event.detail=INPUT_JOYSTICK_DISCONNECTED; app.monitor(&event);
+    CHECK(external_input.generation==8);
+    event.detail=INPUT_JOYSTICK_BUTTON_DOWN; app.monitor(&event);
+    event={INPUT_EVENT_KEYBOARD,INPUT_KEYBOARD_KEY_DOWN,{0,0,0}}; app.monitor(&event);
+    event.detail=INPUT_KEYBOARD_KEY_UP; app.monitor(&event);
+    event.detail=INPUT_KEYBOARD_SYSTEM_KEY_DOWN; app.monitor(&event);
+    event={INPUT_EVENT_TEXT,INPUT_TEXT_INPUT,{0,0,0}}; app.monitor(&event);
+    event={INPUT_EVENT_TOUCH,INPUT_TOUCH_DOWN,{0,0,0}}; app.monitor(&event);
+    CHECK(external_input.generation==14);
+    CEvent other_receiver;
+    other_receiver.monitor(&event);
+    CHECK(external_input.generation==14 && other_receiver.delivered==1);
+    external_input.arm(0.9f,0.1f);
+    CHECK(external_input.generation==14 && external_input.detected); // fresh captures cannot clear it
+    CHECK(app.delivered==24); // monitoring preserves every normal event, including no-ops
+    std::cout << "actual native external-input hook checks passed\n";
+}

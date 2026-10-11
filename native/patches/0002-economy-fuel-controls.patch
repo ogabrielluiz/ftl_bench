@@ -1,0 +1,731 @@
+diff --git a/Benchmark_Extend.cpp b/Benchmark_Extend.cpp
+index b9bb86db..71542648 100644
+--- a/Benchmark_Extend.cpp
++++ b/Benchmark_Extend.cpp
+@@ -1,9 +1,13 @@
+ #include "Benchmark_Extend.h"
+ #include "Global.h"   // hs_log_file (Global.h:92); FileHelper::getUserFolder via FTLGame.h (Global.h:7)
++#include "Benchmark_Economy.h"
++#include "Benchmark_Routing.h"
++#include "CustomShipSelect.h"
+ #include <cstdio>
+ #include <fstream>
+ #include <iterator>
+ #include <vector>
++#include <sstream>
+ #ifdef _WIN32
+ #include <windows.h>
+ #endif
+@@ -21,6 +25,7 @@ namespace {
+ 
+     const char* kObservationFile = "ftl_agent_observation.json";
+     const char* kObservationTemp = "ftl_agent_observation.json.tmp";
++    BenchmarkRouting::TravelContext travel_context(CApp* app, ShipManager* player);
+ }
+ 
+ bool hs_benchmark_write_observation(const char* json_str)
+@@ -270,30 +275,22 @@ bool hs_benchmark_return_to_menu()
+ 
+ bool hs_benchmark_jump_to_beacon(int beacon_index)
+ {
+-    Global* g = Global::GetInstance();
+-    CApp* app = g->GetCApp();
+-    if (!app || !app->world || !app->gui) return false;
+-    StarMap& starMap = app->world->starMap;          // value member
+-    Location* cur = starMap.currentLoc;
+-    if (!cur) return false;
+-    std::vector<Location*>& connected = cur->connectedLocations;
+-    if (beacon_index < 0 || beacon_index >= (int)connected.size()) return false;
+-    Location* target = connected[beacon_index];
+-    if (!target) return false;
+-
+-    // Require fuel (the agent sees fuel_count in the observation).
+-    ShipManager* player = g->GetShipManager(0);
+-    if (player && player->fuel_count <= 0) return false;
+-
+-    // Trigger a REAL jump the way the game does (CustomEvents.cpp:6881 precedent):
+-    // TravelToLocation alone only moves the cursor; setting potentialLoc +
+-    // readyToTravel lets the normal StarMap::OnLoop run the full warp / arrival /
+-    // event / fuel sequence while the bridge is unpaused for advance_frames.
+-    starMap.potentialLoc = target;
+-    starMap.readyToTravel = true;
+-    starMap.outOfFuel = false;
+-    app->gui->waitLocation = false;
+-    return true;
++    CApp* app = Global::GetInstance()->GetCApp();
++    if (!app || !app->world || !app->gui || !app->world->bStartedGame) return false;
++    StarMap& map = app->world->starMap;
++    if (!map.currentLoc) return false;
++    CompleteShip* ship = app->world->playerShip;
++    ShipManager* player = ship ? ship->shipManager : nullptr;
++    const auto context = travel_context(app, player);
++    return BenchmarkRouting::request_beacon(context, beacon_index,
++        map.currentLoc->connectedLocations, [&map, app](Location* target) {
++            // Only after normal native readiness: let OnLoop perform the ordinary
++            // warp, fuel consumption, new location, and event sequence.
++            map.potentialLoc = target;
++            map.readyToTravel = true;
++            map.outOfFuel = false;
++            app->gui->waitLocation = false;
++        });
+ }
+ 
+ bool hs_benchmark_choose_event(int index)
+@@ -310,6 +307,332 @@ bool hs_benchmark_choose_event(int index)
+     return app->gui->choiceBox.KeyDown((SDLKey)((int)SDLKey::SDLK_1 + index));
+ }
+ 
++bool hs_benchmark_set_weapon_autofire(bool enabled)
++{
++    CApp* app = Global::GetInstance()->GetCApp();
++    if (!app || !app->gui) return false;
++    app->gui->combatControl.weapControl.SetAutofiring(enabled, false);
++    return true;
++}
++
++bool hs_benchmark_victory()
++{
++    CApp* app = Global::GetInstance()->GetCApp();
++    if (!app || !app->gui || !app->world || !app->world->bStartedGame) return false;
++    return app->gui->alreadyWon || (app->gui->gameover && app->gui->gameOverScreen.bVictory);
++}
++
++bool hs_benchmark_set_difficulty(int difficulty)
++{
++    CApp* app = Global::GetInstance()->GetCApp();
++    if (difficulty < 0 || difficulty > 2 || !Global::difficulty || !app ||
++        !app->world || app->world->bStartedGame || !app->menu.bOpen) return false;
++    *Global::difficulty = difficulty;
++    return *Global::difficulty == difficulty;
++}
++
++int hs_benchmark_difficulty()
++{
++    // The game and Hyperspace difficulty logic use this settings pointer. The
++    // legacy WorldManager currentDifficulty layout is not reliable on Windows.
++    return Global::difficulty ? *Global::difficulty : -1;
++}
++
++const char* hs_benchmark_player_blueprint()
++{
++    static std::string blueprint;
++    blueprint.clear();
++    CApp* app = Global::GetInstance()->GetCApp();
++    if (!app || !app->world || !app->world->bStartedGame) return blueprint.c_str();
++    ShipManager* ship = Global::GetInstance()->GetShipManager(0);
++    if (ship) blueprint = ship->myBlueprint.blueprintName;
++    return blueprint.c_str();
++}
++
++int hs_benchmark_run_score()
++{
++    CApp* app = Global::GetInstance()->GetCApp();
++    if (!app || !app->world || !app->world->bStartedGame || !Global::difficulty) return -1;
++    ScoreKeeper* keeper = Global::GetInstance()->GetScoreKeeper();
++    int difficulty = *Global::difficulty;
++    if (!keeper || difficulty < 0 || difficulty > 2) return -1;
++    // FTL 1.6.9 ScoreKeeper::Save, 0x442bcd..0x442c20 in the Windows executable:
++    // current scrap + 20*ships destroyed + 10*explored beacons, times difficulty.
++    // Read current-run StatTrackers, not the TopScore snapshot updated by Save.
++    float modifier = difficulty == 2 ? 1.5f : difficulty == 1 ? 1.25f : 1.f;
++    return static_cast<int>(modifier * (keeper->stats[2].current +
++                                       20 * keeper->stats[0].current +
++                                       10 * keeper->stats[1].current));
++}
++
++const char* hs_benchmark_score_components()
++{
++    static char buffer[256];
++    buffer[0] = '\0';
++    if (hs_benchmark_run_score() < 0) return buffer;
++    ScoreKeeper* keeper = Global::GetInstance()->GetScoreKeeper();
++    std::snprintf(buffer, sizeof(buffer),
++                  "{\"scrap_collected\":%d,\"ships_destroyed\":%d,\"beacons_explored\":%d,\"difficulty\":%d}",
++                  keeper->stats[2].current, keeper->stats[0].current,
++                  keeper->stats[1].current, *Global::difficulty);
++    return buffer;
++}
++
++const char* hs_benchmark_capabilities()
++{
++    return "{\"native_protocol\":5,\"global_autofire_control\":true,\"hacking_idle_ready\":true,\"victory\":true,\"setup_identity\":true,\"seeded_easy_setup\":true,\"live_score\":true,\"exact_system_upgrades\":true,\"reactor_upgrades\":true,\"fuel_recovery\":true,\"economy_state\":true}";
++}
++
++namespace {
++ShipManager* economy_player(CApp* app)
++{
++    // Global::GetShipManager dereferences CApp/world and also returns the hangar
++    // preview ship. Economy controls must never target that preview or stale run.
++    if (!app || !app->world || !app->gui || !app->world->bStartedGame) return nullptr;
++    CompleteShip* ship = app->world->playerShip;
++    return ship ? ship->shipManager : nullptr;
++}
++
++BenchmarkEconomy::Context economy_context(CApp* app, ShipManager* player, bool allowMap)
++{
++    BenchmarkEconomy::Context context;
++    if (!app || !app->world || !app->gui || !player) return context;
++    CommandGui& gui = *app->gui;
++    StarMap& map = app->world->starMap;
++    context.started = app->world->bStartedGame && gui.shipComplete &&
++                      gui.shipComplete->shipManager == player;
++    context.main_menu = app->menu.bOpen;
++    context.game_over = gui.gameover || gui.alreadyWon;
++    context.destroyed = player->bDestroyed;
++    context.mid_warp = player->bJumping;
++    context.pending_travel = map.readyToTravel;
++    context.arrival_complete = gui.jumpComplete; // persists true at a settled beacon
++    context.pending_sector = map.bChoosingNewSector;
++    context.waiting = map.waiting.running;
++    context.modal = gui.choiceBoxOpen || gui.choiceBox.bOpen || gui.menuBox.bOpen ||
++                    gui.optionsBox.bOpen || gui.inputBox.bOpen || gui.gameOverScreen.bOpen ||
++                    gui.shipScreens.bOpen || gui.storeScreens.bOpen || gui.upgradeScreen.bOpen ||
++                    gui.crewScreen.bOpen || gui.equipScreen.bOpen || gui.leaveCrewDialog.bOpen ||
++                    gui.writeErrorDialog.bOpen || (!allowMap && map.bOpen);
++    for (FocusWindow* window : gui.focusWindows) {
++        if (window && window->bOpen && (!allowMap || window != &map)) context.modal = true;
++    }
++    return context;
++}
++
++bool enemy_defeat_pending(CApp* app)
++{
++    if (!app || !app->world || !app->world->playerShip) return false;
++    CompleteShip* enemy = app->world->playerShip->enemyShip;
++    ShipManager* manager = enemy ? enemy->shipManager : nullptr;
++    if (!manager) return false;
++    // ShipAI::Destroyed requires physical hull destruction AND DestroyedDone;
++    // its one-shot flag is set when WorldManager consumes the native death event.
++    // Read that flag; calling Destroyed() itself would consume the event here.
++    if (manager->ship.bDestroyed) {
++        return BenchmarkRouting::hull_defeat_pending(manager->bDestroyed,
++            manager->ship.DestroyedDone(), enemy->shipAI.destroyed);
++    }
++    // CompleteShip::DeadCrew also has a Hyperspace hook that can queue events.
++    // Read the vanilla counters instead: clone-ready crew count only while the
++    // clone bay works; automated ships cannot lose by crew elimination.
++    CrewMemberFactory* factory = Global::GetInstance()->GetCrewFactory();
++    return factory && BenchmarkRouting::crew_defeat_pending(
++        manager->_targetable.hostile, manager->bAutomated, factory->GetCrewCount(true),
++        factory->GetEnemyCloneCount(), manager->GetSystemHealth(13) != 0);
++}
++
++BenchmarkRouting::TravelContext travel_context(CApp* app, ShipManager* player)
++{
++    BenchmarkRouting::TravelContext context;
++    context.game = economy_context(app, player, true);
++    if (!app || !app->world || !app->gui || !player) return context;
++    context.button_active = app->gui->ftlButton.bActive;
++    context.engines = player->SystemFunctions(1);
++    context.piloting = player->SystemFunctions(6);
++    context.fuel = player->fuel_count;
++    context.charge = player->jump_timer.first;
++    context.required_charge = player->jump_timer.second;
++    context.enemy_defeat_pending = enemy_defeat_pending(app);
++    return context;
++}
++
++bool upgrades_available(CApp* app, ShipManager* player)
++{
++    return economy_context(app, player, false).ready() && app->gui->upgradeButton.bActive;
++}
++
++ShipSystem* upgrade_system(ShipManager* player, int id)
++{
++    if (!player) return nullptr;
++    // Do not pass an untrusted id into the engine's unchecked systemKey array.
++    for (ShipSystem* system : player->vSystemList) {
++        if (system && system->iSystemType == id) return system;
++    }
++    return nullptr;
++}
++
++int next_system_cost(ShipSystem* system)
++{
++    if (!system) return -1;
++    BlueprintManager* blueprints = Global::GetInstance()->GetBlueprints();
++    if (!blueprints) return -1;
++    const SystemBlueprint* blueprint = blueprints->GetSystemBlueprint(
++        ShipSystem::SystemIdToName(system->iSystemType));
++    if (!blueprint) return -1;
++    // UpgradeBox::MouseClick reads the base cap, not a temporary power boost.
++    return BenchmarkEconomy::system_cost(system->powerState.second, system->maxLevel,
++                                         blueprint->upgradeCosts);
++}
++
++int next_reactor_cost(ShipManager* player, PowerManager* power)
++{
++    if (!player || !power) return -1;
++    const CustomShipDefinition& def = CustomShipSelect::GetInstance()->GetDefinition(
++        player->myBlueprint.blueprintName);
++    return BenchmarkEconomy::reactor_cost(power->currentPower.second, def.maxReactorLevel,
++                                          def.reactorPrices, def.reactorPriceIncrement);
++}
++
++bool fuel_context_available(CApp* app, ShipManager* player)
++{
++    if (!economy_context(app, player, true).ready() || player->fuel_count >= 1) return false;
++    // Opening the map must be legal through the ordinary FTL button. Once open,
++    // its own active buttons control the recovery actions.
++    return app->world->starMap.bOpen || (app->gui->ftlButton.bActive &&
++           player->jump_timer.first >= player->jump_timer.second &&
++           player->SystemFunctions(1) && player->SystemFunctions(6));
++}
++
++StarMap* fuel_map(CApp* app, ShipManager* player)
++{
++    if (!fuel_context_available(app, player)) return nullptr;
++    StarMap& map = app->world->starMap;
++    if (!map.bOpen) map.Open();
++    if (!map.bOpen) return nullptr;
++    // Refresh the native active bits. No turn is advanced here: waiting is false
++    // and pending travel/sector transitions were refused before opening the map.
++    map.OnLoop();
++    return map.outOfFuel ? &map : nullptr;
++}
++
++
++void json_cost(std::ostringstream& json, int cost)
++{
++    if (cost < 0) json << "null";
++    else json << cost;
++}
++}
++
++bool hs_benchmark_upgrade_system(int system_id)
++{
++    Global* global = Global::GetInstance();
++    CApp* app = global->GetCApp();
++    ShipManager* player = economy_player(app);
++    if (!upgrades_available(app, player)) return false;
++    ShipSystem* system = upgrade_system(player, system_id);
++    const int price = next_system_cost(system);
++    if (!system || price < 0 || player->CanUpgrade(system_id, 1) != 1) return false;
++    return BenchmarkEconomy::purchase(true, price, player->currentScrap,
++        [system]() { return system->powerState.second; },
++        [player, system_id]() { player->UpgradeSystem(system_id, 1); },
++        [player](int amount) { player->ModifyScrapCount(-amount, false); });
++}
++
++bool hs_benchmark_upgrade_reactor()
++{
++    Global* global = Global::GetInstance();
++    CApp* app = global->GetCApp();
++    ShipManager* player = economy_player(app);
++    if (!upgrades_available(app, player)) return false;
++    PowerManager* power = PowerManager::GetPowerManager(player->iShipId);
++    const int price = next_reactor_cost(player, power);
++    if (!power || price < 0 || player->CanUpgrade(17, 1) != 1) return false;
++    return BenchmarkEconomy::purchase(true, price, player->currentScrap,
++        [power]() { return power->currentPower.second; },
++        [player]() { player->UpgradeSystem(17, 1); },
++        [player](int amount) { player->ModifyScrapCount(-amount, false); });
++}
++
++bool hs_benchmark_wait_for_fuel()
++{
++    Global* global = Global::GetInstance();
++    CApp* app = global->GetCApp();
++    StarMap* map = fuel_map(app, economy_player(app));
++    if (!map || !map->waitButton.bActive || map->waiting.running) return false;
++    BenchmarkEconomy::click_map_button(*map, map->waitButton);
++    // The normal animation, danger advance and CommandGui wait-location resolver
++    // handle the encounter. No resources, event branches or RNG are changed here.
++    return map->waiting.running;
++}
++
++bool hs_benchmark_set_distress(bool enabled)
++{
++    Global* global = Global::GetInstance();
++    CApp* app = global->GetCApp();
++    StarMap* map = fuel_map(app, economy_player(app));
++    if (!map || !map->distressButton.bActive) return false;
++    if (map->distressButton.state == enabled) return true;
++    BenchmarkEconomy::click_map_button(*map, map->distressButton);
++    return map->distressButton.state == enabled;
++}
++
++const char* hs_benchmark_economy_state()
++{
++    static std::string buffer;
++    Global* global = Global::GetInstance();
++    CApp* app = global->GetCApp();
++    ShipManager* player = economy_player(app);
++    const bool started = app && app->world && app->gui && app->world->bStartedGame && player;
++    const bool available = started && upgrades_available(app, player);
++    std::ostringstream json;
++    json << std::boolalpha << "{\"native_protocol\":5,\"sector_navigation_version\":1,\"beacon_navigation_version\":1,\"upgrade_available\":" << available
++         << ",\"systems\":[";
++    bool comma = false;
++    if (started) for (ShipSystem* system : player->vSystemList) {
++        if (!system) continue;
++        const int price = next_system_cost(system);
++        const bool can = available && price >= 0 && player->currentScrap >= price &&
++                         player->CanUpgrade(system->iSystemType, 1) == 1;
++        if (comma) json << ',';
++        comma = true;
++        json << "{\"system_id\":" << system->iSystemType
++             << ",\"current_max_power\":" << system->powerState.second
++             << ",\"max_level\":" << system->maxLevel << ",\"next_upgrade_cost\":";
++        json_cost(json, price);
++        json << ",\"can_upgrade\":" << can << '}';
++    }
++    json << "],\"reactor\":";
++    PowerManager* power = started ? PowerManager::GetPowerManager(player->iShipId) : nullptr;
++    if (power) {
++        const CustomShipDefinition& def = CustomShipSelect::GetInstance()->GetDefinition(
++            player->myBlueprint.blueprintName);
++        const int price = next_reactor_cost(player, power);
++        json << "{\"current_max_power\":" << power->currentPower.second
++             << ",\"max_level\":" << def.maxReactorLevel << ",\"next_upgrade_cost\":";
++        json_cost(json, price);
++        json << ",\"can_upgrade\":" << (available && price >= 0 &&
++                player->currentScrap >= price && player->CanUpgrade(17, 1) == 1) << '}';
++    } else json << "null";
++    const StarMap* map = started ? &app->world->starMap : nullptr;
++    const bool can_wait = started && fuel_context_available(app, player) &&
++                         (!map->bOpen || map->waitButton.bActive);
++    const auto navigation = travel_context(app, player);
++    const char* navigation_reason = navigation.refusal_reason();
++    json << ",\"navigation\":{\"can_jump\":" << (navigation_reason == nullptr)
++         << ",\"enemy_defeat_pending\":" << navigation.enemy_defeat_pending
++         << ",\"drive_current\":" << navigation.charge
++         << ",\"drive_max\":" << navigation.required_charge << ",\"reason\":";
++    if (navigation_reason) json << '"' << navigation_reason << '"';
++    else json << "null";
++    json << "},\"fuel_recovery\":{\"out_of_fuel\":" << (started && player->fuel_count < 1)
++         << ",\"distress_on\":" << (map && map->distressButton.state)
++         << ",\"can_wait\":" << can_wait << ",\"waiting\":" << (map && map->waiting.running)
++         << "}}";
++    buffer = json.str();
++    return buffer.c_str();
++}
++
+ bool hs_benchmark_fire_weapon(int weapon_slot, int target_ship_id, int target_room_id)
+ {
+     Global* g = Global::GetInstance();
+@@ -343,12 +666,11 @@ bool hs_benchmark_fire_weapon(int weapon_slot, int target_ship_id, int target_ro
+     std::vector<Pointf> points;
+     for (int i = 0; i < nReq; ++i) points.push_back(center);
+     wc.Fire(points, targetShip->iShipId, false);       // sets persistent target on the armed weapon
+-    weapon->SetAutoFire(true);                          // per-weapon autofire flag
+-    // GLOBAL autofire ON. Without it a powered+charged+targeted weapon just SITS there
+-    // (fire_when_ready stays set but it never releases the shot) -- the "burst laser fully
+-    // charged but not firing" bug. SetAutofiring is what the AUTOFIRE button does: every
+-    // armed weapon fires the moment it's charged, and re-fires each cooldown.
+-    wc.SetAutofiring(true, false);
++    // Manual release. Lua keeps this slot's fireWhenReady queued until one release;
++    // enabling global autofire here would also arm every previously targeted slot.
++    wc.SetAutofiring(false, false);
++    weapon->SetAutoFire(false);
++    weapon->fireWhenReady = true;
+     return true;
+ }
+ 
+@@ -356,7 +678,7 @@ bool hs_benchmark_leave_sector()
+ {
+     Global* g = Global::GetInstance();
+     CApp* app = g->GetCApp();
+-    if (!app || !app->world) return false;
++    if (!app || !app->world || !app->gui || !app->world->bStartedGame) return false;
+     StarMap& sm = app->world->starMap;                 // value member
+ 
+     // Must be standing on the sector EXIT beacon (the "Long-Range Beacon").
+@@ -366,17 +688,23 @@ bool hs_benchmark_leave_sector()
+     // The exit jump costs fuel, exactly like the game's endButton.
+     ShipManager* player = g->GetShipManager(0);
+     if (!player || player->fuel_count < 1) return false;
++    // Both beacon and sector jumps obey the same ordinary FTL button/timer,
++    // engines/piloting, modal/warp, and native enemy-death processing guards.
++    if (travel_context(app, player).refusal_reason()) return false;
+ 
+-    // REFUSE during active combat. Driving the sector transition while a live enemy
++    // REFUSE during active combat. A surrendered pointer is retained but nonhostile.
++    // Driving the sector transition while a live hostile enemy
+     // ship is present at the exit beacon SIGBUS-crashes the engine (observed at a
+     // PIRATE_BRIBER finish beacon). The agent must clear/kill the enemy first.
+     ShipManager* enemy = g->GetShipManager(1);
+-    if (enemy && !enemy->bDestroyed) return false;
++    if (enemy && BenchmarkRouting::sector_enemy_blocks(
++        enemy->_targetable.hostile, enemy->bDestroyed)) return false;
+ 
+-    // GetRandomSectorChoice can return -1 (no choice); NeighboringSector validates it
+-    // is a real neighbour so the OnLoop commit (SelectNewSector) never indexes garbage.
+-    int choice = sm.GetRandomSectorChoice();
+-    if (choice < 0 || !sm.NeighboringSector(choice)) return false;
++    const int choice = BenchmarkRouting::choose_sector_index(
++        static_cast<int>(sm.sectors.size()),
++        [&sm](int index) { return sm.NeighboringSector(index); },
++        []() { return random32(); });
++    if (choice < 0) return false;
+ 
+     // Open the sector-choice map and set the choice. The game's StarMap::OnLoop hook
+     // (CustomMap.cpp) commits it next frame: SelectNewSector + AdvanceWorldLevel +
+@@ -495,7 +823,7 @@ bool hs_benchmark_fire_beam(int weapon_slot, int target_ship_id, int room_a, int
+ 
+     // Refuse non-beams: a 2-point swipe at a 1-point laser leaves it charged but never
+     // releasing. A beam reports 2 aim points.
+-    if (weapon->NumTargetsRequired() != 2) return false;
++    if (!weapon->blueprint || weapon->blueprint->type != 2) return false;
+ 
+     WeaponControl& wc = app->gui->combatControl.weapControl;   // value members
+     wc.SelectArmament((unsigned int)weapon_slot);
+@@ -509,8 +837,9 @@ bool hs_benchmark_fire_beam(int weapon_slot, int target_ship_id, int room_a, int
+     points.push_back(b);
+ 
+     wc.Fire(points, targetShip->iShipId, false);   // persistent 2-point target on armed weapon
+-    weapon->SetAutoFire(true);                      // per-weapon autofire flag
+-    wc.SetAutofiring(true, false);                  // GLOBAL autofire (AUTOFIRE button)
++    wc.SetAutofiring(false, false);
++    weapon->SetAutoFire(false);
++    weapon->fireWhenReady = true;
+     return true;
+ }
+ 
+@@ -526,7 +855,7 @@ bool hs_benchmark_hack_system(int target_system_id)
+ {
+     Global* g = Global::GetInstance();
+     CApp* app = g->GetCApp();
+-    if (!app || !app->world) return false;
++    if (!app || !app->world || !app->gui || !app->world->bStartedGame) return false;
+ 
+     ShipManager* player = g->GetShipManager(0);
+     ShipManager* enemy  = g->GetShipManager(1);
+@@ -537,7 +866,7 @@ bool hs_benchmark_hack_system(int target_system_id)
+     HackingSystem* hs = player->hackingSystem;
+     if (!hs) return false;                       // Kestrel hasn't bought Hacking
+     if (!hs->Powered()) return false;            // needs >= 1 power bar
+-    if (hs->iLockCount != -1) return false;      // our own hacking is ion-locked/hacked
++    if (hs->iLockCount != 0) return false;       // 0 is idle; -1 active; positive cooldown/ion
+ 
+     // Resolve the enemy system -> its room. HasSystem guards a destroyed/absent system.
+     if (!enemy->HasSystem(target_system_id)) return false;
+@@ -585,7 +914,7 @@ bool hs_benchmark_teleport_crew(int command, int target_room_id)
+ {
+     Global* g = Global::GetInstance();
+     CApp* app = g ? g->GetCApp() : nullptr;
+-    if (!app || !app->world) return false;
++    if (!app || !app->world || !app->gui || !app->world->bStartedGame) return false;
+ 
+     CompleteShip* pShip = app->world->playerShip;
+     if (!pShip || !pShip->shipManager) return false;
+diff --git a/Benchmark_Extend.h b/Benchmark_Extend.h
+index 6bc15e01..abad6843 100644
+--- a/Benchmark_Extend.h
++++ b/Benchmark_Extend.h
+@@ -61,6 +61,22 @@ bool hs_benchmark_choose_event(int index);
+ // Arm player weapon `weapon_slot`, target room `target_room_id` on ship
+ // `target_ship_id` (0=player, 1=enemy), and fire. Single-point (laser/missile).
+ bool hs_benchmark_fire_weapon(int weapon_slot, int target_ship_id, int target_room_id);
++bool hs_benchmark_set_weapon_autofire(bool enabled);
++bool hs_benchmark_victory();
++int hs_benchmark_difficulty();
++bool hs_benchmark_set_difficulty(int difficulty);
++const char* hs_benchmark_player_blueprint();
++int hs_benchmark_run_score();
++const char* hs_benchmark_score_components();
++const char* hs_benchmark_capabilities();
++
++// Protocol 5 economy and fuel recovery. Prices/caps come from native blueprints
++// and ship definitions; mutations refuse unavailable UI/game states.
++bool hs_benchmark_upgrade_system(int system_id);
++bool hs_benchmark_upgrade_reactor();
++bool hs_benchmark_wait_for_fuel();
++bool hs_benchmark_set_distress(bool enabled);
++const char* hs_benchmark_economy_state();
+ 
+ // Leave the current sector from the exit beacon and travel to a random valid next
+ // sector (advances map.sector). Returns false unless: at the exit beacon, fuel>=1,
+diff --git a/lua/modules/hyperspace.i b/lua/modules/hyperspace.i
+index 10def309..a4ac2d87 100644
+--- a/lua/modules/hyperspace.i
++++ b/lua/modules/hyperspace.i
+@@ -499,6 +499,33 @@ bool hs_benchmark_choose_event(int index);
+ 
+ %rename("benchmark_fire_weapon") hs_benchmark_fire_weapon;
+ bool hs_benchmark_fire_weapon(int weapon_slot, int target_ship_id, int target_room_id);
++%rename("benchmark_set_weapon_autofire") hs_benchmark_set_weapon_autofire;
++bool hs_benchmark_set_weapon_autofire(bool enabled);
++%rename("benchmark_victory") hs_benchmark_victory;
++bool hs_benchmark_victory();
++%rename("benchmark_difficulty") hs_benchmark_difficulty;
++int hs_benchmark_difficulty();
++%rename("benchmark_set_difficulty") hs_benchmark_set_difficulty;
++bool hs_benchmark_set_difficulty(int difficulty);
++%rename("benchmark_player_blueprint") hs_benchmark_player_blueprint;
++const char* hs_benchmark_player_blueprint();
++%rename("benchmark_run_score") hs_benchmark_run_score;
++int hs_benchmark_run_score();
++%rename("benchmark_score_components") hs_benchmark_score_components;
++const char* hs_benchmark_score_components();
++%rename("benchmark_capabilities") hs_benchmark_capabilities;
++const char* hs_benchmark_capabilities();
++
++%rename("benchmark_upgrade_system") hs_benchmark_upgrade_system;
++bool hs_benchmark_upgrade_system(int system_id);
++%rename("benchmark_upgrade_reactor") hs_benchmark_upgrade_reactor;
++bool hs_benchmark_upgrade_reactor();
++%rename("benchmark_wait_for_fuel") hs_benchmark_wait_for_fuel;
++bool hs_benchmark_wait_for_fuel();
++%rename("benchmark_set_distress") hs_benchmark_set_distress;
++bool hs_benchmark_set_distress(bool enabled);
++%rename("benchmark_economy_state") hs_benchmark_economy_state;
++const char* hs_benchmark_economy_state();
+ 
+ %rename("benchmark_leave_sector") hs_benchmark_leave_sector;
+ bool hs_benchmark_leave_sector();
+diff --git a/Benchmark_Economy.h b/Benchmark_Economy.h
+new file mode 100644
+--- /dev/null
++++ b/Benchmark_Economy.h
+@@ -0,0 +1,66 @@
++#pragma once
++#include <vector>
++
++// These rules use the same indices and ship definition fields as the native
++// UpgradeBox and Hyperspace ReactorButton. A negative cost means unavailable.
++namespace BenchmarkEconomy {
++inline int system_cost(int level, int maximum, const std::vector<int>& prices)
++{
++    if (level < 1 || level >= maximum || level > static_cast<int>(prices.size())) return -1;
++    return prices[level - 1] >= 0 ? prices[level - 1] : -1;
++}
++
++inline int reactor_cost(int level, int maximum, const std::vector<int>& prices, int increment)
++{
++    if (level < 0 || level >= maximum || prices.empty()) return -1;
++    int column = level / 5 + 1;
++    if (column >= static_cast<int>(prices.size())) return -1;
++    int price = prices[column];
++    if (price < 0) price = prices[0] + (column - 1) * increment;
++    return price >= 0 ? price : -1;
++}
++
++struct Context {
++    bool started = false;
++    bool main_menu = false;
++    bool game_over = false;
++    bool destroyed = false;
++    bool mid_warp = false;
++    bool pending_travel = false;
++    // Arrival completion persists while idle; it is status, not pending travel.
++    bool arrival_complete = false;
++    bool pending_sector = false;
++    bool waiting = false;
++    bool modal = false;
++
++    bool ready() const
++    {
++        return started && !main_menu && !game_over && !destroyed && !mid_warp &&
++               !pending_travel && !pending_sector && !waiting && !modal;
++    }
++};
++
++// StarMap accepts screen coordinates and forwards map-local coordinates to its
++// Wait/distress buttons. Keep dispatch through native hover and active checks.
++template<class Map, class Button>
++void click_map_button(Map& map, Button& button)
++{
++    const auto& box = button.hitbox;
++    const int x = map.position.x + box.x + box.w / 2;
++    const int y = map.position.y + box.y + box.h / 2;
++    map.MouseMove(x, y);
++    map.MouseClick(x, y);
++}
++// UpgradeSystem can reject an upgrade through its native cap/hooks. Charge only
++// after observing exactly the requested capacity change; no-op requests are free.
++template<class Level, class Upgrade, class Spend>
++bool purchase(bool allowed, int price, int scrap, Level level, Upgrade upgrade, Spend spend)
++{
++    if (!allowed || price < 0 || scrap < price) return false;
++    const int before = level();
++    upgrade();
++    if (level() != before + 1) return false;
++    spend(price);
++    return true;
++}
++}
+diff --git a/Benchmark_Routing.h b/Benchmark_Routing.h
+new file mode 100644
+--- /dev/null
++++ b/Benchmark_Routing.h
+@@ -0,0 +1,79 @@
++#pragma once
++#include "Benchmark_Economy.h"
++#include <vector>
++
++namespace BenchmarkRouting {
++// FTLButton::MouseClick and CommandGui::LButtonDown both require a full native
++// timer, including outside combat. Never substitute enemy absence/death for it.
++struct TravelContext {
++    BenchmarkEconomy::Context game;
++    bool button_active = false;
++    bool engines = false;
++    bool piloting = false;
++    bool enemy_defeat_pending = false;
++    int fuel = 0;
++    float charge = 0.f;
++    float required_charge = 0.f;
++
++    const char* refusal_reason() const
++    {
++        if (!game.started || game.main_menu) return "game_unavailable";
++        if (game.game_over || game.destroyed) return "game_over";
++        if (game.mid_warp) return "mid_warp";
++        if (game.pending_travel || game.pending_sector) return "transition_pending";
++        if (game.waiting) return "fuel_wait_pending";
++        if (game.modal) return "modal_open";
++        if (fuel < 1) return "no_fuel";
++        if (!button_active) return "ftl_button_inactive";
++        if (!engines) return "engines_unavailable";
++        if (!piloting) return "piloting_unavailable";
++        if (!(charge >= required_charge)) return "drive_charging";
++        return nullptr;
++    }
++};
++
++inline bool hull_defeat_pending(bool destroyed, bool animation_done, bool native_processed)
++{
++    return destroyed && (!animation_done || !native_processed);
++}
++
++// Accepted surrender retains a live ship object. Only the native combat
++// hostility flag makes that surviving ship block a sector departure.
++inline bool sector_enemy_blocks(bool hostile, bool destroyed)
++{
++    return hostile && !destroyed;
++}
++
++// Native crew defeat uses the factory's surviving/clone crew counters and the
++// automation flag. It does not require a hull explosion. Once WorldManager
++// clears hostility its death event was handled; an open reward dialog is modal.
++inline bool crew_defeat_pending(bool hostile, bool automated, int crew, int clones,
++                                bool clone_system_functioning)
++{
++    return hostile && !automated &&
++           (crew - (clone_system_functioning ? 0 : clones)) == 0;
++}
++
++template<class Neighbors, class Travel>
++bool request_beacon(const TravelContext& context, int index, const Neighbors& neighbors,
++                    Travel travel)
++{
++    if (context.refusal_reason() || index < 0 ||
++        index >= static_cast<int>(neighbors.size()) || !neighbors[index]) return false;
++    travel(neighbors[index]);
++    return true;
++}
++
++// Sector buttons and NeighboringSector use global indices into StarMap.sectors.
++// GetRandomSectorChoice generates a sector type (0..2), not one of these indices.
++template<class Neighboring, class Random>
++int choose_sector_index(int count, Neighboring neighboring, Random random)
++{
++    std::vector<int> choices;
++    for (int index = 0; index < count; ++index) {
++        if (neighboring(index)) choices.push_back(index);
++    }
++    if (choices.empty()) return -1;
++    return choices[static_cast<unsigned>(random()) % choices.size()];
++}
++}

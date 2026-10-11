@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/ogabrielluiz/FTL-Hyperspace.git",
+  "base_commit": "bc6b1a9d12ac3b57cb74c37ac8e3a49472fb9459",
+  "native_protocol": 4,
+  "patch": "native/patches/0001-reliable-benchmark-controls.patch",
+  "patch_sha256": "9894328e2db94a4303a5b9d566d9285ba8b1ecc627e2d6bc9dcfbefb437eba84"
+}

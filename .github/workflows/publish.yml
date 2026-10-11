@@ -37,11 +37,25 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v8.2.0
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build bundled dashboard
+        working-directory: dashboard
+        run: npm ci && npm run build
+
       - name: Run unit tests
-        run: uv run --directory harness --extra dev pytest -q
+        run: uv run --directory harness --extra dev --extra dashboard pytest -q
 
       - name: Build wheel + sdist
         run: uv build --directory harness
+
+      - name: Smoke bundled CLI, native patch and dashboard outside checkout
+        run: uv run --directory harness python ../scripts/smoke_package.py
+
+      - name: Test unpacked source release outside checkout
+        run: uv run --directory harness python ../scripts/smoke_sdist.py
 
       - name: Publish to PyPI (trusted publishing)
         # Only on a real Release; the manual dispatch builds/tests but skips the upload.

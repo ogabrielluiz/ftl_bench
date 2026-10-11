@@ -1,89 +1,45 @@
 ---
 title: Quickstart
-description: Run a baseline, then evaluate a model on ftl_bench.
+description: Check the local game, run a bounded baseline, then evaluate a model.
 ---
 
-This gets you from a checkout to a scored run. It assumes FTL and Hyperspace are
-installed and the game can be launched. For reportable long runs, use the
-[native Windows setup](/install/pc/).
+First install the protocol-5 native dependency and data mod using [PC setup](/install/pc/). With the patched game launched through Steam:
 
-## 1. Point the harness at FTL
-
-On native Windows, there is nothing to set: the runner finds
-`Documents\My Games\FasterThanLight` and launches FTL through Steam.
-
-On WSL or macOS, set `FTL_SAVE_DIR` to the FTL user folder:
-
-```bash
-# WSL
-export FTL_SAVE_DIR="/mnt/c/Users/<you>/Documents/My Games/FasterThanLight"
-
-# macOS
-export FTL_SAVE_DIR="$HOME/Library/Application Support/FasterThanLight"
+```powershell
+uv run --directory harness ftlbench doctor --live --full-game
+uv run --directory harness ftlbench play obs
+uv run --directory harness ftlbench run --agent scripted --mode budget --max-instances 1 --budget-cap 3
 ```
 
-## 2. Smoke-test a baseline
+These checkout examples run from the repository root; `uv --directory harness` changes the working directory to `harness`. An installed wheel uses `ftlbench` directly.
 
-From the repository root:
+## Select a model backend
 
-```bash
-cd harness
-uv run python ../adapter/run_benchmark.py --agent scripted --max-instances 1 --budget-cap 8
+```powershell
+# Select your credentials file explicitly
+uv run --directory harness ftlbench --env-file "C:\Projects\.env.txt" doctor --backend openai
+uv run --directory harness ftlbench --env-file "C:\Projects\.env.txt" run --agent llm --backend openai --model <model-id> --mode gameover
+uv run --directory harness ftlbench --env-file "C:\Projects\.env.txt" run --agent llm --backend jev --model jev-1.13.0 --mode gameover
 ```
 
-You should see per-instance output and an aggregate:
+OpenAI uses `OPENAI_API_KEY` and the public Responses API. Jev uses `TYPESAFE_API_KEY` and typed actuator choices. Anthropic, Claude CLI and Codex CLI are also available. Credentials are not printed; existing environment values take precedence over the explicitly selected file.
 
-```text
-== RESULTS ==
-  FTL score 40.0 +/- 0.0  |  Solve 1/1
+## Full-game reporting
+
+```powershell
+uv run --directory harness ftlbench --env-file "C:\Projects\.env.txt" run --agent llm --backend openai --model <model-id> --suite ../scenarios/full_game.json --tier semi_private --mode gameover --prompt-version v5
 ```
 
-Run the random floor the same way:
+Use `public` while developing. Full-run solve requires native victory evidence. Kestrel A/easy is the verified automatic setup; unsupported ships/difficulties are rejected. Budget probes are separate from full-game rows.
 
-```bash
-uv run python ../adapter/run_benchmark.py --agent random --max-instances 1 --budget-cap 8
+Every invocation creates a unique output directory with run metadata, trajectories, terminal records and summary JSON. Errors and interruptions remain visible. Runner/ruleset v7 requires `owned-player-crew-v1` and `native-economy-and-fuel-recovery-v1`; pre-v7 scores are not comparable.
+
+## Watch a run
+
+```powershell
+uv run --directory harness --extra dashboard ftlbench dashboard
 ```
 
-## 3. Run a model
+Open `http://127.0.0.1:8765`. The dashboard is read-only and can browse active or completed attempts. Use `--runs <directory>`, `--suite <path>` and `--port` to select inputs.
 
-The LLM track uses the same observation/action surface as the baselines. Pick a
-backend you can run:
-
-```bash
-# Anthropic API: requires ANTHROPIC_API_KEY
-uv run python ../adapter/run_benchmark.py --agent llm --backend anthropic --model claude-sonnet-4-6
-
-# Local Claude CLI: uses your local claude login
-uv run python ../adapter/run_benchmark.py --agent llm --backend claude-cli --model sonnet
-
-# Local Codex CLI: uses your Codex/ChatGPT auth
-uv run python ../adapter/run_benchmark.py --agent llm --backend codex --model gpt-5
-```
-
-By default, the LLM track uses `--mode gameover` and `--prompt-version v5`: the
-agent plays until a real win, death, or stall, and replies with a paused
-multi-command action plan. If it sends `giveup`, the current instance ends as
-an unsolved concession and the trajectory records `gave_up`.
-
-## 4. Report a full-game number
-
-For the pure play-the-game track:
-
-```bash
-uv run python ../adapter/run_benchmark.py \
-  --agent llm \
-  --backend <anthropic|claude-cli|codex> \
-  --model <model-id> \
-  --suite ../scenarios/full_game.json \
-  --tier semi_private \
-  --mode gameover \
-  --prompt-version v5
-```
-
-Each run writes trajectories, summaries, and manifests under `runs/benchmark/`.
-See [Benchmark protocol](/introduction/protocol/) for what to report.
-
-:::tip[PC: launch via Steam]
-On Windows, FTL must be launched through Steam for Hyperspace to inject. The
-runner handles relaunches for you.
-:::
+See [protocol](/introduction/protocol/) for the reporting contract.

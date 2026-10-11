@@ -9,6 +9,8 @@ Run:  cd harness && uv run python ../adapter/baseline_agent.py --jumps 5 [--new]
 from __future__ import annotations
 
 import argparse
+import json
+import math
 import time
 import sys
 from pathlib import Path
@@ -21,9 +23,11 @@ from ftl_bench import (  # noqa: E402
     load_trajectory,
     score_trajectory,
     fire_weapon,
+    fire_beam,
     set_system_power,
 )
 from ftl_bench.session import ftl_process_alive  # noqa: E402
+from ftl_bench.observation import is_living_player_crew  # noqa: E402
 
 # system ids
 SHIELDS, ENGINES, OXYGEN, WEAPONS = 0, 1, 2, 3
@@ -35,6 +39,10 @@ def systems(o):
 
 def enemy_hull(o):
     return (o.enemy_ship or {}).get("hull", {}).get("current")
+
+
+def hostile_enemy(o):
+    return (o.enemy_ship or {}).get("hostile") is True
 
 
 def player_hull(o):
@@ -56,13 +64,34 @@ def ready_weapons(o):
     for w in operational_weapons(o):
         cur = w.get("charge") or 0
         mx = w.get("charge_max") or w.get("base_cooldown") or 0
-        if mx and cur >= mx:
+        if mx and cur >= mx and not w.get("manual_fire_pending"):
             out.append(w)
     return out
 
 
+def location_key(o):
+    """Use actual map identity, never an accepted jump action, as movement evidence."""
+    m = o.map or {}
+    pos = m.get("current_pos") or {}
+    if pos.get("x") is None or pos.get("y") is None or m.get("sector") is None:
+        return None
+    return m["sector"], pos["x"], pos["y"]
+
+
+def moved(before, after):
+    a, b = location_key(before), location_key(after)
+    return a is not None and b is not None and a != b
+
+
+def charge_frames(o):
+    """Wait toward the next powered weapon's ready state, in bounded frame steps."""
+    remaining = [max(0, (w.get("charge_max") or w.get("base_cooldown") or 0)
+                     - (w.get("charge") or 0)) for w in operational_weapons(o)]
+    return min(600, max(30, math.ceil(min(remaining, default=3) * 60)))
+
+
 def min_crew_health(o):
-    alive = [c for c in (o.player_ship or {}).get("crew", []) if not c.get("dead")]
+    alive = [c for c in (o.player_ship or {}).get("crew", []) if is_living_player_crew(c)]
     hp = [c.get("health_current", 100) for c in alive]
     return min(hp) if hp else 0
 
@@ -98,13 +127,28 @@ def power_core(sess, o):
 
 def _flee(sess, o, log):
     """Jump away from combat, heading toward the sector exit (FTL flee)."""
+    # The bridge refuses an uncharged combat jump. Keep defending/charging until
+    # it can actually execute instead of counting that no-op as an escape.
+    for _ in range(30):
+        if (player_hull(o) or 0) <= 0 or (o.raw or {}).get("game_over"):
+            return o, "dead"
+        if (o.raw or {}).get("jump_charged") is not False:
+            break
+        if o.choice_box_open:
+            return o, "stuck"
+        o = sess.step([], advance_frames=240)
+    if (o.raw or {}).get("jump_charged") is False:
+        return o, "stuck"
     tgt = _pick_beacon(o)
     if tgt is None:
         return o, "stuck"
     try:
-        o = sess.jump(tgt, advance_frames=260)
-        log(f"  fled to beacon {tgt} (hull {player_hull(o)})")
-        return o, "flee"
+        after = sess.jump(tgt, advance_frames=260)
+        if moved(o, after):
+            log(f"  fled to beacon {tgt} (hull {player_hull(after)})")
+            return after, "flee"
+        log("  escape did not move the ship")
+        return after, "stuck"
     except Exception:  # noqa: BLE001
         return o, "low"
 
@@ -113,6 +157,8 @@ def fight(sess, o, log, flee_below=8):
     """Target the enemy's weapons room (then shields, then any) and fire until it's
     destroyed; bail out (flee) on hull/oxygen/crew danger or if we have no powered
     weapons to win with. Returns (obs, outcome)."""
+    if not hostile_enemy(o):
+        return o, "peace"
     o = power_core(sess, o)
     # Can't deal damage with no powered weapons — sitting here just suffocates/burns
     # us down (the seed-7 death). Leave instead of looping in an unwinnable fight.
@@ -136,8 +182,11 @@ def fight(sess, o, log, flee_below=8):
         return _flee(sess, o, log)
     log(f"  combat: target enemy room {target}, enemy hull {enemy_hull(o)}")
     prev_eh, stall, last_volley = enemy_hull(o), 0, False
-    for _ in range(15):
+    for _ in range(100):
         eh = enemy_hull(o)
+        if not hostile_enemy(o):
+            log("  combat ended or native hostility is unavailable")
+            return o, "peace"
         if not o.enemy_ship or (eh or 0) <= 0:
             log(f"  enemy destroyed (player hull {player_hull(o)})")
             return o, "kill"
@@ -164,10 +213,17 @@ def fight(sess, o, log, flee_below=8):
                 return _flee(sess, o, log)
         volley = ready_weapons(o)
         if volley:
-            o = sess.step([fire_weapon(w["slot"], target) for w in volley], advance_frames=150)
+            actions = []
+            for w in volley:
+                if w.get("weapon_type") == "BEAM":
+                    endpoint = next((r["room_id"] for r in rooms if r["room_id"] != target), target)
+                    actions.append(fire_beam(w["slot"], target, endpoint))
+                else:
+                    actions.append(fire_weapon(w["slot"], target))
+            o = sess.step(actions, advance_frames=150)
             last_volley = True
         else:
-            o = sess.step([], advance_frames=160)
+            o = sess.step([], advance_frames=charge_frames(o))
             last_volley = False
     log("  fight inconclusive — fleeing")
     return _flee(sess, o, log)
@@ -203,9 +259,29 @@ def _pick_beacon(o):
     return None
 
 
-def play(sess, jumps, log):
-    """Play until `jumps` FTL jumps are made (not iterations), the ship dies, or we
-    get stuck. Resolves events, fights (fleeing when low), and navigates."""
+def _progress_state(o):
+    """Include charging/recovery in progress, while excluding transport tick/sequence."""
+    ps, es, raw = o.player_ship or {}, o.enemy_ship or {}, o.raw or {}
+    return (
+        location_key(o), player_hull(o), player_oxygen(o),
+        tuple(sorted((ps.get("resources") or {}).items())), enemy_hull(o),
+        raw.get("jump_charge_pct"), raw.get("jump_charged"),
+        tuple((w.get("slot"), w.get("charge"), w.get("manual_fire_pending"))
+              for w in ps.get("weapons", [])),
+        tuple((s.get("id"), s.get("damage"), s.get("needs_repair"), s.get("ion"))
+              for s in ps.get("systems", [])),
+        tuple((c.get("room_id"), c.get("health_current"), c.get("dead"))
+              for c in ps.get("crew", [])),
+        str(ps.get("fires")), str(ps.get("intruders")),
+        o.choice_box_open, str(o.event), es.get("fleeing"), es.get("hostile"), es.get("targetable"),
+        json.dumps(raw.get("economy"), sort_keys=True),
+    )
+
+
+def play(sess, jumps, log, *, play_to_gameover=False, stall_limit=10):
+    """Play a bounded probe or a full game, with confirmed movement and terminal metadata."""
+    if jumps <= 0 or stall_limit < 0:
+        raise ValueError("jumps must be positive and stall_limit must be nonnegative")
     o = sess.observe()
     if not o.game_started:
         log("not in a run; resetting")
@@ -219,20 +295,36 @@ def play(sess, jumps, log):
     # always a safe "leave/continue"), then the middle ones -- this avoids walking into a
     # "Fight the ship" option that sits before the leave choice.
     ev = {"text": None, "order": [], "step": 0}
-    iters, timeouts, combat_streak, leave_tries, jump_wait = 0, 0, 0, 0, 0
-    while stats["jumps"] < jumps and iters < jumps * 8:
+    iters, timeouts, combat_streak, leave_tries, jump_wait, jump_tries = 0, 0, 0, 0, 0, 0
+    status, reason = "failed", "step_limit"
+    prev_progress, stalls = None, 0
+    turn_limit = 6000 if play_to_gameover else jumps * 8
+    while (play_to_gameover or stats["jumps"] < jumps) and iters < turn_limit:
         iters += 1
         try:
             o = sess.observe()
         except Exception:  # noqa: BLE001
             time.sleep(0.2); continue
+        if (o.raw or {}).get("victory") is True:
+            status, reason = "completed", "victory"
+            break
         if (player_hull(o) or 0) <= 0:
+            status, reason = "completed", "destroyed"
             log("ship destroyed"); break
         if o.raw and o.raw.get("game_over"):
             # GAME OVER (crew death leaves hull>0, so the hull check above misses it). The
             # engine sits at the game-over screen acking no-op actions — without this the loop
             # would spin to its iter cap. Terminal: end the episode (the runner resets).
+            status, reason = "completed", "game_over"
             log("GAME OVER (run ended); stopping episode"); break
+        progress = _progress_state(o)
+        waiting = (((o.raw or {}).get("economy") or {}).get("fuel_recovery") or {}).get("waiting") is True
+        stalls = stalls + 1 if not waiting and progress == prev_progress else 0
+        prev_progress = progress
+        if play_to_gameover and stall_limit and stalls >= stall_limit:
+            status, reason = "failed", "stalled"
+            log("scripted agent stalled; stopping episode")
+            break
         try:
             if o.choice_box_open and (o.event or {}).get("choices"):
                 n = len(o.event["choices"])
@@ -251,11 +343,11 @@ def play(sess, jumps, log):
                 stats["events"] += 1
                 combat_streak = 0
                 log(f"event: {txt!r} -> chose {idx}")
-            elif o.enemy_ship and (enemy_hull(o) or 0) > 0:
+            elif hostile_enemy(o) and (enemy_hull(o) or 0) > 0:
                 combat_streak += 1
                 if combat_streak > 6:       # can't kill and can't escape (FTL not charging?)
                     log("stuck in combat, can't win or escape; stopping"); break
-                _, outcome = fight(sess, o, log)
+                o, outcome = fight(sess, o, log)
                 stats["combats"] += 1
                 if outcome == "kill":
                     stats["kills"] += 1
@@ -270,7 +362,7 @@ def play(sess, jumps, log):
                 sec_before = (o.map or {}).get("sector")
                 o = sess.leave_sector()
                 sec_after = (o.map or {}).get("sector")
-                if sec_after is not None and sec_after != sec_before:
+                if sec_before is not None and sec_after is not None and sec_after != sec_before:
                     stats["sectors"] += 1
                     stats["jumps"] += 1
                     leave_tries = 0
@@ -297,11 +389,18 @@ def play(sess, jumps, log):
                     log("no beacons to jump to; stopping"); break
                 fuel = (o.player_ship or {}).get("resources", {}).get("fuel")
                 log(f"jump -> beacon {tgt} (fuel {fuel})")
+                before = o
                 o = sess.jump(tgt, advance_frames=260)
-                stats["jumps"] += 1
-                ev["text"] = None           # new beacon -> fresh event, start at choice 0
-                combat_streak = leave_tries = jump_wait = 0
-                power_core(sess, o)
+                if moved(before, o):
+                    stats["jumps"] += 1
+                    ev["text"] = None
+                    combat_streak = leave_tries = jump_wait = jump_tries = 0
+                    o = power_core(sess, o)
+                else:
+                    jump_tries += 1
+                    log(f"jump did not move the ship [{jump_tries}]")
+                    if jump_tries >= 4:
+                        break
             timeouts = 0
         except TimeoutError:
             # An ack can lag transiently (long warp/arrival, or slow file I/O on native Windows
@@ -315,12 +414,24 @@ def play(sess, jumps, log):
             dead = not ftl_process_alive()
             log(f"action ack timed out [{timeouts}]{' — game frozen/dead' if dead else ''}")
             if dead or timeouts >= 4:
+                status, reason = "failed", "action_timeout"
                 log("game frozen/unresponsive; stopping episode"); break
 
-    o = sess.observe()
+    if not play_to_gameover and stats["jumps"] >= jumps:
+        status, reason = "completed", "budget"
+    try:
+        o = sess.observe()
+    except TimeoutError:
+        status, reason = "failed", "action_timeout"
+    if (o.raw or {}).get("victory") is True:
+        status, reason = "completed", "victory"
+    elif (o.raw or {}).get("game_over"):
+        status, reason = "completed", "game_over"
+    elif (player_hull(o) or 0) <= 0:
+        status, reason = "completed", "destroyed"
     log(f"\n== run summary == hull {player_hull(o)}/30  "
         f"sector {(o.map or {}).get('sector')}  {stats}")
-    return stats
+    return {**stats, "status": status, "reason": reason}
 
 
 def main():
@@ -329,6 +440,8 @@ def main():
     ap.add_argument("--new", action="store_true", help="start a fresh run first")
     ap.add_argument("--seed", type=int, default=None, help="seed for --new")
     ap.add_argument("--record", default=None, help="path to write a trajectory JSONL")
+    ap.add_argument("--mode", choices=["budget", "gameover"], default="budget")
+    ap.add_argument("--stall-limit", type=int, default=10)
     args = ap.parse_args()
 
     recorder = None
@@ -342,7 +455,11 @@ def main():
     def log(msg):
         print(msg, flush=True)
 
-    play(sess, args.jumps, log)
+    outcome = play(sess, args.jumps, log, play_to_gameover=args.mode == "gameover",
+                   stall_limit=args.stall_limit)
+    if recorder:
+        recorder.finish(status="completed" if outcome["status"] == "completed" else "error",
+                        reason=outcome["reason"])
 
     if args.record:
         score = score_trajectory(load_trajectory(args.record))

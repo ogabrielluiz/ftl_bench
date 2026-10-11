@@ -1,0 +1,2123 @@
+diff --git a/Benchmark_Extend.cpp b/Benchmark_Extend.cpp
+index b9bb86db..920cbca1 100644
+--- a/Benchmark_Extend.cpp
++++ b/Benchmark_Extend.cpp
+@@ -1,9 +1,15 @@
+ #include "Benchmark_Extend.h"
+ #include "Global.h"   // hs_log_file (Global.h:92); FileHelper::getUserFolder via FTLGame.h (Global.h:7)
++#include "Benchmark_Economy.h"
++#include "Benchmark_Routing.h"
++#include "Benchmark_Visual.h"
++#include "zhl_internal.h"
++#include "CustomShipSelect.h"
+ #include <cstdio>
+ #include <fstream>
+ #include <iterator>
+ #include <vector>
++#include <sstream>
+ #ifdef _WIN32
+ #include <windows.h>
+ #endif
+@@ -21,6 +27,7 @@ namespace {
+ 
+     const char* kObservationFile = "ftl_agent_observation.json";
+     const char* kObservationTemp = "ftl_agent_observation.json.tmp";
++    BenchmarkRouting::TravelContext travel_context(CApp* app, ShipManager* player);
+ }
+ 
+ bool hs_benchmark_write_observation(const char* json_str)
+@@ -40,6 +47,7 @@ bool hs_benchmark_write_observation(const char* json_str)
+                 return false;
+             }
+             temp_file << json_str;
++            temp_file.flush();
+             if (!temp_file) {
+                 hs_log_file("[Benchmark] Failed to write temp file: %s\n", temp_path.c_str());
+                 return false;
+@@ -47,11 +55,33 @@ bool hs_benchmark_write_observation(const char* json_str)
+         } // ofstream closed/flushed here before rename
+ 
+ #ifdef _WIN32
+-        if (!ReplaceFileA(final_path.c_str(), temp_path.c_str(), nullptr, 0, nullptr, nullptr)) {
+-            if (std::rename(temp_path.c_str(), final_path.c_str()) != 0) {
+-                hs_log_file("[Benchmark] Rename failed: %s -> %s\n", temp_path.c_str(), final_path.c_str());
+-                return false;
++        // Readers share READ|WRITE|DELETE. ReplaceFile preserves each open
++        // reader's old snapshot while new readers see the complete replacement.
++        // MoveFileEx cannot replace an open destination even with SHARE_DELETE;
++        // use it only for the first publication, without REPLACE_EXISTING.
++        bool published = false;
++        DWORD error = ERROR_SUCCESS;
++        for (int attempt = 0; attempt < 4 && !published; ++attempt) {
++            published = ReplaceFileA(final_path.c_str(), temp_path.c_str(), nullptr, 0, nullptr, nullptr) != 0;
++            if (published) break;
++            error = GetLastError();
++            if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) {
++                const DWORD attributes = GetFileAttributesA(final_path.c_str());
++                if (attributes == INVALID_FILE_ATTRIBUTES && GetLastError() == ERROR_FILE_NOT_FOUND) {
++                    published = MoveFileExA(temp_path.c_str(), final_path.c_str(), MOVEFILE_WRITE_THROUGH) != 0;
++                    if (published) break;
++                    error = GetLastError();
++                }
+             }
++            if (error != ERROR_SHARING_VIOLATION && error != ERROR_LOCK_VIOLATION &&
++                error != ERROR_ACCESS_DENIED) break;
++            if (attempt < 3) Sleep(2);
++        }
++        if (!published) {
++            hs_log_file("[Benchmark] Atomic snapshot publication failed (Win32 %lu): %s -> %s\n",
++                        static_cast<unsigned long>(error), temp_path.c_str(), final_path.c_str());
++            std::remove(temp_path.c_str()); // never remove the last valid target
++            return false;
+         }
+ #else
+         if (std::rename(temp_path.c_str(), final_path.c_str()) != 0) {
+@@ -66,6 +96,8 @@ bool hs_benchmark_write_observation(const char* json_str)
+     }
+ }
+ 
++#include "Benchmark_VisualEngine.inc"
++
+ std::string hs_benchmark_read_observation()
+ {
+     std::string dir = get_observation_dir();
+@@ -270,30 +302,22 @@ bool hs_benchmark_return_to_menu()
+ 
+ bool hs_benchmark_jump_to_beacon(int beacon_index)
+ {
+-    Global* g = Global::GetInstance();
+-    CApp* app = g->GetCApp();
+-    if (!app || !app->world || !app->gui) return false;
+-    StarMap& starMap = app->world->starMap;          // value member
+-    Location* cur = starMap.currentLoc;
+-    if (!cur) return false;
+-    std::vector<Location*>& connected = cur->connectedLocations;
+-    if (beacon_index < 0 || beacon_index >= (int)connected.size()) return false;
+-    Location* target = connected[beacon_index];
+-    if (!target) return false;
+-
+-    // Require fuel (the agent sees fuel_count in the observation).
+-    ShipManager* player = g->GetShipManager(0);
+-    if (player && player->fuel_count <= 0) return false;
+-
+-    // Trigger a REAL jump the way the game does (CustomEvents.cpp:6881 precedent):
+-    // TravelToLocation alone only moves the cursor; setting potentialLoc +
+-    // readyToTravel lets the normal StarMap::OnLoop run the full warp / arrival /
+-    // event / fuel sequence while the bridge is unpaused for advance_frames.
+-    starMap.potentialLoc = target;
+-    starMap.readyToTravel = true;
+-    starMap.outOfFuel = false;
+-    app->gui->waitLocation = false;
+-    return true;
++    CApp* app = Global::GetInstance()->GetCApp();
++    if (!app || !app->world || !app->gui || !app->world->bStartedGame) return false;
++    StarMap& map = app->world->starMap;
++    if (!map.currentLoc) return false;
++    CompleteShip* ship = app->world->playerShip;
++    ShipManager* player = ship ? ship->shipManager : nullptr;
++    const auto context = travel_context(app, player);
++    return BenchmarkRouting::request_beacon(context, beacon_index,
++        map.currentLoc->connectedLocations, [&map, app](Location* target) {
++            // Only after normal native readiness: let OnLoop perform the ordinary
++            // warp, fuel consumption, new location, and event sequence.
++            map.potentialLoc = target;
++            map.readyToTravel = true;
++            map.outOfFuel = false;
++            app->gui->waitLocation = false;
++        });
+ }
+ 
+ bool hs_benchmark_choose_event(int index)
+@@ -310,6 +334,336 @@ bool hs_benchmark_choose_event(int index)
+     return app->gui->choiceBox.KeyDown((SDLKey)((int)SDLKey::SDLK_1 + index));
+ }
+ 
++bool hs_benchmark_set_weapon_autofire(bool enabled)
++{
++    CApp* app = Global::GetInstance()->GetCApp();
++    if (!app || !app->gui) return false;
++    app->gui->combatControl.weapControl.SetAutofiring(enabled, false);
++    return true;
++}
++
++bool hs_benchmark_victory()
++{
++    CApp* app = Global::GetInstance()->GetCApp();
++    if (!app || !app->gui || !app->world || !app->world->bStartedGame) return false;
++    return app->gui->alreadyWon || (app->gui->gameover && app->gui->gameOverScreen.bVictory);
++}
++
++bool hs_benchmark_set_difficulty(int difficulty)
++{
++    CApp* app = Global::GetInstance()->GetCApp();
++    if (difficulty < 0 || difficulty > 2 || !Global::difficulty || !app ||
++        !app->world || app->world->bStartedGame || !app->menu.bOpen) return false;
++    *Global::difficulty = difficulty;
++    return *Global::difficulty == difficulty;
++}
++
++int hs_benchmark_difficulty()
++{
++    // The game and Hyperspace difficulty logic use this settings pointer. The
++    // legacy WorldManager currentDifficulty layout is not reliable on Windows.
++    return Global::difficulty ? *Global::difficulty : -1;
++}
++
++const char* hs_benchmark_player_blueprint()
++{
++    static std::string blueprint;
++    blueprint.clear();
++    CApp* app = Global::GetInstance()->GetCApp();
++    if (!app || !app->world || !app->world->bStartedGame) return blueprint.c_str();
++    ShipManager* ship = Global::GetInstance()->GetShipManager(0);
++    if (ship) blueprint = ship->myBlueprint.blueprintName;
++    return blueprint.c_str();
++}
++
++int hs_benchmark_run_score()
++{
++    CApp* app = Global::GetInstance()->GetCApp();
++    if (!app || !app->world || !app->world->bStartedGame || !Global::difficulty) return -1;
++    ScoreKeeper* keeper = Global::GetInstance()->GetScoreKeeper();
++    int difficulty = *Global::difficulty;
++    if (!keeper || difficulty < 0 || difficulty > 2) return -1;
++    // FTL 1.6.9 ScoreKeeper::Save, 0x442bcd..0x442c20 in the Windows executable:
++    // current scrap + 20*ships destroyed + 10*explored beacons, times difficulty.
++    // Read current-run StatTrackers, not the TopScore snapshot updated by Save.
++    float modifier = difficulty == 2 ? 1.5f : difficulty == 1 ? 1.25f : 1.f;
++    return static_cast<int>(modifier * (keeper->stats[2].current +
++                                       20 * keeper->stats[0].current +
++                                       10 * keeper->stats[1].current));
++}
++
++const char* hs_benchmark_score_components()
++{
++    static char buffer[256];
++    buffer[0] = '\0';
++    if (hs_benchmark_run_score() < 0) return buffer;
++    ScoreKeeper* keeper = Global::GetInstance()->GetScoreKeeper();
++    std::snprintf(buffer, sizeof(buffer),
++                  "{\"scrap_collected\":%d,\"ships_destroyed\":%d,\"beacons_explored\":%d,\"difficulty\":%d}",
++                  keeper->stats[2].current, keeper->stats[0].current,
++                  keeper->stats[1].current, *Global::difficulty);
++    return buffer;
++}
++
++const char* hs_benchmark_capabilities()
++{
++#if defined(_WIN32) && defined(__i386__)
++    return "{\"fresh_start_seed\":true,\"fresh_seed_contract_version\":3,\"native_protocol\":5,\"global_autofire_control\":true,\"hacking_idle_ready\":true,\"victory\":true,\"setup_identity\":true,\"seeded_easy_setup\":true,\"live_score\":true,\"exact_system_upgrades\":true,\"reactor_upgrades\":true,\"fuel_recovery\":true,\"economy_state\":true}";
++#else
++    return "{\"native_protocol\":5,\"global_autofire_control\":true,\"hacking_idle_ready\":true,\"victory\":true,\"setup_identity\":true,\"seeded_easy_setup\":true,\"live_score\":true,\"exact_system_upgrades\":true,\"reactor_upgrades\":true,\"fuel_recovery\":true,\"economy_state\":true}";
++#endif
++}
++
++namespace {
++ShipManager* economy_player(CApp* app)
++{
++    // Global::GetShipManager dereferences CApp/world and also returns the hangar
++    // preview ship. Economy controls must never target that preview or stale run.
++    if (!app || !app->world || !app->gui || !app->world->bStartedGame) return nullptr;
++    CompleteShip* ship = app->world->playerShip;
++    return ship ? ship->shipManager : nullptr;
++}
++
++BenchmarkEconomy::Context economy_context(CApp* app, ShipManager* player, bool allowMap)
++{
++    BenchmarkEconomy::Context context;
++    if (!app || !app->world || !app->gui || !player) return context;
++    CommandGui& gui = *app->gui;
++    StarMap& map = app->world->starMap;
++    context.started = app->world->bStartedGame && gui.shipComplete &&
++                      gui.shipComplete->shipManager == player;
++    context.main_menu = app->menu.bOpen;
++    context.game_over = gui.gameover || gui.alreadyWon;
++    context.destroyed = player->bDestroyed;
++    context.mid_warp = player->bJumping;
++    context.pending_travel = map.readyToTravel;
++    context.arrival_complete = gui.jumpComplete; // persists true at a settled beacon
++    context.pending_sector = map.bChoosingNewSector;
++    context.waiting = map.waiting.running;
++    context.modal = gui.choiceBoxOpen || gui.choiceBox.bOpen || gui.menuBox.bOpen ||
++                    gui.optionsBox.bOpen || gui.inputBox.bOpen || gui.gameOverScreen.bOpen ||
++                    gui.shipScreens.bOpen || gui.storeScreens.bOpen || gui.upgradeScreen.bOpen ||
++                    gui.crewScreen.bOpen || gui.equipScreen.bOpen || gui.leaveCrewDialog.bOpen ||
++                    gui.writeErrorDialog.bOpen || (!allowMap && map.bOpen);
++    for (FocusWindow* window : gui.focusWindows) {
++        if (window && window->bOpen && (!allowMap || window != &map)) context.modal = true;
++    }
++    return context;
++}
++
++bool enemy_defeat_pending(CApp* app)
++{
++    if (!app || !app->world || !app->world->playerShip) return false;
++    CompleteShip* enemy = app->world->playerShip->enemyShip;
++    ShipManager* manager = enemy ? enemy->shipManager : nullptr;
++    if (!manager) return false;
++    // ShipAI::Destroyed requires physical hull destruction AND DestroyedDone;
++    // its one-shot flag is set when WorldManager consumes the native death event.
++    // Read that flag; calling Destroyed() itself would consume the event here.
++    if (manager->ship.bDestroyed) {
++        return BenchmarkRouting::hull_defeat_pending(manager->bDestroyed,
++            manager->ship.DestroyedDone(), enemy->shipAI.destroyed);
++    }
++    // CompleteShip::DeadCrew also has a Hyperspace hook that can queue events.
++    // Read the vanilla counters instead: clone-ready crew count only while the
++    // clone bay works; automated ships cannot lose by crew elimination.
++    CrewMemberFactory* factory = Global::GetInstance()->GetCrewFactory();
++    return factory && BenchmarkRouting::crew_defeat_pending(
++        manager->_targetable.hostile, manager->bAutomated, factory->GetCrewCount(true),
++        factory->GetEnemyCloneCount(), manager->GetSystemHealth(13) != 0);
++}
++
++BenchmarkRouting::TravelContext travel_context(CApp* app, ShipManager* player)
++{
++    BenchmarkRouting::TravelContext context;
++    context.game = economy_context(app, player, true);
++    if (!app || !app->world || !app->gui || !player) return context;
++    context.button_active = app->gui->ftlButton.bActive;
++    context.engines = player->SystemFunctions(1);
++    context.piloting = player->SystemFunctions(6);
++    context.fuel = player->fuel_count;
++    context.charge = player->jump_timer.first;
++    context.required_charge = player->jump_timer.second;
++    context.enemy_defeat_pending = enemy_defeat_pending(app);
++    return context;
++}
++
++bool upgrades_available(CApp* app, ShipManager* player)
++{
++    return economy_context(app, player, false).ready() && app->gui->upgradeButton.bActive;
++}
++
++ShipSystem* upgrade_system(ShipManager* player, int id)
++{
++    if (!player) return nullptr;
++    // Do not pass an untrusted id into the engine's unchecked systemKey array.
++    for (ShipSystem* system : player->vSystemList) {
++        if (system && system->iSystemType == id) return system;
++    }
++    return nullptr;
++}
++
++int next_system_cost(ShipSystem* system)
++{
++    if (!system) return -1;
++    BlueprintManager* blueprints = Global::GetInstance()->GetBlueprints();
++    if (!blueprints) return -1;
++    const SystemBlueprint* blueprint = blueprints->GetSystemBlueprint(
++        ShipSystem::SystemIdToName(system->iSystemType));
++    if (!blueprint) return -1;
++    // UpgradeBox::MouseClick reads the base cap, not a temporary power boost.
++    return BenchmarkEconomy::system_cost(system->powerState.second, system->maxLevel,
++                                         blueprint->upgradeCosts);
++}
++
++int next_reactor_cost(ShipManager* player, PowerManager* power)
++{
++    if (!player || !power) return -1;
++    const CustomShipDefinition& def = CustomShipSelect::GetInstance()->GetDefinition(
++        player->myBlueprint.blueprintName);
++    return BenchmarkEconomy::reactor_cost(power->currentPower.second, def.maxReactorLevel,
++                                          def.reactorPrices, def.reactorPriceIncrement);
++}
++
++bool fuel_context_available(CApp* app, ShipManager* player)
++{
++    if (!economy_context(app, player, true).ready() || player->fuel_count >= 1) return false;
++    // Opening the map must be legal through the ordinary FTL button. Once open,
++    // its own active buttons control the recovery actions.
++    return app->world->starMap.bOpen || (app->gui->ftlButton.bActive &&
++           player->jump_timer.first >= player->jump_timer.second &&
++           player->SystemFunctions(1) && player->SystemFunctions(6));
++}
++
++StarMap* fuel_map(CApp* app, ShipManager* player)
++{
++    if (!fuel_context_available(app, player)) return nullptr;
++    StarMap& map = app->world->starMap;
++    if (!map.bOpen) map.Open();
++    if (!map.bOpen) return nullptr;
++    // Refresh the native active bits. No turn is advanced here: waiting is false
++    // and pending travel/sector transitions were refused before opening the map.
++    map.OnLoop();
++    return map.outOfFuel ? &map : nullptr;
++}
++
++
++void json_cost(std::ostringstream& json, int cost)
++{
++    if (cost < 0) json << "null";
++    else json << cost;
++}
++}
++
++bool hs_benchmark_upgrade_system(int system_id)
++{
++    Global* global = Global::GetInstance();
++    CApp* app = global->GetCApp();
++    ShipManager* player = economy_player(app);
++    if (!upgrades_available(app, player)) return false;
++    ShipSystem* system = upgrade_system(player, system_id);
++    const int price = next_system_cost(system);
++    if (!system || price < 0 || player->CanUpgrade(system_id, 1) != 1) return false;
++    return BenchmarkEconomy::purchase(true, price, player->currentScrap,
++        [system]() { return system->powerState.second; },
++        [player, system_id]() { player->UpgradeSystem(system_id, 1); },
++        [player](int amount) { player->ModifyScrapCount(-amount, false); });
++}
++
++bool hs_benchmark_upgrade_reactor()
++{
++    Global* global = Global::GetInstance();
++    CApp* app = global->GetCApp();
++    ShipManager* player = economy_player(app);
++    if (!upgrades_available(app, player)) return false;
++    PowerManager* power = PowerManager::GetPowerManager(player->iShipId);
++    const int price = next_reactor_cost(player, power);
++    if (!power || price < 0 || player->CanUpgrade(17, 1) != 1) return false;
++    return BenchmarkEconomy::purchase(true, price, player->currentScrap,
++        [power]() { return power->currentPower.second; },
++        [player]() { player->UpgradeSystem(17, 1); },
++        [player](int amount) { player->ModifyScrapCount(-amount, false); });
++}
++
++bool hs_benchmark_wait_for_fuel()
++{
++    Global* global = Global::GetInstance();
++    CApp* app = global->GetCApp();
++    StarMap* map = fuel_map(app, economy_player(app));
++    if (!map || !map->waitButton.bActive || map->waiting.running) return false;
++    BenchmarkEconomy::click_map_button(*map, map->waitButton);
++    // The normal animation, danger advance and CommandGui wait-location resolver
++    // handle the encounter. No resources, event branches or RNG are changed here.
++    return map->waiting.running;
++}
++
++bool hs_benchmark_set_distress(bool enabled)
++{
++    Global* global = Global::GetInstance();
++    CApp* app = global->GetCApp();
++    StarMap* map = fuel_map(app, economy_player(app));
++    if (!map || !map->distressButton.bActive) return false;
++    if (map->distressButton.state == enabled) return true;
++    BenchmarkEconomy::click_map_button(*map, map->distressButton);
++    return map->distressButton.state == enabled;
++}
++
++const char* hs_benchmark_economy_state()
++{
++    static std::string buffer;
++    Global* global = Global::GetInstance();
++    CApp* app = global->GetCApp();
++    ShipManager* player = economy_player(app);
++    const bool started = app && app->world && app->gui && app->world->bStartedGame && player;
++    const bool available = started && upgrades_available(app, player);
++    std::ostringstream json;
++    json << std::boolalpha << "{\"native_protocol\":5,\"sector_navigation_version\":1,\"beacon_navigation_version\":1,\"upgrade_available\":" << available
++         << ",\"systems\":[";
++    bool comma = false;
++    if (started) for (ShipSystem* system : player->vSystemList) {
++        if (!system) continue;
++        const int price = next_system_cost(system);
++        const bool can = available && price >= 0 && player->currentScrap >= price &&
++                         player->CanUpgrade(system->iSystemType, 1) == 1;
++        if (comma) json << ',';
++        comma = true;
++        json << "{\"system_id\":" << system->iSystemType
++             << ",\"current_max_power\":" << system->powerState.second
++             << ",\"max_level\":" << system->maxLevel << ",\"next_upgrade_cost\":";
++        json_cost(json, price);
++        json << ",\"can_upgrade\":" << can << '}';
++    }
++    json << "],\"reactor\":";
++    PowerManager* power = started ? PowerManager::GetPowerManager(player->iShipId) : nullptr;
++    if (power) {
++        const CustomShipDefinition& def = CustomShipSelect::GetInstance()->GetDefinition(
++            player->myBlueprint.blueprintName);
++        const int price = next_reactor_cost(player, power);
++        json << "{\"current_max_power\":" << power->currentPower.second
++             << ",\"max_level\":" << def.maxReactorLevel << ",\"next_upgrade_cost\":";
++        json_cost(json, price);
++        json << ",\"can_upgrade\":" << (available && price >= 0 &&
++                player->currentScrap >= price && player->CanUpgrade(17, 1) == 1) << '}';
++    } else json << "null";
++    const StarMap* map = started ? &app->world->starMap : nullptr;
++    const bool can_wait = started && fuel_context_available(app, player) &&
++                         (!map->bOpen || map->waitButton.bActive);
++    const auto navigation = travel_context(app, player);
++    const char* navigation_reason = navigation.refusal_reason();
++    json << ",\"navigation\":{\"can_jump\":" << (navigation_reason == nullptr)
++         << ",\"enemy_defeat_pending\":" << navigation.enemy_defeat_pending
++         << ",\"drive_current\":" << navigation.charge
++         << ",\"drive_max\":" << navigation.required_charge << ",\"reason\":";
++    if (navigation_reason) json << '"' << navigation_reason << '"';
++    else json << "null";
++    json << "},\"fuel_recovery\":{\"out_of_fuel\":" << (started && player->fuel_count < 1)
++         << ",\"distress_on\":" << (map && map->distressButton.state)
++         << ",\"can_wait\":" << can_wait << ",\"waiting\":" << (map && map->waiting.running)
++         << "}}";
++    buffer = json.str();
++    return buffer.c_str();
++}
++
+ bool hs_benchmark_fire_weapon(int weapon_slot, int target_ship_id, int target_room_id)
+ {
+     Global* g = Global::GetInstance();
+@@ -343,12 +697,11 @@ bool hs_benchmark_fire_weapon(int weapon_slot, int target_ship_id, int target_ro
+     std::vector<Pointf> points;
+     for (int i = 0; i < nReq; ++i) points.push_back(center);
+     wc.Fire(points, targetShip->iShipId, false);       // sets persistent target on the armed weapon
+-    weapon->SetAutoFire(true);                          // per-weapon autofire flag
+-    // GLOBAL autofire ON. Without it a powered+charged+targeted weapon just SITS there
+-    // (fire_when_ready stays set but it never releases the shot) -- the "burst laser fully
+-    // charged but not firing" bug. SetAutofiring is what the AUTOFIRE button does: every
+-    // armed weapon fires the moment it's charged, and re-fires each cooldown.
+-    wc.SetAutofiring(true, false);
++    // Manual release. Lua keeps this slot's fireWhenReady queued until one release;
++    // enabling global autofire here would also arm every previously targeted slot.
++    wc.SetAutofiring(false, false);
++    weapon->SetAutoFire(false);
++    weapon->fireWhenReady = true;
+     return true;
+ }
+ 
+@@ -356,7 +709,7 @@ bool hs_benchmark_leave_sector()
+ {
+     Global* g = Global::GetInstance();
+     CApp* app = g->GetCApp();
+-    if (!app || !app->world) return false;
++    if (!app || !app->world || !app->gui || !app->world->bStartedGame) return false;
+     StarMap& sm = app->world->starMap;                 // value member
+ 
+     // Must be standing on the sector EXIT beacon (the "Long-Range Beacon").
+@@ -366,17 +719,23 @@ bool hs_benchmark_leave_sector()
+     // The exit jump costs fuel, exactly like the game's endButton.
+     ShipManager* player = g->GetShipManager(0);
+     if (!player || player->fuel_count < 1) return false;
++    // Both beacon and sector jumps obey the same ordinary FTL button/timer,
++    // engines/piloting, modal/warp, and native enemy-death processing guards.
++    if (travel_context(app, player).refusal_reason()) return false;
+ 
+-    // REFUSE during active combat. Driving the sector transition while a live enemy
++    // REFUSE during active combat. A surrendered pointer is retained but nonhostile.
++    // Driving the sector transition while a live hostile enemy
+     // ship is present at the exit beacon SIGBUS-crashes the engine (observed at a
+     // PIRATE_BRIBER finish beacon). The agent must clear/kill the enemy first.
+     ShipManager* enemy = g->GetShipManager(1);
+-    if (enemy && !enemy->bDestroyed) return false;
++    if (enemy && BenchmarkRouting::sector_enemy_blocks(
++        enemy->_targetable.hostile, enemy->bDestroyed)) return false;
+ 
+-    // GetRandomSectorChoice can return -1 (no choice); NeighboringSector validates it
+-    // is a real neighbour so the OnLoop commit (SelectNewSector) never indexes garbage.
+-    int choice = sm.GetRandomSectorChoice();
+-    if (choice < 0 || !sm.NeighboringSector(choice)) return false;
++    const int choice = BenchmarkRouting::choose_sector_index(
++        static_cast<int>(sm.sectors.size()),
++        [&sm](int index) { return sm.NeighboringSector(index); },
++        []() { return random32(); });
++    if (choice < 0) return false;
+ 
+     // Open the sector-choice map and set the choice. The game's StarMap::OnLoop hook
+     // (CustomMap.cpp) commits it next frame: SelectNewSector + AdvanceWorldLevel +
+@@ -495,7 +854,7 @@ bool hs_benchmark_fire_beam(int weapon_slot, int target_ship_id, int room_a, int
+ 
+     // Refuse non-beams: a 2-point swipe at a 1-point laser leaves it charged but never
+     // releasing. A beam reports 2 aim points.
+-    if (weapon->NumTargetsRequired() != 2) return false;
++    if (!weapon->blueprint || weapon->blueprint->type != 2) return false;
+ 
+     WeaponControl& wc = app->gui->combatControl.weapControl;   // value members
+     wc.SelectArmament((unsigned int)weapon_slot);
+@@ -509,8 +868,9 @@ bool hs_benchmark_fire_beam(int weapon_slot, int target_ship_id, int room_a, int
+     points.push_back(b);
+ 
+     wc.Fire(points, targetShip->iShipId, false);   // persistent 2-point target on armed weapon
+-    weapon->SetAutoFire(true);                      // per-weapon autofire flag
+-    wc.SetAutofiring(true, false);                  // GLOBAL autofire (AUTOFIRE button)
++    wc.SetAutofiring(false, false);
++    weapon->SetAutoFire(false);
++    weapon->fireWhenReady = true;
+     return true;
+ }
+ 
+@@ -526,7 +886,7 @@ bool hs_benchmark_hack_system(int target_system_id)
+ {
+     Global* g = Global::GetInstance();
+     CApp* app = g->GetCApp();
+-    if (!app || !app->world) return false;
++    if (!app || !app->world || !app->gui || !app->world->bStartedGame) return false;
+ 
+     ShipManager* player = g->GetShipManager(0);
+     ShipManager* enemy  = g->GetShipManager(1);
+@@ -537,7 +897,7 @@ bool hs_benchmark_hack_system(int target_system_id)
+     HackingSystem* hs = player->hackingSystem;
+     if (!hs) return false;                       // Kestrel hasn't bought Hacking
+     if (!hs->Powered()) return false;            // needs >= 1 power bar
+-    if (hs->iLockCount != -1) return false;      // our own hacking is ion-locked/hacked
++    if (hs->iLockCount != 0) return false;       // 0 is idle; -1 active; positive cooldown/ion
+ 
+     // Resolve the enemy system -> its room. HasSystem guards a destroyed/absent system.
+     if (!enemy->HasSystem(target_system_id)) return false;
+@@ -585,7 +945,7 @@ bool hs_benchmark_teleport_crew(int command, int target_room_id)
+ {
+     Global* g = Global::GetInstance();
+     CApp* app = g ? g->GetCApp() : nullptr;
+-    if (!app || !app->world) return false;
++    if (!app || !app->world || !app->gui || !app->world->bStartedGame) return false;
+ 
+     CompleteShip* pShip = app->world->playerShip;
+     if (!pShip || !pShip->shipManager) return false;
+@@ -637,3 +997,5 @@ void hs_benchmark_set_observation_path(const char* path)
+ {
+     observation_directory = (path != nullptr) ? path : "";
+ }
++
++#include "Benchmark_FreshStartSeed.inc"
+diff --git a/Benchmark_Extend.h b/Benchmark_Extend.h
+index 6bc15e01..2f5e8e78 100644
+--- a/Benchmark_Extend.h
++++ b/Benchmark_Extend.h
+@@ -61,6 +61,22 @@ bool hs_benchmark_choose_event(int index);
+ // Arm player weapon `weapon_slot`, target room `target_room_id` on ship
+ // `target_ship_id` (0=player, 1=enemy), and fire. Single-point (laser/missile).
+ bool hs_benchmark_fire_weapon(int weapon_slot, int target_ship_id, int target_room_id);
++bool hs_benchmark_set_weapon_autofire(bool enabled);
++bool hs_benchmark_victory();
++int hs_benchmark_difficulty();
++bool hs_benchmark_set_difficulty(int difficulty);
++const char* hs_benchmark_player_blueprint();
++int hs_benchmark_run_score();
++const char* hs_benchmark_score_components();
++const char* hs_benchmark_capabilities();
++
++// Protocol 5 economy and fuel recovery. Prices/caps come from native blueprints
++// and ship definitions; mutations refuse unavailable UI/game states.
++bool hs_benchmark_upgrade_system(int system_id);
++bool hs_benchmark_upgrade_reactor();
++bool hs_benchmark_wait_for_fuel();
++bool hs_benchmark_set_distress(bool enabled);
++const char* hs_benchmark_economy_state();
+ 
+ // Leave the current sector from the exit beacon and travel to a random valid next
+ // sector (advances map.sector). Returns false unless: at the exit beacon, fuel>=1,
+@@ -95,3 +111,21 @@ bool hs_benchmark_teleport_crew(int command, int target_room_id);
+ 
+ // Override the output directory (used by harness fixtures / tests). M2-reserved.
+ void hs_benchmark_set_observation_path(const char* path);
++
++// Visual-v1 uses normal game-window input handlers and paused renderer readback.
++const char* hs_benchmark_visual_capabilities();
++bool hs_benchmark_mouse_move(int x,int y);
++bool hs_benchmark_mouse_click(int x,int y,int button,int modifiers);
++bool hs_benchmark_mouse_drag(int x,int y,int to_x,int to_y,int button,int modifiers);
++bool hs_benchmark_key_press(const char* key,int modifiers);
++const char* hs_benchmark_write_visual_observation(const char* observation,int seq,int tick,int requested_frames,int actual_frames,const char* feedback);
++
++bool hs_benchmark_visual_set_clock(bool enabled,bool advancing);
++bool hs_benchmark_visual_simulation_blocked();
++
++// Fresh-start seed contract v3: opt-in, one pre-Open seed application per RNG.
++unsigned hs_benchmark_fresh_seed_contract_version();
++const char* hs_benchmark_fresh_menu_stage();
++bool hs_benchmark_arm_fresh_seed(unsigned seed);
++const char* hs_benchmark_fresh_seed_receipt();
++bool hs_benchmark_advance_fresh_menu();
+diff --git a/SaveFile.cpp b/SaveFile.cpp
+index d5071dda..df2ab276 100644
+--- a/SaveFile.cpp
++++ b/SaveFile.cpp
+@@ -1,4 +1,5 @@
+ #include "SaveFile.h"
++#include "Benchmark_FreshStartUtility.h"
+ #include <boost/lexical_cast.hpp>
+ #include <boost/algorithm/string/predicate.hpp>
+ #include <boost/algorithm/string/replace.hpp>
+@@ -316,6 +317,7 @@ HOOK_STATIC(FileHelper, deleteAllSaveFiles, () -> void)
+ }
+ 
+ static ConfirmWindow* confirmWipeSave;
++namespace BenchmarkFreshStartSeed { bool save_transfer_dialog_open() { return confirmWipeSave && confirmWipeSave->bOpen; } }
+ static WindowFrame* welcomeDialog;
+ static TextButton* welcomeDialogButton;
+ static bool welcomeDialogOpen;
+diff --git a/StatBoost.cpp b/StatBoost.cpp
+index 9997bf3d..4d719c89 100644
+--- a/StatBoost.cpp
++++ b/StatBoost.cpp
+@@ -6,6 +6,7 @@
+ #include "CrewMember_Extend.h"
+ #include "Room_Extend.h"
+ #include "StatBoost.h"
++#include "Benchmark_FreshStartUtility.h"
+ #include "CustomSystems.h"
+ #include "CustomCrew.h"
+ #include "CustomAugments.h"
+@@ -2998,7 +2999,12 @@ void StatBoostManager::CreateDummyCrew()
+     if (!dummyCrew)
+     {
+         // create a dummy crew outside of CrewMemberFactory
+-        CrewBlueprint crewBlue = G_->GetBlueprints()->GetCrewBlueprint("human");
++        CrewBlueprint crewBlue = []() {
++            BenchmarkFreshStartSeed::UtilityNameScope scope;
++            CrewBlueprint bp = G_->GetBlueprints()->GetCrewBlueprint("human");
++            scope.complete(bp.crewNameLong.data);
++            return bp;
++        }();
+         dummyCrew = new CrewMember(crewBlue, 0, false, nullptr);
+     }
+ }
+diff --git a/lua/modules/hyperspace.i b/lua/modules/hyperspace.i
+index 10def309..7ed3cb3d 100644
+--- a/lua/modules/hyperspace.i
++++ b/lua/modules/hyperspace.i
+@@ -499,6 +499,33 @@ bool hs_benchmark_choose_event(int index);
+ 
+ %rename("benchmark_fire_weapon") hs_benchmark_fire_weapon;
+ bool hs_benchmark_fire_weapon(int weapon_slot, int target_ship_id, int target_room_id);
++%rename("benchmark_set_weapon_autofire") hs_benchmark_set_weapon_autofire;
++bool hs_benchmark_set_weapon_autofire(bool enabled);
++%rename("benchmark_victory") hs_benchmark_victory;
++bool hs_benchmark_victory();
++%rename("benchmark_difficulty") hs_benchmark_difficulty;
++int hs_benchmark_difficulty();
++%rename("benchmark_set_difficulty") hs_benchmark_set_difficulty;
++bool hs_benchmark_set_difficulty(int difficulty);
++%rename("benchmark_player_blueprint") hs_benchmark_player_blueprint;
++const char* hs_benchmark_player_blueprint();
++%rename("benchmark_run_score") hs_benchmark_run_score;
++int hs_benchmark_run_score();
++%rename("benchmark_score_components") hs_benchmark_score_components;
++const char* hs_benchmark_score_components();
++%rename("benchmark_capabilities") hs_benchmark_capabilities;
++const char* hs_benchmark_capabilities();
++
++%rename("benchmark_upgrade_system") hs_benchmark_upgrade_system;
++bool hs_benchmark_upgrade_system(int system_id);
++%rename("benchmark_upgrade_reactor") hs_benchmark_upgrade_reactor;
++bool hs_benchmark_upgrade_reactor();
++%rename("benchmark_wait_for_fuel") hs_benchmark_wait_for_fuel;
++bool hs_benchmark_wait_for_fuel();
++%rename("benchmark_set_distress") hs_benchmark_set_distress;
++bool hs_benchmark_set_distress(bool enabled);
++%rename("benchmark_economy_state") hs_benchmark_economy_state;
++const char* hs_benchmark_economy_state();
+ 
+ %rename("benchmark_leave_sector") hs_benchmark_leave_sector;
+ bool hs_benchmark_leave_sector();
+@@ -4760,3 +4787,33 @@ We can expose them once the root cause is identified and the crash is fixed.
+ %include "Misc.h"
+ %include "CustomDamage.h"
+ %include "CustomLockdowns.h"
++
++%rename("benchmark_visual_capabilities") hs_benchmark_visual_capabilities;
++const char* hs_benchmark_visual_capabilities();
++%rename("benchmark_mouse_move") hs_benchmark_mouse_move;
++bool hs_benchmark_mouse_move(int x,int y);
++%rename("benchmark_mouse_click") hs_benchmark_mouse_click;
++bool hs_benchmark_mouse_click(int x,int y,int button,int modifiers);
++%rename("benchmark_mouse_drag") hs_benchmark_mouse_drag;
++bool hs_benchmark_mouse_drag(int x,int y,int to_x,int to_y,int button,int modifiers);
++%rename("benchmark_key_press") hs_benchmark_key_press;
++bool hs_benchmark_key_press(const char* key,int modifiers);
++%rename("benchmark_write_visual_observation") hs_benchmark_write_visual_observation;
++const char* hs_benchmark_write_visual_observation(const char* observation,int seq,int tick,int requested_frames,int actual_frames,const char* feedback);
++
++%rename("benchmark_visual_set_clock") hs_benchmark_visual_set_clock;
++bool hs_benchmark_visual_set_clock(bool enabled,bool advancing);
++
++%rename("benchmark_visual_simulation_blocked") hs_benchmark_visual_simulation_blocked;
++bool hs_benchmark_visual_simulation_blocked();
++
++%rename("benchmark_fresh_seed_contract_version") hs_benchmark_fresh_seed_contract_version;
++unsigned hs_benchmark_fresh_seed_contract_version();
++%rename("benchmark_fresh_menu_stage") hs_benchmark_fresh_menu_stage;
++const char* hs_benchmark_fresh_menu_stage();
++%rename("benchmark_arm_fresh_seed") hs_benchmark_arm_fresh_seed;
++bool hs_benchmark_arm_fresh_seed(unsigned seed);
++%rename("benchmark_fresh_seed_receipt") hs_benchmark_fresh_seed_receipt;
++const char* hs_benchmark_fresh_seed_receipt();
++%rename("benchmark_advance_fresh_menu") hs_benchmark_advance_fresh_menu;
++bool hs_benchmark_advance_fresh_menu();
+diff --git a/src/features/crash-detection/ui/CrashDialogManager.h b/src/features/crash-detection/ui/CrashDialogManager.h
+index a75acab5..9c13726f 100644
+--- a/src/features/crash-detection/ui/CrashDialogManager.h
++++ b/src/features/crash-detection/ui/CrashDialogManager.h
+@@ -15,6 +15,8 @@ class CrashDialogManager
+ {
+ public:
+     static CrashDialogManager* GetInstance();
++    // Diagnostic-only read; unlike GetInstance this never allocates.
++    static const CrashDialogManager* PeekInstanceForBenchmark() { return instance; }
+     ~CrashDialogManager();
+ 
+     // Bug report button
+diff --git a/Benchmark_Economy.h b/Benchmark_Economy.h
+new file mode 100644
+index 0000000..4451457
+--- /dev/null
++++ b/Benchmark_Economy.h
+@@ -0,0 +1,66 @@
++#pragma once
++#include <vector>
++
++// These rules use the same indices and ship definition fields as the native
++// UpgradeBox and Hyperspace ReactorButton. A negative cost means unavailable.
++namespace BenchmarkEconomy {
++inline int system_cost(int level, int maximum, const std::vector<int>& prices)
++{
++    if (level < 1 || level >= maximum || level > static_cast<int>(prices.size())) return -1;
++    return prices[level - 1] >= 0 ? prices[level - 1] : -1;
++}
++
++inline int reactor_cost(int level, int maximum, const std::vector<int>& prices, int increment)
++{
++    if (level < 0 || level >= maximum || prices.empty()) return -1;
++    int column = level / 5 + 1;
++    if (column >= static_cast<int>(prices.size())) return -1;
++    int price = prices[column];
++    if (price < 0) price = prices[0] + (column - 1) * increment;
++    return price >= 0 ? price : -1;
++}
++
++struct Context {
++    bool started = false;
++    bool main_menu = false;
++    bool game_over = false;
++    bool destroyed = false;
++    bool mid_warp = false;
++    bool pending_travel = false;
++    // Arrival completion persists while idle; it is status, not pending travel.
++    bool arrival_complete = false;
++    bool pending_sector = false;
++    bool waiting = false;
++    bool modal = false;
++
++    bool ready() const
++    {
++        return started && !main_menu && !game_over && !destroyed && !mid_warp &&
++               !pending_travel && !pending_sector && !waiting && !modal;
++    }
++};
++
++// StarMap accepts screen coordinates and forwards map-local coordinates to its
++// Wait/distress buttons. Keep dispatch through native hover and active checks.
++template<class Map, class Button>
++void click_map_button(Map& map, Button& button)
++{
++    const auto& box = button.hitbox;
++    const int x = map.position.x + box.x + box.w / 2;
++    const int y = map.position.y + box.y + box.h / 2;
++    map.MouseMove(x, y);
++    map.MouseClick(x, y);
++}
++// UpgradeSystem can reject an upgrade through its native cap/hooks. Charge only
++// after observing exactly the requested capacity change; no-op requests are free.
++template<class Level, class Upgrade, class Spend>
++bool purchase(bool allowed, int price, int scrap, Level level, Upgrade upgrade, Spend spend)
++{
++    if (!allowed || price < 0 || scrap < price) return false;
++    const int before = level();
++    upgrade();
++    if (level() != before + 1) return false;
++    spend(price);
++    return true;
++}
++}
+diff --git a/Benchmark_FreshStartSeed.inc b/Benchmark_FreshStartSeed.inc
+new file mode 100644
+index 0000000..f35da34
+--- /dev/null
++++ b/Benchmark_FreshStartSeed.inc
+@@ -0,0 +1,563 @@
++// Isolated candidate: one fresh-start seed boundary, no encounter/action reseeds.
++// Included at the end of Benchmark_Extend.cpp, after the visual clock is defined.
++#include <cstdlib>
++#include <cstring>
++#include <limits>
++#include <cstdint>
++#include <algorithm>
++#include "Benchmark_FreshStartUtility.h"
++#if defined(_WIN32) && defined(__i386__)
++#include "src/features/crash-detection/ui/CrashDialogManager.h"
++#endif
++
++namespace BenchmarkFreshStartSeed {
++constexpr unsigned contract_version=3;
++constexpr int outer_priority=-1000000;
++struct Totals {
++    unsigned long long names=0, ship_inits=0,utility_name_calls=0;
++    unsigned utility_lookup_calls=0,utility_lookup_completed=0,utility_thread_id=0;
++    bool utility_scope_active=false,utility_lookup_valid=true;
++    std::string utility_name;
++    unsigned main_menu_constructors=0, ship_builder_constructors=0;
++    unsigned long long names_in_main_menu_constructor=0, names_in_ship_builder_constructor=0;
++} totals;
++struct ForwardDiagnostic { std::string stage,before,after;bool call_exception=false; };
++struct State {
++    unsigned seed=0, epoch=0, native_applications=0, c_runtime_applications=0;
++    unsigned long long names_before_arm=0, names_before_seed=0, names_after_seed=0, names_during_open=0;
++    unsigned long long ship_inits_before_arm=0, ship_inits_before_seed=0, ship_inits_after_seed=0, ship_inits_during_open=0;
++    bool pending=false, applied=false, failed=false, in_open=false;
++    bool owned_at_arm=false, owned_at_boundary=false, update_permitted_at_boundary=false;
++    bool construction_scope_active=false, fixed_creation_timing=false;
++    bool start_pending=false, start_completed=false, completion_scope_active=false;
++    bool start_timing_controlled=false, start_world_frozen=false;
++    unsigned start_completion_callbacks=0, start_extra_hangar_dwell=0;
++    unsigned start_hangar_onloop_requests=0, start_hangar_onloop_executed=0;
++    unsigned start_game_calls=0, start_game_returns=0, start_cfps_fixed_applications=0;
++    unsigned start_world_onloop_blocked=0, start_pause_loop_blocked=0;
++    unsigned long long frozen_world_onloop_blocked=0, frozen_pause_loop_blocked=0;
++    unsigned start_speed_factor_bits=0, start_thread_id=0;
++    unsigned long long start_world_updates_before=0, start_world_updates_after=0;
++    unsigned construction_clicks=0, completed_construction_clicks=0;
++    unsigned long long construction_initial_updates=0, construction_final_updates=0;
++    unsigned speed_factor_bits_at_boundary=0, seed_thread_id=0;
++    unsigned long long unclassified_names_before_arm=0,unclassified_names_before_seed=0,intervening_names_after_arm=0;
++    unsigned reservation_reset_applications=0,reservation_reset_thread_id=0;
++    bool reservation_reset_verified=false;
++    unsigned long long reservations_before_arm=0,reservations_before_reset=0,reservations_after_reset=0;
++    int factory_crew_before_arm=-1,factory_lost_before_arm=-1,factory_player_before_arm=-1,factory_enemy_before_arm=-1,factory_clone_before_arm=-1;
++    int factory_crew_before_reset=-1,factory_lost_before_reset=-1,factory_player_before_reset=-1,factory_enemy_before_reset=-1,factory_clone_before_reset=-1;
++    std::vector<std::string> reservation_names_before_reset;
++    std::vector<ForwardDiagnostic> menu_diagnostics;
++    std::string arm_stage, error;
++} state;
++UtilityNameScope::UtilityNameScope() {
++    if (totals.utility_scope_active || state.epoch || totals.utility_lookup_calls) totals.utility_lookup_valid=false;
++    ++totals.utility_lookup_calls;totals.utility_scope_active=true;
++#if defined(_WIN32) && defined(__i386__)
++    totals.utility_thread_id=GetCurrentThreadId();
++#endif
++}
++UtilityNameScope::~UtilityNameScope() {
++    totals.utility_scope_active=false;
++    if (!finished) totals.utility_lookup_valid=false;
++}
++void UtilityNameScope::complete(const std::string& captured_name) {
++    finished=true;++totals.utility_lookup_completed;
++    if (totals.utility_name_calls!=1 || captured_name.empty() || captured_name!=totals.utility_name)
++        totals.utility_lookup_valid=false;
++}
++bool known_utility() {
++    return !totals.utility_scope_active && totals.utility_lookup_valid && totals.utility_lookup_calls==1 &&
++           totals.utility_lookup_completed==1 && totals.utility_name_calls==1 && !totals.utility_name.empty();
++}
++bool record_empty_factory(bool arm) {
++    CrewMemberFactory* factory=Global::GetInstance()->GetCrewFactory();
++    if (!factory) return false;
++    int& crew=arm?state.factory_crew_before_arm:state.factory_crew_before_reset;
++    int& lost=arm?state.factory_lost_before_arm:state.factory_lost_before_reset;
++    int& player=arm?state.factory_player_before_arm:state.factory_player_before_reset;
++    int& enemy=arm?state.factory_enemy_before_arm:state.factory_enemy_before_reset;
++    int& clone=arm?state.factory_clone_before_arm:state.factory_clone_before_reset;
++    crew=static_cast<int>(factory->crewMembers.size());lost=static_cast<int>(factory->lostMembers.size());
++    player=factory->playerCrew;enemy=factory->enemyCrew;clone=factory->enemyCloneCount;
++    return factory->crewMembers.empty() && factory->lostMembers.empty() && player==0 && enemy==0 && clone==0;
++}
++bool sole_utility_reservation(BlueprintManager* blueprints) {
++    return blueprints && blueprints->currentNames.size()==1 && blueprints->currentNames[0]==totals.utility_name;
++}
++std::string quoted(const std::string& value) {
++    std::ostringstream out;out << '"';
++    const char hex[]="0123456789abcdef";
++    for (unsigned char c:value) {
++        if (c=='"' || c=='\\') out << '\\' << char(c);
++        else if (c<32) out << "\\u00" << hex[c>>4] << hex[c&15];
++        else out << char(c);
++    }
++    out << '"';return out.str();
++}
++#if defined(_WIN32) && defined(__i386__)
++// Optional evidence only. Never consulted for clicks, admission or timing.
++std::string menu_snapshot() {
++    CApp* app=Global::GetInstance()->GetCApp();
++    if (!app) return "{\"diagnostic_error\":\"app_unavailable\"}";
++    MainMenu& menu=app->menu;Button& button=menu.startButton;
++    std::ostringstream json;json << std::boolalpha
++        << "{\"world_updates\":\"" << BenchmarkVisualEngine::frame_clock.world_updates << "\",\"menu_open\":" << menu.bOpen << ",\"final_choice\":" << menu.finalChoice
++        << ",\"score_screen\":" << menu.bScoreScreen << ",\"credit_screen\":" << menu.bCreditScreen
++        << ",\"select_save\":" << menu.bSelectSave << ",\"option_screen\":" << menu.optionScreen.bOpen
++        << ",\"changelog\":" << menu.changelog.bOpen << ",\"overwrite_confirmation\":" << menu.confirmNewGame.bOpen
++        << ",\"ship_builder_open\":" << menu.shipBuilder.bOpen << ",\"ship_builder_done\":" << menu.shipBuilder.bDone
++        << ",\"language_chooser\":" << app->langChooser.bOpen
++        << ",\"save_transfer_dialog\":" << save_transfer_dialog_open()
++        << ",\"start_button\":{\"identity\":" << quoted(std::to_string(reinterpret_cast<std::uintptr_t>(&button)))
++        << ",\"active\":" << button.bActive << ",\"hover\":" << button.bHover
++        << ",\"hitbox\":{\"x\":" << button.hitbox.x << ",\"y\":" << button.hitbox.y
++        << ",\"w\":" << button.hitbox.w << ",\"h\":" << button.hitbox.h << '}'
++        << ",\"position\":{\"x\":" << button.position.x << ",\"y\":" << button.position.y << "}}";
++    const auto* crash=CrashDialogManager::PeekInstanceForBenchmark();
++    json << ",\"crash_dialog_manager_present\":" << (crash!=nullptr)
++        << ",\"crash_ask_report\":" << (crash && crash->IsAskReportDialogOpen())
++        << ",\"crash_choose_destination\":" << (crash && crash->IsChooseDestinationDialogOpen())
++        << ",\"crash_instructions\":" << (crash && crash->IsInstructionsDialogOpen())
++        << ",\"crash_error\":" << (crash && crash->IsErrorDialogOpen());
++    json << ",\"menu_buttons_count\":" << menu.buttons.size()
++        << ",\"menu_buttons_truncated\":" << (menu.buttons.size()>128) << ",\"menu_buttons\":[";
++    const size_t count=std::min<size_t>(menu.buttons.size(),128);
++    for (size_t index=0;index<count;++index) {
++        if (index) json << ',';
++        json << "{\"index\":" << index
++            << ",\"identity\":" << quoted(std::to_string(reinterpret_cast<std::uintptr_t>(menu.buttons[index])))
++            << ",\"is_start\":" << (menu.buttons[index]==&button) << '}';
++    }
++    json << "]}";return json.str();
++}
++std::string capture_menu_snapshot() {
++    try { return menu_snapshot(); }
++    catch (...) { return "{\"diagnostic_error\":\"snapshot_exception\"}"; }
++}
++#endif
++unsigned float_bits(const float& value) { unsigned result=0;std::memcpy(&result,&value,4);return result; }
++bool owned() {
++#if defined(_WIN32) && defined(__i386__)
++    return BenchmarkVisualEngine::frame_clock.owned;
++#else
++    return false;
++#endif
++}
++void fail(const char* message) { state.pending=false;if (!state.failed) state.error=message;state.failed=true; }
++#if defined(_WIN32) && defined(__i386__)
++// Sets only the cached base factor for synchronous construction calls. The
++// ordinary GetSpeedFactor hook chain and native temporal multipliers remain.
++struct ConstructionScope {
++    CFPS* fps;unsigned saved_bits;bool& active;
++    explicit ConstructionScope(CFPS* value,bool completion=false):fps(value),saved_bits(float_bits(value->SpeedFactor)),
++        active(completion?state.completion_scope_active:state.construction_scope_active) {
++        fps->SpeedFactor=16.f/60.f;active=true;
++    }
++    ~ConstructionScope() {
++        std::memcpy(&fps->SpeedFactor,&saved_bits,4);active=false;
++    }
++};
++#endif
++}
++
++unsigned hs_benchmark_fresh_seed_contract_version()
++{
++#if defined(_WIN32) && defined(__i386__)
++    return BenchmarkFreshStartSeed::contract_version;
++#else
++    return 0;
++#endif
++}
++
++const char* hs_benchmark_fresh_menu_stage()
++{
++    CApp* app=Global::GetInstance()->GetCApp();
++    if (!app || !app->world) return "unavailable";
++    if (app->world->bStartedGame) return "in_game";
++    if (BenchmarkFreshStartSeed::state.start_pending && app->menu.shipBuilder.bDone) return "start_pending";
++    if (app->langChooser.bOpen) return "language_chooser";
++    MainMenu& menu=app->menu;
++    if (!menu.bOpen) return "closed";
++    // Native New Game sets bSelectSave while confirmNewGame is open; the
++    // parent confirmation click clears bSelectSave before normal ShipBuilder Open.
++    // Either unmatched flag remains unsupported.
++    if (menu.bScoreScreen || menu.bCreditScreen || (menu.bSelectSave != menu.confirmNewGame.bOpen) ||
++        menu.optionScreen.bOpen || menu.changelog.bOpen) return "unsupported_modal";
++    if (menu.confirmNewGame.bOpen && menu.shipBuilder.bOpen) return "ambiguous";
++    if (menu.confirmNewGame.bOpen) return "overwrite_confirmation";
++    if (menu.shipBuilder.bOpen) return "hangar";
++    return "main_menu";
++}
++
++bool hs_benchmark_arm_fresh_seed(unsigned seed)
++{
++    using namespace BenchmarkFreshStartSeed;
++    const std::string stage=hs_benchmark_fresh_menu_stage();
++    if (state.pending || state.construction_scope_active || state.completion_scope_active || !owned() || (stage!="main_menu" && stage!="overwrite_confirmation") ||
++        state.epoch==std::numeric_limits<unsigned>::max()) return false;
++    const unsigned next_epoch=state.epoch+1;
++    state=State();state.epoch=next_epoch;state.seed=seed;state.arm_stage=stage;
++    state.owned_at_arm=true;state.names_before_arm=totals.names;state.ship_inits_before_arm=totals.ship_inits;
++    // Only the precise startup dummy lookup is classified; real generated
++    // crew/ships and other orphan reservations remain inadmissible.
++    state.unclassified_names_before_arm=totals.names>=totals.utility_name_calls?totals.names-totals.utility_name_calls:totals.names;
++    BlueprintManager* blueprints=Global::GetInstance()->GetBlueprints();
++    if (blueprints) state.reservations_before_arm=blueprints->currentNames.size();
++    if (!known_utility() || totals.names!=totals.utility_name_calls || totals.ship_inits || !record_empty_factory(true) ||
++        !sole_utility_reservation(blueprints)
++#if defined(_WIN32) && defined(__i386__)
++        || totals.utility_thread_id!=GetCurrentThreadId()
++#endif
++        ) { fail("invalid_clean_start_before_arm");return false; }
++    state.pending=true;
++    return true;
++}
++
++const char* hs_benchmark_fresh_seed_receipt()
++{
++    using namespace BenchmarkFreshStartSeed;
++    static std::string receipt;
++    std::ostringstream json;
++    json << std::boolalpha << "{\"contract\":\"fresh-start-seed-v3\",\"contract_version\":3"
++         << ",\"boundary\":\"ShipBuilder::Open.before_super\",\"epoch\":" << state.epoch
++         << ",\"seed\":" << state.seed << ",\"pending\":" << state.pending << ",\"applied\":" << state.applied
++         << ",\"failed\":" << state.failed << ",\"arm_stage\":\"" << state.arm_stage << "\",\"error\":\"" << state.error << '"'
++         << ",\"native_seed_applications\":" << state.native_applications
++         << ",\"c_runtime_seed_applications\":" << state.c_runtime_applications
++         << ",\"c_runtime\":\"DLL msvcrt.dll std::srand\",\"seed_thread_id\":" << state.seed_thread_id
++         << ",\"names_before_arm\":" << state.names_before_arm << ",\"names_before_seed\":" << state.names_before_seed
++         << ",\"names_after_seed\":" << state.names_after_seed << ",\"names_during_open\":" << state.names_during_open
++         << ",\"ship_inits_before_arm\":" << state.ship_inits_before_arm
++         << ",\"ship_inits_before_seed\":" << state.ship_inits_before_seed
++         << ",\"ship_inits_after_seed\":" << state.ship_inits_after_seed
++         << ",\"ship_inits_during_open\":" << state.ship_inits_during_open
++         << ",\"main_menu_constructors\":" << totals.main_menu_constructors
++         << ",\"ship_builder_constructors\":" << totals.ship_builder_constructors
++         << ",\"names_in_main_menu_constructor\":" << totals.names_in_main_menu_constructor
++         << ",\"names_in_ship_builder_constructor\":" << totals.names_in_ship_builder_constructor
++         << ",\"clock_owned_at_arm\":" << state.owned_at_arm
++         << ",\"clock_owned_at_boundary\":" << state.owned_at_boundary
++         << ",\"clock_update_permitted_at_boundary\":" << state.update_permitted_at_boundary
++         << ",\"base_speed_factor_bits_at_boundary\":" << state.speed_factor_bits_at_boundary
++         << ",\"construction_speed_factor_bits\":" << state.speed_factor_bits_at_boundary
++         << ",\"fixed_creation_timing\":" << state.fixed_creation_timing
++         << ",\"constructor_timing_controlled\":" << state.fixed_creation_timing
++         << ",\"construction_clock_owned\":" << state.owned_at_boundary
++         << ",\"construction_fixed_step_numerator\":1,\"construction_fixed_step_denominator\":60"
++         << ",\"construction_scope_active\":" << state.construction_scope_active
++         << ",\"construction_clicks\":" << state.construction_clicks
++         << ",\"completed_construction_clicks\":" << state.completed_construction_clicks
++         << ",\"construction_initial_world_updates\":\"" << state.construction_initial_updates
++         << "\",\"construction_final_world_updates\":\"" << state.construction_final_updates << "\"}";
++    std::string text=json.str();text.pop_back();
++    json.str("");json.clear();json << text
++         << ",\"start_pending\":" << state.start_pending << ",\"start_completed\":" << state.start_completed
++         << ",\"start_completion_callbacks\":" << state.start_completion_callbacks
++         << ",\"start_extra_hangar_dwell\":" << state.start_extra_hangar_dwell
++         << ",\"start_world_updates_before\":\"" << state.start_world_updates_before
++         << "\",\"start_world_updates_after\":\"" << state.start_world_updates_after << '"'
++         << ",\"start_timing_controlled\":" << state.start_timing_controlled
++         << ",\"start_world_frozen\":" << state.start_world_frozen
++         << ",\"start_completion_scope_active\":" << state.completion_scope_active
++         << ",\"start_hangar_onloop_requests\":" << state.start_hangar_onloop_requests
++         << ",\"start_hangar_onloop_executed\":" << state.start_hangar_onloop_executed
++         << ",\"start_game_calls\":" << state.start_game_calls << ",\"start_game_returns\":" << state.start_game_returns
++         << ",\"start_cfps_fixed_applications\":" << state.start_cfps_fixed_applications
++         << ",\"start_world_onloop_blocked\":" << state.start_world_onloop_blocked
++         << ",\"start_pause_loop_blocked\":" << state.start_pause_loop_blocked
++         << ",\"start_speed_factor_bits\":" << state.start_speed_factor_bits
++         << ",\"start_thread_id\":" << state.start_thread_id << '}';
++    receipt=json.str();receipt.pop_back();
++    receipt+=",\"frozen_world_onloop_blocked\":"+std::to_string(state.frozen_world_onloop_blocked)+
++             ",\"frozen_pause_loop_blocked\":"+std::to_string(state.frozen_pause_loop_blocked)+"}";
++    receipt.pop_back();
++    std::ostringstream extra;extra << std::boolalpha
++        << ",\"utility_name_calls\":" << totals.utility_name_calls
++        << ",\"utility_lookup_calls\":" << totals.utility_lookup_calls
++        << ",\"utility_lookup_completed\":" << totals.utility_lookup_completed
++        << ",\"utility_lookup_valid\":" << totals.utility_lookup_valid
++        << ",\"utility_name_provenance\":\"StatBoostManager::CreateDummyCrew.GetCrewBlueprint(human)\""
++        << ",\"utility_name\":" << quoted(totals.utility_name) << ",\"utility_thread_id\":" << totals.utility_thread_id
++        << ",\"unclassified_names_before_arm\":" << state.unclassified_names_before_arm
++        << ",\"unclassified_names_before_seed\":" << state.unclassified_names_before_seed
++        << ",\"intervening_names_after_arm\":" << state.intervening_names_after_arm
++        << ",\"reservations_before_arm\":" << state.reservations_before_arm
++        << ",\"reservations_before_reset\":" << state.reservations_before_reset
++        << ",\"reservations_after_reset\":" << state.reservations_after_reset
++        << ",\"reservation_reset_applications\":" << state.reservation_reset_applications
++        << ",\"reservation_reset_verified\":" << state.reservation_reset_verified
++        << ",\"reservation_reset_thread_id\":" << state.reservation_reset_thread_id;
++    extra << ",\"reservation_names_before_reset\":[";
++    for (size_t i=0;i<state.reservation_names_before_reset.size();++i) {
++        if (i) extra << ',';extra << quoted(state.reservation_names_before_reset[i]);
++    }
++    extra << ']';
++#define FRESH_FACTORY_RECEIPT(field) extra << ",\"" #field "\":" << state.field
++    FRESH_FACTORY_RECEIPT(factory_crew_before_arm);FRESH_FACTORY_RECEIPT(factory_lost_before_arm);
++    FRESH_FACTORY_RECEIPT(factory_player_before_arm);FRESH_FACTORY_RECEIPT(factory_enemy_before_arm);FRESH_FACTORY_RECEIPT(factory_clone_before_arm);
++    FRESH_FACTORY_RECEIPT(factory_crew_before_reset);FRESH_FACTORY_RECEIPT(factory_lost_before_reset);
++    FRESH_FACTORY_RECEIPT(factory_player_before_reset);FRESH_FACTORY_RECEIPT(factory_enemy_before_reset);FRESH_FACTORY_RECEIPT(factory_clone_before_reset);
++#undef FRESH_FACTORY_RECEIPT
++    extra << ",\"menu_diagnostics_contract\":\"native-menu-forward-diagnostic-v1\",\"menu_forward_diagnostics\":[";
++    for (size_t index=0;index<state.menu_diagnostics.size();++index) {
++        if (index) extra << ',';
++        const ForwardDiagnostic& row=state.menu_diagnostics[index];
++        extra << "{\"index\":" << index+1 << ",\"stage\":" << quoted(row.stage)
++            << ",\"before\":" << row.before << ",\"after\":" << (row.after.empty()?"null":row.after)
++            << ",\"call_exception\":" << row.call_exception << '}';
++    }
++    extra << ']';
++    receipt+=extra.str()+"}";return receipt.c_str();
++}
++
++// One existing forward click only. Lua owns the bounded synchronous chain;
++// this wrapper prevents each click from inheriting ambient construction dt.
++bool hs_benchmark_advance_fresh_menu()
++{
++    using namespace BenchmarkFreshStartSeed;
++#if defined(_WIN32) && defined(__i386__)
++    const std::string before=hs_benchmark_fresh_menu_stage();
++    if (state.failed || state.construction_scope_active || (!state.pending && !state.applied) || !owned() ||
++        (before!="main_menu" && before!="overwrite_confirmation" && before!="hangar")) return false;
++    if (before=="hangar" && (!state.applied || state.native_applications!=1 || state.c_runtime_applications!=1)) {
++        fail("unseeded_hangar");return false;
++    }
++    CFPS* fps=Global::GetInstance()->GetCFPS();
++    if (!fps || (state.applied && state.seed_thread_id!=GetCurrentThreadId())) {
++        fail("invalid_construction_clock_or_thread");return false;
++    }
++    const unsigned long long updates=BenchmarkVisualEngine::frame_clock.world_updates;
++    if (!state.construction_clicks) state.construction_initial_updates=updates;
++    ++state.construction_clicks;
++    state.menu_diagnostics.push_back(ForwardDiagnostic());
++    ForwardDiagnostic& diagnostic=state.menu_diagnostics.back();
++    diagnostic.stage=before;diagnostic.before=capture_menu_snapshot();
++    try {
++        ConstructionScope scope(fps);
++        if (before=="overwrite_confirmation") {
++            // ConfirmWindow alone does not dispatch MainMenu's confirmed action.
++            CApp* app=Global::GetInstance()->GetCApp();
++            const Globals::Rect& box=app->menu.confirmNewGame.yesButton.hitbox;
++            const int x=box.x+box.w/2,y=box.y+box.h/2;
++            app->menu.MouseMove(x,y);app->menu.MouseClick(x,y);
++        } else {
++            hs_benchmark_advance_menu();
++        }
++        diagnostic.after=capture_menu_snapshot();
++        CApp* app=Global::GetInstance()->GetCApp();
++        if (before=="hangar" && app && app->world && !app->world->bStartedGame && app->menu.shipBuilder.bDone) {
++            state.start_pending=true;state.start_world_updates_before=updates;state.start_world_updates_after=updates;
++        }
++        state.construction_final_updates=BenchmarkVisualEngine::frame_clock.world_updates;
++        const std::string after=hs_benchmark_fresh_menu_stage();
++        if (state.failed) return false;
++        if (!owned() || state.construction_final_updates!=updates) { fail("construction_world_clock_changed");return false; }
++        if (after==before || (after!="overwrite_confirmation" && after!="hangar" && after!="start_pending")) {
++            fail("construction_menu_no_progress");return false;
++        }
++        ++state.completed_construction_clicks;
++        return true;
++    } catch (...) {
++        diagnostic.call_exception=true;diagnostic.after=capture_menu_snapshot();
++        fail("construction_exception");return false;
++    }
++#else
++    return false;
++#endif
++}
++
++#if defined(_WIN32) && defined(__i386__)
++// Read-only predicates used by hooks; receipts never drive or finalize state.
++namespace BenchmarkFreshStartSeed {
++bool current_world(const WorldManager* world) {
++    CApp* app=Global::GetInstance()->GetCApp();return app && app->world==world;
++}
++bool completion_world_frozen() {
++    const auto& clock=BenchmarkVisualEngine::frame_clock;
++    return clock.owned && !clock.advancing && !clock.update_permitted() &&
++           clock.world_updates==state.start_world_updates_before;
++}
++}
++namespace BenchmarkFreshStartCompletionHooks {
++HOOK_METHOD_PRIORITY(CFPS, OnLoop, -1000000, () -> void)
++{
++    super(); // Includes ordinary bookkeeping and the existing clock2 hook.
++    using namespace BenchmarkFreshStartSeed;
++    if (state.completion_scope_active && this==Global::GetInstance()->GetCFPS()) {
++        this->SpeedFactor=16.f/60.f;++state.start_cfps_fixed_applications;
++    }
++}
++HOOK_METHOD_PRIORITY(CApp, OnLoop, -1000000, () -> void)
++{
++    using namespace BenchmarkFreshStartSeed;
++    if (!state.start_pending) { super();return; }
++    CFPS* fps=Global::GetInstance()->GetCFPS();
++    if (this!=Global::GetInstance()->GetCApp() || !fps || state.failed || state.start_completion_callbacks ||
++        !completion_world_frozen() || state.seed_thread_id!=GetCurrentThreadId()) {
++        fail("invalid_start_completion_admission");return;
++    }
++    ++state.start_completion_callbacks;
++    state.start_thread_id=GetCurrentThreadId();
++    try {
++        ConstructionScope scope(fps,true);
++        super(); // MainMenu consumes bDone; CApp normally invokes StartGame.
++        state.start_world_updates_after=BenchmarkVisualEngine::frame_clock.world_updates;
++        if (!state.failed && (!state.start_completed || state.start_game_calls!=1 || state.start_game_returns!=1 ||
++            state.start_cfps_fixed_applications!=1 || state.start_hangar_onloop_requests!=1 ||
++            !BenchmarkVisualEngine::frame_clock.owned || state.start_world_updates_after!=state.start_world_updates_before))
++            fail("incomplete_start_completion");
++    } catch (...) { fail("start_completion_exception"); }
++}
++HOOK_METHOD_PRIORITY(ShipBuilder, OnLoop, -1000000, () -> void)
++{
++    using namespace BenchmarkFreshStartSeed;
++    CApp* app=Global::GetInstance()->GetCApp();
++    if (state.applied && owned() && app && app->world && this==&app->menu.shipBuilder && !app->world->bStartedGame) {
++        if (state.completion_scope_active && state.start_pending) {
++            ++state.start_hangar_onloop_requests;
++            if (state.start_hangar_onloop_requests!=1) { ++state.start_extra_hangar_dwell;fail("extra_completion_hangar_dwell"); }
++        } else { ++state.start_extra_hangar_dwell;fail("unbudgeted_seeded_hangar_dwell"); }
++        return; // Avoid ShipManager/crew-factory aging; GetShip still consumes bDone normally.
++    }
++    if (state.completion_scope_active) ++state.start_hangar_onloop_executed;
++    super();
++}
++HOOK_METHOD_PRIORITY(WorldManager, StartGame, -1000000, (ShipManager* ship) -> void)
++{
++    using namespace BenchmarkFreshStartSeed;
++    if (!state.applied || !current_world(this)) { super(ship);return; }
++    const float fixed=16.f/60.f;CFPS* fps=Global::GetInstance()->GetCFPS();
++    if (!state.completion_scope_active || !state.start_pending || state.failed || !completion_world_frozen() ||
++        state.start_game_calls || !fps || float_bits(fps->SpeedFactor)!=float_bits(fixed)) {
++        fail("invalid_start_game_boundary");return;
++    }
++    ++state.start_game_calls;state.start_speed_factor_bits=float_bits(fps->SpeedFactor);
++    super(ship);++state.start_game_returns;
++    state.start_world_updates_after=BenchmarkVisualEngine::frame_clock.world_updates;
++    state.start_world_frozen=completion_world_frozen();
++    state.start_timing_controlled=state.start_world_frozen && state.start_cfps_fixed_applications==1 && this->bStartedGame;
++    if (!state.start_timing_controlled) { fail("start_game_clock_changed");return; }
++    // Completed before post-loop Lua tick. The separate scope remains active
++    // through that callback, holding later World loops even after pending clears.
++    state.start_pending=false;state.start_completed=true;
++}
++HOOK_METHOD_PRIORITY(WorldManager, OnLoop, -1000000, () -> void)
++{
++    using namespace BenchmarkFreshStartSeed;
++    if (state.completion_scope_active && current_world(this)) { ++state.start_world_onloop_blocked;return; }
++    if (state.applied && owned() && !BenchmarkVisualEngine::frame_clock.update_permitted() && current_world(this)) {
++        ++state.frozen_world_onloop_blocked;return;
++    }
++    super();
++}
++HOOK_METHOD_PRIORITY(WorldManager, PauseLoop, -1000000, () -> void)
++{
++    using namespace BenchmarkFreshStartSeed;
++    if (state.completion_scope_active && current_world(this)) { ++state.start_pause_loop_blocked;return; }
++    if (state.applied && owned() && !BenchmarkVisualEngine::frame_clock.update_permitted() && current_world(this)) {
++        ++state.frozen_pause_loop_blocked;return;
++    }
++    super();
++}
++}
++#endif
++
++// ZHL installs descending priority: later lower priorities wrap earlier hooks.
++// No existing Open wrapper has this priority; both default wrappers are inside.
++namespace BenchmarkFreshStartSeedHooks {
++HOOK_METHOD_PRIORITY(ShipBuilder, Open, -1000000, () -> void)
++{
++    using namespace BenchmarkFreshStartSeed;
++    if (!state.pending) { super();return; }
++    CApp* app=Global::GetInstance()->GetCApp();
++    state.pending=false;
++    state.names_before_seed=totals.names;state.ship_inits_before_seed=totals.ship_inits;
++    state.unclassified_names_before_seed=totals.names>=totals.utility_name_calls?totals.names-totals.utility_name_calls:totals.names;
++    state.intervening_names_after_arm=totals.names-state.names_before_arm;
++    BlueprintManager* blueprints=Global::GetInstance()->GetBlueprints();
++    if (!app || !app->world || app->world->bStartedGame || this!=&app->menu.shipBuilder ||
++        !known_utility() || totals.names!=totals.utility_name_calls || state.intervening_names_after_arm ||
++        state.ship_inits_before_seed || !record_empty_factory(false) || !sole_utility_reservation(blueprints) ||
++        !owned() || !state.construction_scope_active) {
++        fail("invalid_or_late_open_boundary");return;
++    }
++    state.owned_at_boundary=owned();
++#if defined(_WIN32) && defined(__i386__)
++    state.update_permitted_at_boundary=BenchmarkVisualEngine::frame_clock.update_permitted();
++    CFPS* fps=Global::GetInstance()->GetCFPS();
++    if (fps) state.speed_factor_bits_at_boundary=float_bits(fps->SpeedFactor);
++    const float fixed_factor=16.f/60.f;
++    if (!fps || state.speed_factor_bits_at_boundary!=float_bits(fixed_factor)) {
++        fail("construction_factor_not_fixed");return;
++    }
++    if (totals.utility_thread_id!=GetCurrentThreadId()) { fail("utility_seed_thread_changed");return; }
++    state.fixed_creation_timing=true;
++    state.reservations_before_reset=blueprints->currentNames.size();
++    state.reservation_names_before_reset=blueprints->currentNames;
++    state.reservation_reset_thread_id=GetCurrentThreadId();
++    // Normal SetUsedCrewNames is exactly vector assignment. With a proven empty
++    // real factory, clear only the known orphan utility reservation, once here.
++    blueprints->currentNames.clear();++state.reservation_reset_applications;
++    state.reservations_after_reset=blueprints->currentNames.size();
++    state.reservation_reset_verified=blueprints->currentNames.empty();
++    if (!state.reservation_reset_verified) { fail("clean_start_reservation_reset_failed");return; }
++    state.seed_thread_id=GetCurrentThreadId();
++    // Exactly one application each in the same DLL/thread as this native hook.
++    srandom32(state.seed);++state.native_applications;
++    std::srand(state.seed);++state.c_runtime_applications;
++    state.applied=true;
++    struct OpenScope { OpenScope() { state.in_open=true; } ~OpenScope() { state.in_open=false; } } open_scope;
++    super();
++#else
++    fail("unsupported_platform");
++#endif
++}
++
++HOOK_METHOD_PRIORITY(BlueprintManager, GetUnusedCrewName, -1000000, (bool* isMale_ret) -> std::string)
++{
++    using namespace BenchmarkFreshStartSeed;
++    ++totals.names;
++    if (state.pending) {
++        state.names_before_seed=totals.names;
++        state.unclassified_names_before_seed=totals.names-totals.utility_name_calls;
++        state.intervening_names_after_arm=totals.names-state.names_before_arm;
++    }
++    if (state.applied) ++state.names_after_seed;
++    if (state.in_open) ++state.names_during_open;
++    std::string value=super(isMale_ret);
++    if (totals.utility_scope_active) {
++        ++totals.utility_name_calls;
++        if (totals.utility_name_calls!=1) totals.utility_lookup_valid=false;
++        totals.utility_name=value;
++    }
++    return value;
++}
++
++HOOK_METHOD_PRIORITY(ShipManager, OnInit, -1000000, (ShipBlueprint* blueprint,int ship_level) -> int)
++{
++    using namespace BenchmarkFreshStartSeed;
++    ++totals.ship_inits;
++    if (state.pending) state.ship_inits_before_seed=totals.ship_inits;
++    if (state.applied) ++state.ship_inits_after_seed;
++    if (state.in_open) ++state.ship_inits_during_open;
++    return super(blueprint,ship_level);
++}
++
++HOOK_METHOD_PRIORITY(MainMenu, constructor, -1000000, () -> void)
++{
++    using namespace BenchmarkFreshStartSeed;
++    const unsigned long long before=totals.names;
++    ++totals.main_menu_constructors;super();
++    totals.names_in_main_menu_constructor+=totals.names-before;
++}
++
++HOOK_METHOD_PRIORITY(ShipBuilder, constructor, -1000000, () -> void)
++{
++    using namespace BenchmarkFreshStartSeed;
++    const unsigned long long before=totals.names;
++    ++totals.ship_builder_constructors;super();
++    totals.names_in_ship_builder_constructor+=totals.names-before;
++}
++}
+diff --git a/Benchmark_FreshStartUtility.h b/Benchmark_FreshStartUtility.h
+new file mode 100644
+index 0000000..219aaba
+--- /dev/null
++++ b/Benchmark_FreshStartUtility.h
+@@ -0,0 +1,14 @@
++#pragma once
++#include <string>
++// Candidate v3: provenance scope only around the known utility blueprint lookup.
++namespace BenchmarkFreshStartSeed {
++struct UtilityNameScope {
++    bool finished=false;
++    UtilityNameScope();
++    ~UtilityNameScope();
++    void complete(const std::string& captured_name);
++};
++}
++
++// Read-only private SaveFile dialog state; no event dispatch.
++namespace BenchmarkFreshStartSeed { bool save_transfer_dialog_open(); }
+diff --git a/Benchmark_Routing.h b/Benchmark_Routing.h
+new file mode 100644
+index 0000000..5dfc158
+--- /dev/null
++++ b/Benchmark_Routing.h
+@@ -0,0 +1,79 @@
++#pragma once
++#include "Benchmark_Economy.h"
++#include <vector>
++
++namespace BenchmarkRouting {
++// FTLButton::MouseClick and CommandGui::LButtonDown both require a full native
++// timer, including outside combat. Never substitute enemy absence/death for it.
++struct TravelContext {
++    BenchmarkEconomy::Context game;
++    bool button_active = false;
++    bool engines = false;
++    bool piloting = false;
++    bool enemy_defeat_pending = false;
++    int fuel = 0;
++    float charge = 0.f;
++    float required_charge = 0.f;
++
++    const char* refusal_reason() const
++    {
++        if (!game.started || game.main_menu) return "game_unavailable";
++        if (game.game_over || game.destroyed) return "game_over";
++        if (game.mid_warp) return "mid_warp";
++        if (game.pending_travel || game.pending_sector) return "transition_pending";
++        if (game.waiting) return "fuel_wait_pending";
++        if (game.modal) return "modal_open";
++        if (fuel < 1) return "no_fuel";
++        if (!button_active) return "ftl_button_inactive";
++        if (!engines) return "engines_unavailable";
++        if (!piloting) return "piloting_unavailable";
++        if (!(charge >= required_charge)) return "drive_charging";
++        return nullptr;
++    }
++};
++
++inline bool hull_defeat_pending(bool destroyed, bool animation_done, bool native_processed)
++{
++    return destroyed && (!animation_done || !native_processed);
++}
++
++// Accepted surrender retains a live ship object. Only the native combat
++// hostility flag makes that surviving ship block a sector departure.
++inline bool sector_enemy_blocks(bool hostile, bool destroyed)
++{
++    return hostile && !destroyed;
++}
++
++// Native crew defeat uses the factory's surviving/clone crew counters and the
++// automation flag. It does not require a hull explosion. Once WorldManager
++// clears hostility its death event was handled; an open reward dialog is modal.
++inline bool crew_defeat_pending(bool hostile, bool automated, int crew, int clones,
++                                bool clone_system_functioning)
++{
++    return hostile && !automated &&
++           (crew - (clone_system_functioning ? 0 : clones)) == 0;
++}
++
++template<class Neighbors, class Travel>
++bool request_beacon(const TravelContext& context, int index, const Neighbors& neighbors,
++                    Travel travel)
++{
++    if (context.refusal_reason() || index < 0 ||
++        index >= static_cast<int>(neighbors.size()) || !neighbors[index]) return false;
++    travel(neighbors[index]);
++    return true;
++}
++
++// Sector buttons and NeighboringSector use global indices into StarMap.sectors.
++// GetRandomSectorChoice generates a sector type (0..2), not one of these indices.
++template<class Neighboring, class Random>
++int choose_sector_index(int count, Neighboring neighboring, Random random)
++{
++    std::vector<int> choices;
++    for (int index = 0; index < count; ++index) {
++        if (neighboring(index)) choices.push_back(index);
++    }
++    if (choices.empty()) return -1;
++    return choices[static_cast<unsigned>(random()) % choices.size()];
++}
++}
+diff --git a/Benchmark_Visual.h b/Benchmark_Visual.h
+new file mode 100644
+index 0000000..71a346e
+--- /dev/null
++++ b/Benchmark_Visual.h
+@@ -0,0 +1,207 @@
++#pragma once
++#include <algorithm>
++#include <cstdint>
++#include <cstdlib>
++#include <cstring>
++#include <string>
++#include <vector>
++
++// Pure helpers shared by the engine binding and executable offline regressions.
++namespace BenchmarkVisual {
++// Native world time is owned explicitly by the visual controller. The permit
++// survives the post-world Lua tick through that frame's render: ship rendering
++// also advances jump trackers. Ambient renders never gain a world permit.
++struct FrameClock {
++    // Each admitted update represents one declared 1/60 second step. FTL's
++    // conventional duration conversions multiply SpeedFactor by 1/16.
++    static float fixed_speed_factor() { return 16.f / 60.f; }
++    bool owned=false,advancing=false,frame_permitted=false,world_updated=false;
++    uint64_t world_updates=0;
++    void control(bool enabled,bool advance) {
++        if (!enabled) { owned=false; advancing=false; frame_permitted=false; world_updated=false; return; }
++        if (!owned) { frame_permitted=false; world_updated=false; }
++        owned=true; advancing=advance;
++    }
++    void begin_frame() { frame_permitted=!owned || advancing; world_updated=false; }
++    bool update_permitted() const { return !owned || frame_permitted; }
++    void completed_world_update() {
++        if (owned && frame_permitted && !world_updated) { ++world_updates; world_updated=true; }
++    }
++    bool render_permitted() const { return !owned || (frame_permitted && world_updated); }
++    void finish_render() { frame_permitted=false; world_updated=false; }
++};
++template <typename FPS>
++inline void apply_fixed_frame_speed(FPS& fps, const FrameClock& clock) {
++    if (clock.owned && clock.frame_permitted) fps.SpeedFactor=FrameClock::fixed_speed_factor();
++}
++inline bool choice_queued(bool open,int selected,size_t choices) {
++    return open && selected>=0 && static_cast<size_t>(selected)<choices;
++}
++// A process-lifetime monitor armed by the first visual capture. Recapturing
++// never erases interference. Coordinates are the physical SIL mouse position,
++// independent of the cursor moved by synthetic CApp input.
++struct ExternalInputGuard {
++    uint64_t generation=0;
++    unsigned synthetic_depth=0;
++    bool armed=false,detected=false;
++    float mouse_x=0.f,mouse_y=0.f;
++    void arm(float x,float y) {
++        if (armed) return;
++        mouse_x=x; mouse_y=y; armed=true;
++    }
++    void observe(bool meaningful,bool movement,float x=0.f,float y=0.f) {
++        if (synthetic_depth) return;
++        const bool changed=movement && (x!=mouse_x || y!=mouse_y);
++        if (movement) { mouse_x=x; mouse_y=y; }
++        if (!armed || !(meaningful || changed)) return;
++        ++generation; detected=true;
++    }
++};
++struct SyntheticInputScope {
++    ExternalInputGuard& guard;
++    explicit SyntheticInputScope(ExternalInputGuard& value) : guard(value) { ++guard.synthetic_depth; }
++    ~SyntheticInputScope() { --guard.synthetic_depth; }
++    SyntheticInputScope(const SyntheticInputScope&)=delete;
++    SyntheticInputScope& operator=(const SyntheticInputScope&)=delete;
++};
++inline bool point_valid(int x, int y, int width, int height)
++{
++    return width > 0 && height > 0 && x >= 0 && y >= 0 && x < width && y < height;
++}
++inline bool modifiers_valid(int modifiers) { return modifiers >= 0 && modifiers <= 3; }
++// Native CApp clears these tooltip display fields once before its UI loop.
++// A synthetic batch can visit several controls after that loop, so clear only
++// the display cache before recomputing each point's hover. Preserve armed
++// targeting, drag/cursor state and the normal tooltip delay/history.
++template<class Mouse> void clear_pointer_tooltip(Mouse& mouse)
++{
++    mouse.tooltip.clear();
++    mouse.tooltipTitle.clear();
++    mouse.bForceTooltip=false;
++    mouse.overrideTooltipWidth=-1;
++    mouse.staticTooltip.x=-1;
++    mouse.staticTooltip.y=-1;
++}
++// CApp::OnMouseMove updates the native cursor; GUI hover is normally deferred
++// until a later UI loop. A click primitive must refresh the same normal hover
++// handler before Down/Up, without running simulation or changing hover bits.
++template<class App> void mouse_move(App& app,int x,int y,int dx=0,int dy=0,bool left=false,bool right=false,
++                                   void (*before_hover)()=nullptr)
++{
++    if (before_hover) before_hover();
++    app.OnMouseMove(x,y,dx,dy,left,right,false);
++    const auto position=app.TranslateMouse(x,y);
++    if (app.langChooser.bOpen) return; // CApp already forwards this active window
++    if (app.menu.bOpen) app.menu.MouseMove(position.x,position.y);
++    else if (app.gui) app.gui->MouseMove(position.x,position.y);
++}
++template<class App> void mouse_click(App& app,int x,int y,int button,void (*before_hover)()=nullptr)
++{
++    mouse_move(app,x,y,0,0,false,false,before_hover);
++    if (button==0) { app.OnLButtonDown(x,y); app.OnLButtonUp(x,y); }
++    else { app.OnRButtonDown(x,y); app.OnRButtonUp(x,y); }
++}
++template<class App> void mouse_drag(App& app,int x,int y,int to_x,int to_y,int button,void (*before_hover)()=nullptr)
++{
++    mouse_move(app,x,y,0,0,false,false,before_hover);
++    if (button==0) app.OnLButtonDown(x,y); else app.OnRButtonDown(x,y);
++    const int steps=std::max(1,std::min(64,std::max(std::abs(to_x-x),std::abs(to_y-y))/12+1));
++    int previous_x=x,previous_y=y;
++    for (int i=1;i<=steps;++i) {
++        const int next_x=x+(to_x-x)*i/steps,next_y=y+(to_y-y)*i/steps;
++        mouse_move(app,next_x,next_y,next_x-previous_x,next_y-previous_y,button==0,button==1,before_hover);
++        previous_x=next_x; previous_y=next_y;
++    }
++    if (button==0) app.OnLButtonUp(to_x,to_y); else app.OnRButtonUp(to_x,to_y);
++}
++inline int polled_key_state(int modifiers,int key,int physical)
++{
++    if (modifiers >= 0) {
++        if (key == 0x4b || key == 0x4c) return (modifiers & 1) != 0;
++        if (key == 0x4d || key == 0x4e) return (modifiers & 2) != 0;
++    }
++    return physical;
++}
++template<class App> struct ModifierScope {
++    App& app;
++    int& injected;
++    bool shift, ctrl;
++    int previous;
++    ModifierScope(App& target,int& state,int modifiers) : app(target),injected(state),
++        shift(target.shift_held),ctrl(target.lCtrl),previous(state)
++    {
++        injected=modifiers; app.shift_held=(modifiers&1)!=0; app.lCtrl=(modifiers&2)!=0;
++    }
++    ~ModifierScope() { app.shift_held=shift; app.lCtrl=ctrl; injected=previous; }
++};
++inline int key_code(const std::string& key)
++{
++    if (key.size() == 1 && ((key[0] >= 'a' && key[0] <= 'z') ||
++        (key[0] >= '0' && key[0] <= '9') || std::strchr("`-=[]\\;',./", key[0]))) return key[0];
++    struct Key { const char* name; int code; };
++    const Key keys[] = {{"space",32},{"escape",27},{"enter",13},{"tab",9},
++        {"backspace",8},{"delete",127},{"up",0x111},{"down",0x112},
++        {"right",0x113},{"left",0x114},{"insert",0x115},{"home",0x116},
++        {"end",0x117},{"pageup",0x118},{"pagedown",0x119},
++        {"f1",0x11a},{"f2",0x11b},{"f3",0x11c},{"f4",0x11d},
++        {"f5",0x11e},{"f6",0x11f},{"f7",0x120},{"f8",0x121},
++        {"f9",0x122},{"f10",0x123},{"f11",0x124},{"f12",0x125}};
++    for (const auto& entry : keys) if (key == entry.name) return entry.code;
++    return -1;
++}
++inline void be32(std::vector<unsigned char>& out, uint32_t value)
++{
++    for (int shift = 24; shift >= 0; shift -= 8) out.push_back((value >> shift) & 255);
++}
++inline uint32_t crc32(const unsigned char* data, size_t size)
++{
++    uint32_t crc = 0xffffffff;
++    for (size_t i = 0; i < size; ++i) {
++        crc ^= data[i];
++        for (int bit = 0; bit < 8; ++bit) crc = (crc >> 1) ^ (0xedb88320U & (0U - (crc & 1)));
++    }
++    return ~crc;
++}
++inline void chunk(std::vector<unsigned char>& out, const char* type, const std::vector<unsigned char>& data)
++{
++    be32(out, static_cast<uint32_t>(data.size()));
++    const size_t begin = out.size();
++    out.insert(out.end(), type, type + 4);
++    out.insert(out.end(), data.begin(), data.end());
++    be32(out, crc32(out.data() + begin, out.size() - begin));
++}
++// SIL readback is bottom-to-top RGBA8. PNG is top-to-bottom RGB8. Stored DEFLATE
++// blocks avoid backend/codec dependencies and preserve every rendered pixel.
++inline std::vector<unsigned char> png(const std::vector<unsigned char>& rgba, int width, int height)
++{
++    if (width <= 0 || height <= 0 || width > 8192 || height > 8192 ||
++        rgba.size() != static_cast<size_t>(width) * height * 4) return {};
++    std::vector<unsigned char> raw;
++    raw.reserve(static_cast<size_t>(width * 3 + 1) * height);
++    for (int y = height - 1; y >= 0; --y) {
++        raw.push_back(0); // PNG filter None
++        for (int x = 0; x < width; ++x) {
++            const size_t offset = (static_cast<size_t>(y) * width + x) * 4;
++            raw.insert(raw.end(), rgba.begin() + offset, rgba.begin() + offset + 3);
++        }
++    }
++    std::vector<unsigned char> compressed = {0x78, 0x01};
++    for (size_t offset = 0; offset < raw.size();) {
++        const unsigned length = static_cast<unsigned>(std::min<size_t>(65535, raw.size() - offset));
++        compressed.push_back(offset + length == raw.size() ? 1 : 0);
++        compressed.push_back(length & 255); compressed.push_back(length >> 8);
++        compressed.push_back((~length) & 255); compressed.push_back(((~length) >> 8) & 255);
++        compressed.insert(compressed.end(), raw.begin() + offset, raw.begin() + offset + length);
++        offset += length;
++    }
++    uint32_t a = 1, b = 0;
++    for (const auto byte : raw) { a = (a + byte) % 65521; b = (b + a) % 65521; }
++    be32(compressed, (b << 16) | a);
++    std::vector<unsigned char> out = {137,80,78,71,13,10,26,10};
++    std::vector<unsigned char> header;
++    be32(header, width); be32(header, height);
++    header.insert(header.end(), {8,2,0,0,0});
++    chunk(out, "IHDR", header); chunk(out, "IDAT", compressed); chunk(out, "IEND", {});
++    return out;
++}
++} // namespace BenchmarkVisual
+diff --git a/Benchmark_VisualEngine.inc b/Benchmark_VisualEngine.inc
+new file mode 100644
+index 0000000..6c8d2ed
+--- /dev/null
++++ b/Benchmark_VisualEngine.inc
+@@ -0,0 +1,402 @@
++// Included in Benchmark_Extend.cpp after the existing observation transport.
++// The SIL functions are the game's backend-neutral renderer API, used by both
++// D3D11 and OpenGL. Reading before finish_frame captures the current client frame.
++#if defined(_WIN32) && defined(__i386__)
++namespace BenchmarkVisualEngine {
++    void* read_pixels_address = nullptr;
++    void* width_address = nullptr;
++    void* height_address = nullptr;
++    void* finish_address = nullptr;
++    void* key_state_address = nullptr;
++    void* mouse_position_address = nullptr;
++    const short read_args[] = {0x1ff,0x1ff,0x1ff,0x1ff,0x1ff};
++    ZHL::FunctionDefinition read_def("benchmark_graphics_read_pixels", typeid(int (*)(int,int,int,int,void*)),
++        "5589e557565383e4f083ec208b45188b55088b4d0c8b5d1085c0", read_args,5,2,&read_pixels_address);
++    ZHL::FunctionDefinition width_def("benchmark_graphics_width", typeid(int (*)()),
++        "a1????????c38d76008dbc2700000000a1????????c38d76008dbc27000000005589e583e4f083ec30", nullptr,0,2,&width_address);
++    ZHL::FunctionDefinition height_def("benchmark_graphics_height", typeid(int (*)()),
++        "a1????????c38d76008dbc27000000005589e583e4f083ec308d44242cc744242800000000", nullptr,0,2,&height_address);
++    ZHL::FunctionDefinition finish_def("benchmark_graphics_finish_frame", typeid(void (*)()),
++        "5589e583e4f0e8????????c9c38d76005589e583e4f083ec10c7042400000000", nullptr,0,6,&finish_address);
++    const short key_args[] = {0x1ff};
++    ZHL::FunctionDefinition key_def("benchmark_input_key_state", typeid(int (*)(int)),
++        "31c0803d????????0074168b4c24048d51ff81fa9000000077070fb681????????f3c3", key_args,1,2,&key_state_address);
++    const short mouse_position_args[] = {0x1ff,0x1ff};
++    ZHL::FunctionDefinition mouse_position_def("benchmark_input_mouse_position", typeid(void (*)(float*,float*)),
++        "8b5424048b44240885d2740cf30f1005????????f30f110285c0740cf30f1005????????f30f1100f3c3", mouse_position_args,2,6,&mouse_position_address);
++    BenchmarkVisual::ExternalInputGuard external_input;
++    BenchmarkVisual::FrameClock frame_clock;
++    bool in_render = false;
++    unsigned long long render_frame = 0;
++    unsigned long long capture_counter = 0;
++    const unsigned long long session_id = []() -> unsigned long long {
++        FILETIME time;
++        GetSystemTimeAsFileTime(&time);
++        return (static_cast<unsigned long long>(time.dwHighDateTime) << 32) | time.dwLowDateTime;
++    }();
++    int injected_modifiers = -1;
++    bool available() { return read_pixels_address && width_address && height_address && finish_address && key_state_address && mouse_position_address; }
++    int width() { return available() ? reinterpret_cast<int (*)()>(width_address)() : 0; }
++    int height() { return available() ? reinterpret_cast<int (*)()>(height_address)() : 0; }
++    bool point(int x,int y) { return BenchmarkVisual::point_valid(x,y,width(),height()); }
++    CApp* input_app()
++    {
++        CApp* app = Global::GetInstance()->GetCApp();
++        return available() && app && app->gui && !app->minimized ? app : nullptr;
++    }
++    void clear_pointer_tooltip()
++    {
++        MouseControl* mouse=Global::GetInstance()->GetMouseControl();
++        if (mouse) BenchmarkVisual::clear_pointer_tooltip(*mouse);
++    }
++    void refresh_pointer_hover(CApp* app)
++    {
++        MouseControl* mouse=Global::GetInstance()->GetMouseControl();
++        if (!app || !mouse) return;
++        clear_pointer_tooltip();
++        // Keyboard handlers may change the active window without moving the
++        // cursor. Recompute normal hover at its already-translated GUI point;
++        // preserve native tooltip delay and do not synthesize a mouse event.
++        const Point position=mouse->position;
++        if (app->langChooser.bOpen) app->langChooser.MouseMove(position.x,position.y);
++        else if (app->menu.bOpen) app->menu.MouseMove(position.x,position.y);
++        else if (app->gui) app->gui->MouseMove(position.x,position.y);
++    }
++    void refresh_idle_map_ui(CApp* app)
++    {
++        if (!frame_clock.owned || frame_clock.advancing || !app || !app->gui || !app->world ||
++            !app->world->bStartedGame || app->gui->gameover || app->gui->alreadyWon) return;
++        CompleteShip* ship=app->world->playerShip;
++        if (!ship || !ship->shipManager || ship->shipManager->bJumping) return;
++        StarMap& map=app->world->starMap;
++        if (!map.bOpen || map.bChoosingNewSector || map.readyToTravel ||
++            map.waiting.running || map.potentialLoc) return;
++        // CustomMap::OnLoop owns the native fuel mode and active-button cache.
++        // With sector/travel/wait work excluded, this is an ordinary UI refresh;
++        // no sector commit, UpdateDangerZone or world update can run here.
++        map.OnLoop();
++    }
++    // Scoped cached input bits plus the normal SIL poll cover native callbacks
++    // without leaving held keys behind or changing physical keyboard state.
++    using ModifierScope = BenchmarkVisual::ModifierScope<CApp>;
++}
++
++// Native pause still runs PauseLoop/GUI travel commits. Keep those world paths
++// frozen while retaining CApp input, render, and its post-loop Lua controller.
++HOOK_METHOD_PRIORITY(CApp, OnLoop, 99999, () -> void)
++{
++    BenchmarkVisualEngine::frame_clock.begin_frame();
++    super();
++}
++HOOK_METHOD_PRIORITY(CFPS, OnLoop, 99999, () -> void)
++{
++    // FTL 1.6.9 CApp::OnLoop calls this before WorldManager and CommandGui.
++    // Keep native wall-time bookkeeping and ambient UI timing, then replace
++    // only the permitted benchmark frame's base simulation factor. The value
++    // survives its render, including jump trackers; the next native OnLoop
++    // recomputes ordinary timing. Gameplay GetSpeedFactor multipliers remain
++    // in their existing hook chain, and local temporary field scales remain.
++    super();
++    if (this==Global::GetInstance()->GetCFPS())
++        BenchmarkVisual::apply_fixed_frame_speed(*this,BenchmarkVisualEngine::frame_clock);
++}
++HOOK_METHOD_PRIORITY(WorldManager, OnLoop, 99999, () -> void)
++{
++    auto& clock=BenchmarkVisualEngine::frame_clock;
++    CApp* app=Global::GetInstance()->GetCApp();
++    const bool current=app && app->world==this;
++    if (current && !clock.update_permitted()) return;
++    super();
++    if (current) clock.completed_world_update();
++}
++HOOK_METHOD_PRIORITY(WorldManager, PauseLoop, 99999, () -> void)
++{
++    auto& clock=BenchmarkVisualEngine::frame_clock;
++    CApp* app=Global::GetInstance()->GetCApp();
++    const bool current=app && app->world==this;
++    if (current && !clock.update_permitted()) return;
++    super();
++    if (current) clock.completed_world_update();
++}
++HOOK_METHOD_PRIORITY(CommandGui, OnLoop, 99999, () -> void)
++{
++    CApp* app=Global::GetInstance()->GetCApp();
++    const bool current=app && app->gui==this;
++    if (current && !BenchmarkVisualEngine::frame_clock.update_permitted()) {
++        // CApp still resets and ages tooltips every UI frame. Replay only the
++        // ordinary stationary hover after that reset, never GUI/world OnLoop.
++        BenchmarkVisualEngine::refresh_pointer_hover(app);
++        return;
++    }
++    super();
++}
++HOOK_METHOD_PRIORITY(AnimationTracker, Update, 99999, () -> void)
++{
++    if (!BenchmarkVisualEngine::frame_clock.render_permitted()) {
++        CApp* app=Global::GetInstance()->GetCApp();
++        if (app && app->world) {
++            const auto is_jump=[this](CompleteShip* ship) {
++                return ship && ship->shipManager && this==&ship->shipManager->jumpAnimation;
++            };
++            if (is_jump(app->world->playerShip)) return;
++            for (CompleteShip* ship : app->world->ships) if (is_jump(ship)) return;
++        }
++    }
++    super(); // all ordinary UI animation, including ChoiceBox openTime, continues
++}
++
++// Only the normal input-event boundary is observed. Synthetic primitives call
++// CApp handlers directly and are additionally scoped for nested native dispatch.
++HOOK_METHOD(CEvent, OnEvent, (const InputEvent* event) -> void)
++{
++    using namespace BenchmarkVisualEngine;
++    CApp* app=Global::GetInstance()->GetCApp();
++    if (event && app && this==static_cast<CEvent*>(app)) {
++        bool meaningful=false,movement=false;
++        float x=0.f,y=0.f;
++        switch (event->type) {
++        case INPUT_EVENT_MOUSE: {
++            const auto* mouse=reinterpret_cast<const MouseInputEvent*>(&event->event);
++            x=mouse->x; y=mouse->y;
++            movement=event->detail==INPUT_MOUSE_MOVE;
++            meaningful=(event->detail>=INPUT_MOUSE_LMB_DOWN && event->detail<=INPUT_MOUSE_RMB_UP) ||
++                ((event->detail==INPUT_MOUSE_SCROLL_H || event->detail==INPUT_MOUSE_SCROLL_V) && mouse->scroll!=0.f);
++            break;
++        }
++        case INPUT_EVENT_KEYBOARD:
++        case INPUT_EVENT_TEXT:
++        case INPUT_EVENT_TOUCH: meaningful=true; break;
++        case INPUT_EVENT_JOYSTICK:
++            meaningful=event->detail>=INPUT_JOYSTICK_BUTTON_DOWN && event->detail<=INPUT_JOYSTICK_STICK_CHANGE;
++            break;
++        default: break; // memory pressure and device connection are not input
++        }
++        external_input.observe(meaningful,movement,x,y);
++    }
++    super(event); // user input keeps its ordinary game behavior
++}
++
++HOOK_GLOBAL(benchmark_input_key_state, (int key) -> int)
++{
++    const int modifiers = BenchmarkVisualEngine::injected_modifiers;
++    return BenchmarkVisual::polled_key_state(modifiers,key,super(key));
++}
++
++HOOK_GLOBAL(benchmark_graphics_finish_frame, () -> void)
++{
++    using namespace BenchmarkVisualEngine;
++    ++render_frame;
++    in_render = true;
++    auto context = Global::GetInstance()->getLuaContext();
++    if (context && context->GetLua()) {
++        lua_State* lua = context->GetLua();
++        const int top = lua_gettop(lua);
++        lua_getglobal(lua,"ftl_bench_visual_render");
++        if (lua_isfunction(lua,-1) && lua_pcall(lua,0,0,0) != 0)
++            hs_log_file("[Benchmark] visual render callback failed: %s\n",lua_tostring(lua,-1));
++        lua_settop(lua,top);
++    }
++    in_render = false;
++    frame_clock.finish_render();
++    super();
++}
++#endif
++
++const char* hs_benchmark_visual_capabilities()
++{
++#if defined(_WIN32) && defined(__i386__)
++    static std::string result;
++    if (!BenchmarkVisualEngine::available()) return "{\"visual_io_version\":0,\"capture\":false,\"input\":false}";
++    std::ostringstream json;
++    json << "{\"visual_io_version\":1,\"capture\":true,\"input\":true,\"modifiers\":[\"shift\",\"ctrl\"],\"format\":\"png\",\"coordinate_space\":\"client\",\"width\":"
++         << BenchmarkVisualEngine::width() << ",\"height\":" << BenchmarkVisualEngine::height()
++         << ",\"visual_clock_version\":2,\"fixed_step_numerator\":1,\"fixed_step_denominator\":60,\"simulated_updates\":\""
++         << BenchmarkVisualEngine::frame_clock.world_updates << "\",\"world_updates\":\"" << BenchmarkVisualEngine::frame_clock.world_updates
++         << "\",\"external_input_guard\":true,\"external_input_generation\":\"" << BenchmarkVisualEngine::external_input.generation
++         << "\",\"external_input_detected\":" << (BenchmarkVisualEngine::external_input.detected ? "true" : "false") << '}';
++    result=json.str(); return result.c_str();
++#else
++    return "{\"visual_io_version\":0,\"capture\":false,\"input\":false}";
++#endif
++}
++
++bool hs_benchmark_visual_set_clock(bool enabled,bool advancing)
++{
++#if defined(_WIN32) && defined(__i386__)
++    if (!BenchmarkVisualEngine::available()) return false;
++    BenchmarkVisualEngine::frame_clock.control(enabled,advancing);
++    return true;
++#else
++    return false;
++#endif
++}
++
++namespace {
++const char* visual_blocked_reason(CApp* app)
++{
++    if (!app || !app->gui || !app->world || !app->world->bStartedGame) return "no_game";
++    CommandGui& gui = *app->gui;
++    StarMap& map = app->world->starMap;
++    const bool jumping=app->world->playerShip && app->world->playerShip->shipManager &&
++        app->world->playerShip->shipManager->bJumping;
++    // Native clicks queue sector selection and fuel waiting before OnLoop
++    // commits them. Permit only those accepted map operations, not an idle map.
++    const int sector=map.finalSectorChoice;
++    const bool queued_sector=map.bOpen && map.bChoosingNewSector && map.currentSector &&
++        sector>=0 && static_cast<size_t>(sector)<map.sectors.size() &&
++        map.sectors[sector] && map.NeighboringSector(sector);
++    const bool map_progress=map.readyToTravel || jumping || queued_sector || map.waiting.running;
++    const bool queued_choice=BenchmarkVisual::choice_queued(gui.choiceBoxOpen || gui.choiceBox.bOpen,
++        gui.choiceBox.selectedChoice,gui.choiceBox.choices.size());
++    if (gui.gameover || gui.alreadyWon) return "terminal";
++    // RenderStatic skips regular choice/focus windows while the ship is jumping.
++    // A staged arrival dialog must not stop its still-hidden reverse warp.
++    if (!jumping && !queued_choice && (gui.choiceBoxOpen || gui.choiceBox.bOpen)) return "choice_open";
++    if (gui.menuBox.bOpen) return "menu_open";
++    if (gui.optionsBox.bOpen) return "options_open";
++    if (gui.inputBox.bOpen) return "input_open";
++    if (gui.gameOverScreen.bOpen) return "game_over_screen";
++    if (gui.shipScreens.bOpen) return "ship_screen_open";
++    if (gui.storeScreens.bOpen) return "store_open";
++    if (gui.upgradeScreen.bOpen) return "upgrade_open";
++    if (gui.crewScreen.bOpen) return "crew_screen_open";
++    if (gui.equipScreen.bOpen) return "equipment_open";
++    if (gui.leaveCrewDialog.bOpen) return "leave_crew_dialog";
++    if (gui.writeErrorDialog.bOpen) return "write_error_dialog";
++    if (map.bOpen && !map_progress) return "map_open";
++    if (!jumping) {
++        for (FocusWindow* window : gui.focusWindows)
++            if (window && window->bOpen && !(window == &map && map_progress) &&
++                !(window == &gui.choiceBox && queued_choice)) return "focus_window_open";
++    }
++    return "";
++}
++}
++
++bool hs_benchmark_visual_simulation_blocked()
++{
++    return visual_blocked_reason(Global::GetInstance()->GetCApp())[0]!='\0';
++}
++
++bool hs_benchmark_mouse_move(int x,int y)
++{
++#if defined(_WIN32) && defined(__i386__)
++    CApp* app = BenchmarkVisualEngine::input_app();
++    if (!app || !BenchmarkVisualEngine::point(x,y)) return false;
++    BenchmarkVisual::SyntheticInputScope synthetic(BenchmarkVisualEngine::external_input);
++    BenchmarkVisualEngine::refresh_idle_map_ui(app);
++    BenchmarkVisual::mouse_move(*app,x,y,0,0,false,false,BenchmarkVisualEngine::clear_pointer_tooltip);
++    BenchmarkVisualEngine::refresh_idle_map_ui(app);
++    return true;
++#else
++    return false;
++#endif
++}
++bool hs_benchmark_mouse_click(int x,int y,int button,int modifiers)
++{
++#if defined(_WIN32) && defined(__i386__)
++    CApp* app = BenchmarkVisualEngine::input_app();
++    if (!app || !BenchmarkVisual::modifiers_valid(modifiers) || (button != 0 && button != 1) || !BenchmarkVisualEngine::point(x,y)) return false;
++    BenchmarkVisual::SyntheticInputScope synthetic(BenchmarkVisualEngine::external_input);
++    BenchmarkVisualEngine::ModifierScope held(*app,BenchmarkVisualEngine::injected_modifiers,modifiers);
++    BenchmarkVisualEngine::refresh_idle_map_ui(app);
++    BenchmarkVisual::mouse_click(*app,x,y,button,BenchmarkVisualEngine::clear_pointer_tooltip);
++    BenchmarkVisualEngine::refresh_idle_map_ui(app);
++    return true;
++#else
++    return false;
++#endif
++}
++bool hs_benchmark_mouse_drag(int x,int y,int to_x,int to_y,int button,int modifiers)
++{
++#if defined(_WIN32) && defined(__i386__)
++    CApp* app = BenchmarkVisualEngine::input_app();
++    if (!app || !BenchmarkVisual::modifiers_valid(modifiers) || (button != 0 && button != 1) ||
++        !BenchmarkVisualEngine::point(x,y) || !BenchmarkVisualEngine::point(to_x,to_y)) return false;
++    BenchmarkVisual::SyntheticInputScope synthetic(BenchmarkVisualEngine::external_input);
++    BenchmarkVisualEngine::ModifierScope held(*app,BenchmarkVisualEngine::injected_modifiers,modifiers);
++    BenchmarkVisualEngine::refresh_idle_map_ui(app);
++    BenchmarkVisual::mouse_drag(*app,x,y,to_x,to_y,button,BenchmarkVisualEngine::clear_pointer_tooltip);
++    BenchmarkVisualEngine::refresh_idle_map_ui(app);
++    return true;
++#else
++    return false;
++#endif
++}
++bool hs_benchmark_key_press(const char* key,int modifiers)
++{
++#if defined(_WIN32) && defined(__i386__)
++    CApp* app = BenchmarkVisualEngine::input_app();
++    const int code = key ? BenchmarkVisual::key_code(key) : -1;
++    if (!app || !BenchmarkVisual::modifiers_valid(modifiers) || code < 0) return false;
++    BenchmarkVisual::SyntheticInputScope synthetic(BenchmarkVisualEngine::external_input);
++    BenchmarkVisualEngine::ModifierScope held(*app,BenchmarkVisualEngine::injected_modifiers,modifiers);
++    BenchmarkVisualEngine::refresh_idle_map_ui(app);
++    app->OnKeyDown(static_cast<SDLKey>(code));
++    app->OnKeyUp(static_cast<SDLKey>(code));
++    BenchmarkVisualEngine::refresh_idle_map_ui(app);
++    BenchmarkVisualEngine::refresh_pointer_hover(app);
++    return true;
++#else
++    return false;
++#endif
++}
++
++const char* hs_benchmark_write_visual_observation(const char* observation,int seq,int tick,
++                                                int requested_frames,int actual_frames,const char* feedback)
++{
++    static std::string result;
++    result.clear();
++#if defined(_WIN32) && defined(__i386__)
++    using namespace BenchmarkVisualEngine;
++    CApp* app = Global::GetInstance()->GetCApp();
++    if (!available() || !frame_clock.owned || frame_clock.advancing || !in_render || !app || !app->gui || !app->gui->bPaused || !observation || !feedback) return result.c_str();
++    std::string json(observation);
++    if (json.size() < 2 || json.front() != '{' || json.back() != '}' || requested_frames < 0 ||
++        requested_frames > 600 || actual_frames < 0 || actual_frames > requested_frames) return result.c_str();
++    const int w = width(), h = height();
++    if (w <= 0 || h <= 0 || w > 8192 || h > 8192) return result.c_str();
++    std::vector<unsigned char> pixels(static_cast<size_t>(w)*h*4);
++    if (!reinterpret_cast<int (*)(int,int,int,int,void*)>(read_pixels_address)(0,0,w,h,pixels.data())) return result.c_str();
++    const auto image = BenchmarkVisual::png(pixels,w,h);
++    if (image.empty()) return result.c_str();
++    std::ostringstream identity;
++    identity << GetCurrentProcessId() << '-' << session_id << '-' << render_frame << '-' << ++capture_counter;
++    const std::string id = identity.str(), name = "ftl_visual_"+id+".png";
++    const std::string final_path = get_observation_dir()+name, temp_path = final_path+".tmp";
++    {
++        std::ofstream file(temp_path,std::ios::binary);
++        if (!file.is_open()) return result.c_str();
++        file.write(reinterpret_cast<const char*>(image.data()),image.size());
++        file.flush();
++        if (!file.good()) { file.close(); std::remove(temp_path.c_str()); return result.c_str(); }
++    }
++    if (std::rename(temp_path.c_str(),final_path.c_str()) != 0) { std::remove(temp_path.c_str()); return result.c_str(); }
++    float physical_x=0.f,physical_y=0.f;
++    reinterpret_cast<void (*)(float*,float*)>(mouse_position_address)(&physical_x,&physical_y);
++    external_input.arm(physical_x,physical_y);
++    std::ostringstream metadata;
++    metadata << "{\"visual_io_version\":1,\"capture_id\":\"" << id << "\",\"frame_id\":\"" << GetCurrentProcessId()
++      << '-' << session_id << '-' << render_frame << "\",\"action_seq\":" << seq << ",\"frame\":" << tick
++      << ",\"render_frame\":" << render_frame << ",\"width\":" << w << ",\"height\":" << h
++      << ",\"path\":\"" << name << "\",\"format\":\"png\",\"coordinate_space\":\"client\",\"paused\":true"
++      << ",\"requested_frames\":" << requested_frames << ",\"actual_frames\":" << actual_frames
++      << ",\"visual_clock_version\":2,\"fixed_step_numerator\":1,\"fixed_step_denominator\":60,\"simulated_updates\":\""
++      << frame_clock.world_updates << "\",\"world_updates\":\"" << frame_clock.world_updates
++      << "\",\"external_input_generation\":\"" << external_input.generation
++      << "\",\"external_input_detected\":" << (external_input.detected ? "true" : "false")
++      << ",\"input_feedback\":" << feedback << '}';
++    std::ostringstream windows;
++    windows << std::boolalpha << ",\"visual_evaluator\":{\"store_open\":" << app->gui->storeScreens.bOpen
++      << ",\"map_open\":" << (app->world && app->world->starMap.bOpen)
++      << ",\"choice_open\":" << app->gui->choiceBoxOpen
++      << ",\"choice_window_open\":" << app->gui->choiceBox.bOpen
++      << ",\"player_jumping\":" << (app->world && app->world->playerShip && app->world->playerShip->shipManager && app->world->playerShip->shipManager->bJumping)
++      << ",\"simulation_blocked\":" << (visual_blocked_reason(app)[0]!='\0')
++      << ",\"blocked_reason\":\"" << visual_blocked_reason(app) << "\"}";
++    json.pop_back(); json += ",\"visual\":"+metadata.str()+windows.str()+"}";
++    if (!hs_benchmark_write_observation(json.c_str())) { std::remove(final_path.c_str()); return result.c_str(); }
++    result = metadata.str();
++#endif
++    return result.c_str();
++}

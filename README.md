@@ -1,226 +1,198 @@
 # ftl_bench
 
-`ftl_bench` is an agent benchmark for long-horizon control in
-**FTL: Faster Than Light**. It lets a model play the real game through a
-paused, intent-level interface, then scores the resulting run with FTL's own
-native score plus solve/win rate and reproducibility metadata.
+An agent benchmark that drives the real **FTL: Faster Than Light** engine through a paused observation/action interface. Agents set power, move crew, target weapons, resolve events, navigate, trade, and advance the clock. The runner records every attempt and reports FTL's native score, goal progress, and verified wins.
 
-The benchmark is built on [FTL-Hyperspace](https://github.com/FTL-Hyperspace/FTL-Hyperspace).
-The game stays paused while the agent reasons, the agent receives a structured
-JSON observation, and it returns a short action plan: power systems, move crew,
-target weapons, resolve events, jump, buy, sell, board, cloak, hack, and finally
-advance the clock. The interface also exposes terminal concession through
-`giveup`, which records an unsolved run without rewarding it.
+[Documentation](https://ogabrielluiz.github.io/ftl_bench/) · [Protocol](https://ogabrielluiz.github.io/ftl_bench/introduction/protocol/)
 
-[Docs](https://ogabrielluiz.github.io/ftl_bench/) |
-[Benchmark protocol](https://ogabrielluiz.github.io/ftl_bench/introduction/protocol/) |
-[Quickstart](https://ogabrielluiz.github.io/ftl_bench/evaluate/quickstart/)
+## Visual iteration
 
-## Why this benchmark
+The new `visual-v1` track gives Codex CLI a screenshot at each paused decision and
+accepts ordinary clicks, drags, cursor moves and key presses. Native state remains
+available to the evaluator and dashboard; it is not included in the model input.
+Every decision retains its exact image, input delivery, simulation-frame count and
+resulting image for inspection.
 
-FTL is a compact but unforgiving agent environment. A good run requires tactical
-combat, resource allocation, recovery from damage, risk management, and planning
-across a branching map toward the rebel flagship. The agent cannot solve it with
-a single policy template: it has to read the current state, preserve the ship,
-choose fights, spend scrap, and recover when the run goes sideways.
+This track is under live validation; standalone attempts remain diagnostic until
+their experiment audit establishes eligibility. It requires authenticated Codex
+CLI, native protocol 5, fixed clock 2 and `fresh-start-seed-v3`. Install the visual
+DLL/provenance pair below, close FTL and run:
 
-`ftl_bench` turns that into a reproducible evaluation:
-
-| Benchmark property | What it means here |
-|---|---|
-| Real game dynamics | Runs use the actual FTL engine and seeded game state, not a toy simulator. |
-| Decision-complete observations | The agent sees structured ship, enemy, crew, room/door, system, weapon, event, store, and map state. |
-| Paused multi-action turns | The agent can issue a whole paused plan, then advance time, like a strong human player. |
-| Reportable scores | Headline metric is FTL's native run score, with solve/win rate and seed standard error. |
-| Anti-memorization split | Public seeds are for tuning; `semi_private` seeds are the reportable number. |
-| Full trajectories | Every run writes the actions, outcomes, manifest, seed, model, backend, prompt version, and mode. |
-
-## Agent loop
-
-Each turn follows the same contract for baselines and models:
-
-```text
-observe JSON state
-  -> model returns an ACTION block
-  -> harness applies commands while paused
-  -> advance N frames
-  -> bridge re-pauses on the next decision point
-  -> score the trajectory
+```powershell
+uv run --directory harness ftlbench visual --model gpt-6.1-sol --mode image --seed 1
 ```
 
-Example v5 model reply:
+The Windows runner backs up the current saves, launches a fresh run, then closes
+its game process and restores/verifies the original saves on exit. `--mode hybrid`
+adds conservative HUD numerals read from the same archived PNG, omitting obscured
+or uncertain fields without native-state fallback. `--model gpt-6-luna` selects
+the other declared CLI model. See [visual iteration](docs/visual-iteration.md) for
+the contract. Historical structured runs remain a separate track.
+
+For reproducible full-game cohorts and durable cooperative stopping, use the
+[full-game experiment controller](docs/visual-experiment-protocol.md#full-game-progression).
+From the repository root with the harness environment configured:
+
+```powershell
+harness/.venv/Scripts/python.exe scripts/run_fullgame_experiment.py freeze --output harness/runs/visual/fullgame-sol-luna-001
+harness/.venv/Scripts/python.exe scripts/run_fullgame_experiment.py run --output harness/runs/visual/fullgame-sol-luna-001 --limit 1
+```
+
+To stop an active run, use a second terminal at the repository root. Let the
+original runner finish cleanup before closing it:
+
+```powershell
+harness/.venv/Scripts/python.exe scripts/run_fullgame_experiment.py stop --output harness/runs/visual/fullgame-sol-luna-001 --initiator operator --reason operator_requested
+```
+
+Use a new output directory and only one game/controller at a time. The controller
+requires the tested runtime/acceptance baseline, freezes sources/settings, and
+declares a Sol image sector-one pilot followed by Sol/Luna image/hybrid full-game
+attempts. It retains interrupted responses and cleanup evidence. Only verified
+native victory or defeat completes a full game; budget stops and the pilot do not.
+Stopped attempts remain recorded as interrupted; use a fresh output directory
+for a new experiment after a stop request.
+
+## Local setup
+
+The supported benchmark setup is **Kestrel A on easy**, on native Windows with FTL 1.6.9 and the benchmark Hyperspace build. Other ship/difficulty requests are rejected before a run. After reset, the runner checks the actual seed, blueprint `PLAYER_SHIP_HARD`, and difficulty `0`; it does not trust the requested settings alone.
+
+Python 3.11+ runs the harness. WSL and Docker are needed to build the Windows native dependency, but native Windows Python can run the installed benchmark.
+
+```powershell
+# From the repository root
+uv sync --directory harness --extra dashboard --extra dev
+uv run --directory harness ftlbench doctor
+```
+
+The wheel includes the Python package, adapter, suites, prompts, Lua bridge, native source patch, setup helpers, and compiled dashboard. The Python interpreter, FTL and native Hyperspace DLL are installed separately. See [PC setup](site/src/content/docs/install/pc.md) for the game installation steps.
+
+The native build must include the cumulative patch selected by `native/manifest.json`, currently `native/patches/0003-visual-io.patch`. It retains protocol-5 controls and scoring and adds render-synchronized screenshots and ordinary input handlers. The earlier `0002-economy-fuel-controls.patch` remains a historical structured-only build. `scripts/setup_pc.sh` applies the checked patch before building. For an existing source checkout:
+
+```bash
+python3 scripts/apply_native_patch.py --source /path/to/FTL-Hyperspace --check
+python3 scripts/apply_native_patch.py --source /path/to/FTL-Hyperspace
+```
+
+The helper validates the patch hash and refuses conflicting source changes. `native/manifest.json` records the reference source commit and patch SHA256; `scripts/write_native_provenance.py` records the actual source commit, source diff, toolchain, container image, and DLL hash. The installed provenance file is `ftlbench-native.json` beside the DLL.
+
+The visual artifact is `dist/Hyperspace.visual-v1.dll` with
+`dist/native-build.visual-v1.json`. It supplies clock 2 and fresh-start v3;
+protocol 5 alone is insufficient for visual startup. The retained structured
+pair is `dist/Hyperspace.protocol5.dll` with `dist/native-build.protocol5.json`.
+Protocol-4 artifacts remain archived and do not satisfy the current runner.
+
+To install a locally built DLL into an existing native environment, close FTL and run:
+
+```powershell
+# Visual track (from the repository root; uv runs the CLI from harness/):
+uv run --directory harness ftlbench install-native --dll ../dist/Hyperspace.visual-v1.dll --manifest ../dist/native-build.visual-v1.json
+
+# Structured-only track, when that is the selected environment:
+uv run --directory harness ftlbench install-native --dll ../dist/Hyperspace.protocol5.dll --manifest ../dist/native-build.protocol5.json
+```
+
+The installer verifies the artifact hash/protocol and retains replaced files. The loader and data mods must already be installed.
+
+After the data mod and native DLL are installed, deploy the current external Lua bridge and launch FTL through Steam:
+
+```powershell
+uv run --directory harness ftlbench deploy-bridge
+uv run --directory harness ftlbench doctor --live --full-game
+uv run --directory harness ftlbench play obs
+```
+
+`deploy-bridge` retains the previous script in the FTL user folder's `ftlbench-backups`. `doctor` is read-only: it checks files and credentials; `--live` also checks the running bridge; `--full-game` requires the victory binding. It never starts a game or calls a model.
+
+## Run a benchmark
+
+Use the public tier for development and the `semi_private` tier for reported comparisons. `suite_v1.json` is the default mixed probe suite; `full_game.json` is the full-game track.
+
+```powershell
+# Bounded local smoke
+uv run --directory harness ftlbench run --agent scripted --mode budget --max-instances 1 --budget-cap 3
+
+# Public OpenAI Responses API
+uv run --directory harness ftlbench --env-file "C:\Projects\.env.txt" run --agent llm --backend openai --model <model-id> --suite ../scenarios/full_game.json --tier public --mode gameover
+
+# Jev typed-choice adapter
+uv run --directory harness ftlbench --env-file "C:\Projects\.env.txt" run --agent llm --backend jev --model jev-1.13.0 --suite ../scenarios/full_game.json --tier public --mode gameover
+
+# Read-only live dashboard
+uv run --directory harness --extra dashboard ftlbench dashboard
+```
+
+Select the environment file explicitly. Simple `KEY=value` lines are loaded literally; existing process environment values win and keys are never printed. No environment file is discovered automatically.
+
+| Backend | Credentials / contract |
+|---|---|
+| `anthropic` | `ANTHROPIC_API_KEY`; Messages API action text |
+| `openai` | `OPENAI_API_KEY`; public Responses API with a strict action-plan JSON schema |
+| `jev` | `TYPESAFE_API_KEY` (or `JEV_API_KEY`); typed Choice questions for observable actuators |
+| `claude-cli` | Installed, authenticated `claude` CLI |
+| `codex` | Installed, authenticated `codex` CLI; optional `CODEX_BIN` |
+
+Jev uses the separately labeled `jev-actuator-choice-v1` contract. It chooses from observed power settings, crew destinations, targets, navigation, economy and special-system actuators, then an advance interval. Independent choices can conflict; the same bridge feedback applies. Each question has at most 255 options and each plan at most 12 commands; invalid or oversized plans fail explicitly. It does not generate arbitrary action text. Compare its rows with this action-selection contract stated.
+
+The OpenAI backend uses the [public Responses API](https://developers.openai.com/api/docs/guides/structured-outputs). An OpenAI Decisions preview adapter is not implemented because its request/response schema is unavailable here; preview availability must not be inferred from Responses support.
+
+## Interface and scoring
+
+The game pauses while the agent plans. Commands apply in order, then `advance N` runs the simulation for a bounded interval and re-pauses. A typical reply is:
 
 ```text
-I need weapons online, crew repairing oxygen, and the enemy weapons suppressed.
 ACTION:
   power 3 3
   crew 1 2
   fire 0 3
-  fire 1 3
   advance 150
 ```
 
-The agent decides everything in game. The harness does not choose targets, flee,
-repair, navigate, spend scrap, or script strategy.
+Each `fire` or `beam` queues **one release**, including while a weapon charges. Beam endpoints remain distinct. Weapons are not left on continuous autofire. The compact observation preserves weapon charge/pending state, ion and hacking state, drone parts, room/door/airlock topology, events, stores, and optional special-system facts. The interface manual is [prompts/ftl_agent_v5.md](prompts/ftl_agent_v5.md); optional fields and unverified bindings are tracked in [the coverage audit](docs/observation_coverage_audit.md).
 
-The current v5 observation surface distinguishes a broken system from an
-unpowered one. Systems include `broken` / `repair_room` when power alone cannot
-restore them, and the compact view includes room oxygen/fire state plus door
-topology for venting decisions. A model may also return `giveup` by itself to
-concede the current benchmark instance; that ends the instance as unsolved with
-the current FTL score and trajectory.
+The `owned-player-crew-v1` control contract exposes player-owned crew with their original native IDs, ownership, location and controllability. Hostile boarders appear in `intruders`, never as player crew. Movement checks ownership, native controllability and positive health before calling the engine; mind-controlled friendly crew cannot be moved. Own crew boarding the enemy remain player-owned. `action_feedback` reports applied/rejected crew moves and reasons.
 
-## Benchmark protocol
+Runner/ruleset v7 requires `native-economy-and-fuel-recovery-v1`. `upgrade <system_id>` and `reactor` use the native next-level price, cap, affordability and UI legality; Lua never guesses prices or deducts scrap independently. `economy` reports those costs and `can_upgrade`. Missing cost means unknown or unavailable, never free. `waitfuel` queues the game's out-of-fuel Wait turn; `distress on|off` uses its native distress toggle. A following `advance` resolves the normal animation, encounters and fleet movement. Ordinary `wait`/`advance` only pass simulation frames and do not buy a recovery turn or guarantee fuel.
 
-An **instance** is a seeded FTL setup: `(seed, ship, difficulty, tier, goal)`.
-The seed pins the map and events. The current repository includes:
+Events preserve native choice IDs and availability (`native_type: 1` is disabled). Feedback distinguishes disabled choices, keyboard input delay/settings, refused selection and an already queued selection. `applied` proves that the native choice was queued; it does not prove the event branch has finished. The bridge preserves the game's keyboard delay and does not retry branches automatically.
 
-- `scenarios/full_game.json`: the pure play-the-game track. The objective is to
-  win FTL by beating the flagship; scoring measures how far the run gets.
-- `scenarios/suite_v1.json`: a mixed suite of reproducible probes and full-run
-  progress instances, useful for fast baselines and interface development.
+A full-run solve requires explicit native `victory: true`. Game over, disappearing enemy ships, and raw flagship phase/stage counters do not prove a win. Full-run progress is eight sectors plus three completed flagship phases; the current native bridge reports the completed three phases at verified victory, without estimating intermediate phases.
 
-Reported metrics:
+Runner/ruleset v7 also requires `native-sector-neighbors-v1`: `economy.sector_navigation_version: 1` and Lua `sector_navigation: true`. Sector exit selects a real neighboring-sector vector index and reports native acceptance/refusal; sector types are not route indices. The marker is required even though the native API protocol remains 5.
 
-- **FTL score**: mean native FTL run score over the suite, with seed standard
-  error.
-- **Solve / win rate**: fraction of instances that meet the scenario goal. For
-  full-game runs, this is the flagship win.
-- **Efficiency**: jumps or turns per instance.
-- **Breakdowns**: per type and per tier.
+`native-beacon-readiness-v1` additionally requires `economy.beacon_navigation_version: 1` and Lua `beacon_navigation: true`. Ordinary jumps and sector exit obey native button, full FTL timer, system, fuel and context readiness. A destroyed enemy flag alone does not authorize travel. Rejected requests report feedback instead of forcing map travel. Charged combat fleeing remains subject to normal native legality. `economy.navigation.can_jump` is authoritative. `enemy_defeat_pending` signals possible unprocessed defeat/rewards; it does not prohibit an otherwise legal charged jump. Continuing normal simulation lets cleanup/rewards resolve, while jumping away can forgo them.
 
-See the docs for the full [benchmark protocol](https://ogabrielluiz.github.io/ftl_bench/introduction/protocol/)
-and [scoring model](https://ogabrielluiz.github.io/ftl_bench/introduction/scoring/).
+Navigation credit requires observed beacon/sector movement. Rejected jumps and resets earn no travel credit. Losses retain their final state and score. Concession (`giveup`), stalls, transport/model errors, and interrupted attempts remain unsolved; terminal records explain which occurred.
 
-## Quickstart
+Native score comes from the current run's live scrap/kill/beacon counters with the exact FTL difficulty multiplier, tagged `native_live_v1`. The saved TopScore snapshot may retain a previous run and is not accepted as live score evidence.
 
-Install FTL through Steam, install the bench Hyperspace mod, then run from the
-repository checkout. Native Windows is the recommended platform.
+`native-enemy-hostility-v1` requires Lua `enemy_hostility: true`. A surrendered ship can retain positive hull, weapons and a native ship pointer; combat and targeting use the native `_targetable.hostile` flag. Non-hostile, destroyed, jumping or unknown-state enemy targets reject enemy-directed weapon requests and clear queued enemy fire. Dispatch feedback records `enemy_hostile`, `enemy_targetable` and accepted queue state. `targetable` and compact `active` never become true from hull or equipment alone. Friendly ships do not independently block a charged native-legal sector exit.
 
-```bash
-# smoke test the scripted floor
-cd harness
-uv run python ../adapter/run_benchmark.py --agent scripted --max-instances 1 --budget-cap 8
+Each invocation creates a unique subdirectory under `--out`, containing `run.json`, one JSONL trajectory per attempt, and summary JSON. Manifests include runner/ruleset versions, control, economy, routing, beacon and hostility contracts, setup verification, mode, model/backend, prompt and suite identity, installed DLL/bridge hashes, and native provenance when available. Retries are a distinct condition and retain every attempt.
 
-# random legal-move floor
-uv run python ../adapter/run_benchmark.py --agent random --max-instances 1 --budget-cap 8
+Read a saved run without starting the game: `ftlbench report <run-dir> [--json] [--output <path>]`. `--legacy-suite <path>` is an explicit fallback for older files without embedded scenarios.
 
-# Anthropic API backend
-uv run python ../adapter/run_benchmark.py --agent llm --backend anthropic --model claude-sonnet-4-6
+**Runner/ruleset v7 requires protocol 5 with verified sector-navigation and beacon-readiness markers, the owned-player crew contract, native economy/fuel recovery and native enemy hostility. Earlier rows are not comparable.** The v6 trial was stopped after accepted surrender left a friendly ship marked targetable. The v5 trial was stopped after ordinary jumps bypassed native charging and enemy-death reward cleanup. The prior v4 trial exposed an incorrect sector type/index mapping and was stopped as a diagnostic. A pre-v3 model trial moved a hostile boarder and was stopped. The corrected v3 Sol trial ended in a fuel-zero concession with native score 329, but exposed missing event availability, approximate upgrade pricing and missing recovery actions; it is retained as a diagnostic, not a model ranking. The earlier Jev score-59 trace remains historical v2 score/reset evidence. See [validation status](docs/NEXT.md).
 
-# Local Claude CLI backend
-uv run python ../adapter/run_benchmark.py --agent llm --backend claude-cli --model sonnet
+## Dashboard and development
 
-# Local Codex CLI backend
-uv run python ../adapter/run_benchmark.py --agent llm --backend codex --model gpt-5
+The dashboard at `http://127.0.0.1:8765` follows runs and attempts, including errors and active trajectories. It is read-only and sends no game actions. Use `ftlbench dashboard --runs <directory> --suite <path> --port 8765` to select inputs.
+
+```powershell
+uv run --directory harness --extra dev --extra dashboard pytest -q
+# From dashboard/: npm ci; npm run build
+# From site/: npm ci; npm run build
+uv build --directory harness
 ```
 
-For the pure full-game track, point the runner at `full_game.json`:
-
-```bash
-uv run python ../adapter/run_benchmark.py \
-  --agent llm \
-  --backend <anthropic|claude-cli|codex> \
-  --model <model-id> \
-  --suite ../scenarios/full_game.json \
-  --tier semi_private
-```
-
-Output includes per-instance `ftl_score`, a breakdown, and an aggregate line:
-
-```text
-== RESULTS ==
-  FTL score 184 +/- 31  |  Solve 1/7
-```
-
-Trajectories and manifests are written under `runs/benchmark/`.
-
-## Live dashboard
-
-The benchmark runner writes JSONL trajectories as it plays. A read-only
-dashboard can follow the newest trajectory, inspect prior attempts, and collapse
-repeated recovery/stabilization turns into one summarized decision block.
-
-```bash
-# build the React UI once
-cd dashboard
-npm install
-npm run build
-
-# serve it from the read-only FastAPI process
-cd ../harness
-uv run --extra dashboard python ../adapter/ftl_live.py
-```
-
-Open <http://127.0.0.1:8765>. If a dashboard server is already running on that
-port, restart it after rebuilding the UI or editing `adapter/ftl_live.py`.
-
-The dashboard surfaces hull, oxygen, crew health, enemy hull, resources, system
-power, aggregate progress, run metadata, exact action parameters, and grouped
-decision loops. It does not send actions to the game.
-
-## Current baseline
-
-Native Windows + Steam, 12-instance `suite_v1`, scripted heuristic floor:
-
-| Agent | FTL score | Solve | survive_n_jumps | reach_sector | reach_sector_healthy | full_run |
-|---|---:|---:|---:|---:|---:|---:|
-| `scripted` | 143.75 +/- 13.05 | 3/12 | 133.3 | 124.0 | 195.0 | 157.5 |
-
-Median jumps per instance: 11. Public tier: 142.9. Held-out
-`semi_private` tier: 145.0. The next public rows to fill are the native
-`random` floor and comparable frontier-model runs over the same protocol.
-
-## Repository map
+Tests execute the real Lua 5.3 bridge against an engine double, plus adapter, scorer, lifecycle, model backend and dashboard contracts. These do not establish a full-game live win or provider quality. See [docs/NEXT.md](docs/NEXT.md) for current validation and remaining work.
 
 | Path | Purpose |
 |---|---|
-| `mod/ftl_bench_bridge/` | In-game Hyperspace Lua bridge: observations, actions, pause gating. |
-| `harness/` | Python environment, scenario loading, scoring, aggregation, trajectories. |
-| `adapter/` | CLI, benchmark runner, scripted/random baselines, LLM backends. |
-| `dashboard/` | React/Vite live dashboard served by `adapter/ftl_live.py`. |
-| `prompts/` | Versioned agent interface manuals. `v5` is the current multi-action contract. |
-| `scenarios/` | Seeded benchmark suites. |
-| `site/` | Astro Starlight documentation site. |
-| `docs/deepdive/` | Source-grounded notes on Hyperspace and engine integration. |
+| `mod/` | In-game Lua observation/action bridge |
+| `native/`, `scripts/` | Checked native patch, setup and provenance helpers |
+| `harness/` | Sessions, scenarios, scoring, recording and packaged CLI |
+| `adapter/` | Runner, baselines, model integrations and dashboard server |
+| `dashboard/`, `site/` | Dashboard UI and documentation |
+| `scenarios/`, `prompts/` | Seeded suites and versioned interface manuals |
 
-## Architecture
-
-```text
-Model or agent
-  reads compact JSON observations
-  writes paused action plans
-        |
-adapter/
-  play_cli.py, llm_agent.py, run_benchmark.py
-        |
-harness/
-  AgentSession, reset/observe/step, scoring, manifests
-        |
-mod/ftl_bench_bridge/
-  Hyperspace Lua bridge inside FTL
-        |
-FTL engine
-```
-
-The bridge keeps the game paused by default and advances it only when the
-agent asks. It stops early on important events, such as combat starting,
-damage, boarders, fire, event popups, or other decision points.
-
-## Platform notes
-
-- **Native Windows x86 is recommended.** The runner launches FTL through Steam,
-  which is required for Hyperspace injection.
-- **WSL can drive the Windows game** if `FTL_SAVE_DIR` points at the Windows FTL
-  user folder.
-- **macOS/Rosetta works for short runs**, but full-length runs can hit a
-  Rosetta-specific freeze class. Use native Windows for reportable long runs.
-
-## Known gaps
-
-- The full-game track needs more public reference rows: random, scripted,
-  frontier LLMs, and human runs.
-- Micro-encounter scenarios for combat, crisis escape, events, stores, and
-  flagship-specific play are planned for higher signal-per-token evaluation.
-- macOS/Rosetta remains a secondary path because native Windows is more stable
-  for long trajectories.
+Native Windows is the current full-game validation target. WSL can drive it with `FTL_SAVE_DIR` set to the Windows save folder. macOS/Rosetta remains a secondary development path and requires its own compatible native build and live validation.

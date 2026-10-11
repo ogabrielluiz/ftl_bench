@@ -21,6 +21,8 @@ import random
 import subprocess
 import sys
 import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -42,7 +44,13 @@ from ftl_bench.session import ftl_user_folder  # noqa: E402
 from baseline_agent import play as scripted_play  # noqa: E402
 from llm_agent import make_llm_agent  # noqa: E402
 
-RUNNER_VERSION = "v1"
+RUNNER_VERSION = "v7"
+RULESET_VERSION = "v7"
+CONTROL_CONTRACT = "owned-player-crew-v1"
+ECONOMY_CONTRACT = "native-economy-and-fuel-recovery-v1"
+ROUTING_CONTRACT = "native-sector-neighbors-v1"
+BEACON_CONTRACT = "native-beacon-readiness-v1"
+HOSTILITY_CONTRACT = "native-enemy-hostility-v1"
 RESTART_SH = REPO / "scripts" / "restart_ftl.sh"
 
 
@@ -128,45 +136,74 @@ def restart_ftl() -> None:
 
 # --- agents -------------------------------------------------------------------------
 
-def random_play(sess: AgentSession, scenario, log) -> None:
+def random_play(sess: AgentSession, scenario, log, *, play_to_gameover=False, stall_limit=10) -> dict:
     """Random-LEGAL baseline (the trivial floor): from the same interface, pick a random
     legal action each turn. Resolves events randomly, fires randomly, jumps randomly."""
     rng = random.Random(scenario.seed)
     jumps = 0
-    for _ in range(scenario.budget_jumps * 8):
-        if jumps >= scenario.budget_jumps:
-            break
+    stalled = observation_errors = 0
+    from llm_agent import _progress_sig, _native_fuel_waiting
+    from play_cli import compact
+    cap = 2500 if play_to_gameover else scenario.budget_jumps * 8
+    for turn in range(cap):
+        if not play_to_gameover and jumps >= scenario.budget_jumps:
+            return {"status": "completed", "reason": "budget", "jumps": jumps, "turns": turn}
         try:
             o = sess.observe()
         except Exception:  # noqa: BLE001
+            observation_errors += 1
+            if observation_errors >= 4:
+                return {"status": "failed", "reason": "observation_error", "jumps": jumps}
             time.sleep(0.2); continue
+        observation_errors = 0
+        if o.game_over:
+            return {"status": "completed", "reason": "game_over", "jumps": jumps}
         if (o.player_ship or {}).get("hull", {}).get("current", 0) <= 0:
-            break
+            return {"status": "completed", "reason": "destroyed", "jumps": jumps}
         try:
+            before_sig = _progress_sig(compact(o))
             if o.choice_box_open and (o.event or {}).get("choices"):
                 n = len(o.event["choices"])
-                sess.choose_event(rng.randrange(n), advance_frames=90)
-            elif o.enemy_ship:
+                after = sess.choose_event(rng.randrange(n), advance_frames=90)
+            elif (o.enemy_ship or {}).get("hostile") is True:
                 rooms = (o.enemy_ship or {}).get("rooms", [])
                 weps = [w for w in (o.player_ship or {}).get("weapons", []) if w.get("powered")]
                 if weps and rooms:
-                    sess.fire_weapon(rng.choice(weps)["slot"], rng.choice(rooms)["room_id"], advance_frames=120)
+                    after = sess.fire_weapon(rng.choice(weps)["slot"], rng.choice(rooms)["room_id"], advance_frames=120)
                 else:
-                    sess.step([], advance_frames=120)
+                    after = sess.step([], advance_frames=120)
             else:
                 beac = (o.map or {}).get("connected_beacons", [])
+                before = o.map or {}
                 if (o.map or {}).get("at_exit"):
-                    sess.leave_sector(); jumps += 1
+                    after = sess.leave_sector()
                 elif beac:
-                    sess.jump(rng.choice(beac)["index"], advance_frames=260); jumps += 1
+                    after = sess.jump(rng.choice(beac)["index"], advance_frames=260)
                 else:
-                    break
+                    return {"status": "failed", "reason": "no_route", "jumps": jumps}
+                current = after.map or {}
+                bsec, asec = before.get("sector"), current.get("sector")
+                crossed = isinstance(bsec, int) and isinstance(asec, int) and asec > bsec
+                moved = (bsec == asec and before.get("current_pos") is not None
+                         and current.get("current_pos") is not None
+                         and before["current_pos"] != current["current_pos"])
+                if crossed or moved:
+                    jumps += 1
+            if after.game_over or (after.raw or {}).get("victory") is True:
+                return {"status": "completed", "reason": "game_over", "jumps": jumps, "turns": turn + 1}
+            after_compact = compact(after)
+            stalled = stalled + 1 if not _native_fuel_waiting(after_compact) and _progress_sig(after_compact) == before_sig else 0
+            if play_to_gameover and stall_limit and stalled >= stall_limit:
+                return {"status": "failed", "reason": "stalled", "jumps": jumps, "turns": turn + 1}
         except TimeoutError:
-            break
+            return {"status": "failed", "reason": "action_timeout", "jumps": jumps}
+    return {"status": "completed" if not play_to_gameover and jumps >= scenario.budget_jumps else "failed",
+            "reason": "budget" if not play_to_gameover and jumps >= scenario.budget_jumps else "step_limit",
+            "jumps": jumps}
 
 
-def scripted(sess: AgentSession, scenario, log) -> None:
-    scripted_play(sess, scenario.budget_jumps, log)
+def scripted(sess: AgentSession, scenario, log):
+    return scripted_play(sess, scenario.budget_jumps, log)
 
 
 AGENTS = {"scripted": scripted, "random": random_play}
@@ -179,12 +216,68 @@ def manifest(scenario, agent: str, extra: dict | None = None) -> dict:
     m = {
         "scenario_id": scenario.id, "type": scenario.type, "seed": scenario.seed,
         "ship": scenario.ship, "difficulty": scenario.difficulty, "tier": scenario.tier,
-        "agent": agent, "runner_version": RUNNER_VERSION, "ruleset": "v1",
+        "agent": agent, "runner_version": RUNNER_VERSION, "ruleset": RULESET_VERSION,
+        "control_contract": CONTROL_CONTRACT, "economy_contract": ECONOMY_CONTRACT,
+        "routing_contract": ROUTING_CONTRACT,
+        "beacon_contract": BEACON_CONTRACT,
+        "hostility_contract": HOSTILITY_CONTRACT,
         "schema_version": 3,
+        "scenario": scenario.to_dict(), "setup_verified": False,
     }
     if extra:
         m.update(extra)  # e.g. the LLM track records {model, backend}
     return m
+
+
+class SetupValidationError(ValueError):
+    """The requested benchmark setup is unsupported or differs from the actual run."""
+
+
+def validate_supported_setup(scenario) -> None:
+    if scenario.ship != "kestrel" or scenario.difficulty != "easy":
+        raise SetupValidationError(
+            f"{scenario.id}: only Kestrel A on easy is currently supported; requested "
+            f"ship={scenario.ship!r}, difficulty={scenario.difficulty!r}. "
+            "The bridge cannot select these settings automatically."
+        )
+
+
+def verify_started_setup(obs, scenario) -> dict:
+    validate_supported_setup(scenario)
+    actual = {"seed": obs.seed, "blueprint": (obs.player_ship or {}).get("blueprint"),
+              "difficulty": (obs.raw or {}).get("difficulty")}
+    if actual != {"seed": scenario.seed, "blueprint": "PLAYER_SHIP_HARD", "difficulty": 0}:
+        raise SetupValidationError(
+            f"{scenario.id}: cannot verify the seeded Kestrel A/easy setup; observed {actual}. "
+            "Select Kestrel A/easy in the hangar and install the current bridge before running."
+        )
+    capabilities = (obs.raw or {}).get("capabilities") or {}
+    required = ["manual_fire", "global_autofire_control", "live_score",
+                "crew_control_guard", "crew_ownership", "event_choice_state",
+                "upgrade_rules", "fuel_recovery", "sector_navigation", "beacon_navigation", "enemy_hostility"]
+    if scenario.type == "full_run":
+        required.append("victory")
+    missing = [name for name in required if capabilities.get(name) is not True]
+    protocol = capabilities.get("native_protocol")
+    if not isinstance(protocol, int) or isinstance(protocol, bool) or protocol < 5:
+        missing.append("native_protocol>=5")
+    routing_version = ((obs.raw or {}).get("economy") or {}).get("sector_navigation_version")
+    if type(routing_version) is not int or routing_version != 1:
+        missing.append("sector_navigation_version==1")
+    economy = (obs.raw or {}).get("economy") or {}
+    beacon_version = economy.get("beacon_navigation_version")
+    if type(beacon_version) is not int or beacon_version != 1:
+        missing.append("beacon_navigation_version==1")
+    navigation = economy.get("navigation") or {}
+    for field in ("can_jump", "enemy_defeat_pending"):
+        if not isinstance(navigation.get(field), bool):
+            missing.append(f"navigation.{field}")
+    if missing:
+        raise SetupValidationError(
+            f"{scenario.id}: benchmark protocol unavailable: {', '.join(missing)}. "
+            "Rebuild and install the current native benchmark patch before running."
+        )
+    return actual
 
 
 def _agent_takes_attempts(fn) -> bool:
@@ -219,7 +312,10 @@ def _reset_to_seed(sess: AgentSession, scenario, log) -> bool:
             except (FileNotFoundError, OSError):
                 pass
         try:
-            sess.reset_episode(seed=scenario.seed, timeout=35.0)
+            obs = sess.reset_episode(seed=scenario.seed, timeout=35.0)
+            verify_started_setup(obs, scenario)
+            if sess.recorder is not None:
+                sess.recorder.record("setup", [], obs)
             return True
         except (TimeoutError, FileNotFoundError, OSError) as e:
             log(f"  [{scenario.id}] reset failed ({type(e).__name__}, attempt {attempt + 1}) "
@@ -233,32 +329,59 @@ def _reset_to_seed(sess: AgentSession, scenario, log) -> bool:
 def _play_once(sess, scenario, agent_fn, agent_name, path, log, extra_manifest, attempts) -> dict:
     """Reset to the seed, play ONE episode (handing the agent the prior `attempts` if it accepts
     them), and score the recorded trajectory."""
-    sess.recorder = TrajectoryRecorder(path, meta=manifest(scenario, agent_name, extra_manifest))
-    if _reset_to_seed(sess, scenario, log):
-        try:
+    recorder = TrajectoryRecorder(path, meta=manifest(scenario, agent_name, extra_manifest))
+    sess.recorder = recorder
+    terminal = {"status": "completed", "reason": "agent_returned"}
+    try:
+        if _reset_to_seed(sess, scenario, log):
+            terminal["setup_verified"] = True
             if _agent_takes_attempts(agent_fn):
-                agent_fn(sess, scenario, log, attempts=attempts)
+                outcome = agent_fn(sess, scenario, log, attempts=attempts)
             else:
-                agent_fn(sess, scenario, log)
-        except TimeoutError:
-            # A TimeoutError reaching here on a LIVE game is a transient ack lag, not a freeze; a
-            # full taskkill+relaunch+reset would only perturb the obs files and trigger the reset
-            # races. Restart ONLY if the process is actually gone — the post-play check below is
-            # the genuine-freeze safety net.
-            if not game_alive():
-                log(f"  [{scenario.id}] run wedged (FTL down) — restarting FTL")
-                restart_ftl()
-            else:
-                log(f"  [{scenario.id}] run ended on a transient ack timeout (FTL still up)")
-        except Exception as e:  # noqa: BLE001
-            log(f"  [{scenario.id}] agent error: {e}")
+                outcome = agent_fn(sess, scenario, log)
+            if isinstance(outcome, dict):
+                terminal.update(outcome)
+                if terminal["status"] == "failed":
+                    terminal["status"] = "error"
+                if terminal["status"] not in ("completed", "error", "interrupted"):
+                    terminal = {"status": "error", "reason": "invalid_agent_outcome",
+                                "error": "agent returned an unsupported lifecycle status"}
+        else:
+            terminal = {"status": "error", "reason": "reset_failed"}
+    except SetupValidationError as e:
+        terminal = {"status": "error", "reason": "setup_mismatch", "error": str(e)}
+        log(f"  [{scenario.id}] {e}")
+    except TimeoutError as e:
+        terminal = {"status": "error", "reason": "action_timeout", "error": str(e)}
+        log(f"  [{scenario.id}] run ended on an action timeout")
+    except KeyboardInterrupt:
+        terminal = {"status": "interrupted", "reason": "interrupted"}
+        raise
+    except Exception as e:  # noqa: BLE001
+        terminal = {"status": "error", "reason": "agent_error", "error": str(e)}
+        log(f"  [{scenario.id}] agent error: {e}")
+    finally:
+        try:
+            try:
+                final_observation = sess.observe()
+                if final_observation.game_started:
+                    recorder.record("final_observation", [], final_observation)
+            except (OSError, ValueError, TimeoutError):
+                pass
+            recorder.finish(**terminal)
+        finally:
+            sess.recorder = None
     # If play froze the game, relaunch eagerly so the next try/instance starts clean.
-    if not game_alive():
-        log(f"  [{scenario.id}] FTL down after play (freeze) — relaunching")
-        restart_ftl()
-        sess._sync_seq()
-    sess.recorder = None
-    return score_instance(load_trajectory(path), scenario)
+    try:
+        if not game_alive():
+            log(f"  [{scenario.id}] FTL down after play (freeze) — relaunching")
+            restart_ftl()
+            sess._sync_seq()
+    except (OSError, TimeoutError) as e:
+        log(f"  [{scenario.id}] recovery failed; next reset will retry ({type(e).__name__})")
+    result = score_instance(load_trajectory(path), scenario)
+    result["trajectory"] = str(path)
+    return result
 
 
 def run_instance(sess: AgentSession, scenario, agent_fn, agent_name, out_dir, log,
@@ -269,6 +392,7 @@ def run_instance(sess: AgentSession, scenario, agent_fn, agent_name, out_dir, lo
     attempt, annotated with every attempt's score so the learning curve is visible."""
     attempts: list[Attempt] = []
     results: list[dict] = []
+    validate_supported_setup(scenario)
     for i in range(retries + 1):
         path = out_dir / (f"{scenario.id}.jsonl" if retries == 0 else f"{scenario.id}.a{i}.jsonl")
         result = _play_once(sess, scenario, agent_fn, agent_name, path, log, extra_manifest,
@@ -287,9 +411,33 @@ def run_instance(sess: AgentSession, scenario, agent_fn, agent_name, out_dir, lo
         best["attempts_used"] = len(results)
         best["attempt_ftl_scores"] = [r.get("ftl_score", 0) for r in results]
         best["attempt_solved"] = [r["solved"] for r in results]
+        best["attempt_statuses"] = [r.get("status", "completed") for r in results]
+        best["attempt_failures"] = sum(r.get("status") == "error" for r in results)
         log(f"  [{scenario.id}] BEST of {len(results)}: ftl_score={best.get('ftl_score', 0)} "
             f"solved={best['solved']}  per-try={best['attempt_ftl_scores']}")
     return best
+
+
+def create_run_directory(parent: Path) -> tuple[str, Path]:
+    """Every invocation gets a fresh directory; reruns never truncate prior trajectories."""
+    run_id = f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{uuid.uuid4().hex[:10]}"
+    path = parent / run_id
+    path.mkdir(parents=True, exist_ok=False)
+    return run_id, path
+
+
+def write_run_metadata(path: Path, metadata: dict) -> None:
+    metadata["updated_at"] = time.time()
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    for attempt in range(9):
+        try:
+            tmp.replace(path)
+            return
+        except PermissionError:
+            if attempt == 8:
+                raise
+            time.sleep(0.01)
 
 
 def main() -> None:
@@ -298,16 +446,19 @@ def main() -> None:
                     help="scripted | random | llm (a real frontier model)")
     ap.add_argument("--model", default=None,
                     help="llm track: model id (default claude-sonnet-4-6 for anthropic)")
-    ap.add_argument("--backend", choices=["anthropic", "claude-cli", "codex"], default="anthropic",
+    ap.add_argument("--backend", choices=["anthropic", "openai", "jev", "claude-cli", "codex"], default="anthropic",
                     help="llm track: anthropic API (needs ANTHROPIC_API_KEY) | local claude -p | "
+                         "OpenAI Responses API (OPENAI_API_KEY) | Jev (TYPESAFE_API_KEY) | "
                          "local OpenAI codex exec (uses your codex auth)")
+    ap.add_argument("--env-file", default=None,
+                    help="explicit local KEY=value file for backend credentials; values are never printed")
     ap.add_argument("--step-mult", type=int, default=8,
                     help="llm track: max actions per instance = budget_jumps * this")
     ap.add_argument("--prompt-version", default="v5",
                     help="llm track: which prompts/ftl_agent_<v>.md manual to use (versioned). v5 is "
                          "the current multi-action contract; v4 is the previous multi-action manual")
     ap.add_argument("--mode", choices=["gameover", "budget"], default="gameover",
-                    help="llm track: 'gameover' (DEFAULT) plays a FULL game to win-or-die — "
+                    help="'gameover' (DEFAULT) plays a FULL game to win-or-die — "
                          "ignores the jump budget, ends on a real win/death or a stall "
                          "(see --stall-limit); 'budget' plays a bounded probe within the jump "
                          "budget. The headline (FTL run score) is the same in both; the mode is "
@@ -315,7 +466,7 @@ def main() -> None:
     ap.add_argument("--play-to-gameover", action="store_true",
                     help="deprecated alias for --mode gameover (gameover is now the default)")
     ap.add_argument("--stall-limit", type=int, default=10,
-                    help="play-to-gameover: end the run as a LOSS after this many consecutive "
+                    help="play-to-gameover: stop with a failed/stalled outcome after this many consecutive "
                          "turns with no progress (the game state unchanged)")
     ap.add_argument("--suite", default=str(REPO / "scenarios" / "suite_v1.json"))
     ap.add_argument("--tier", default=None, help="filter: public | semi_private | ...")
@@ -327,61 +478,124 @@ def main() -> None:
                     help="give the agent up to N extra tries per instance on the SAME seed, "
                          "handing it the prior attempts each time so it can learn from its "
                          "mistakes (Reflexion-style). The best attempt is scored.")
-    ap.add_argument("--out", default="runs/benchmark")
+    default_out = (REPO / "harness" / "runs" / "benchmark" if (REPO / "harness" / "pyproject.toml").exists()
+                   else Path.cwd() / "runs" / "benchmark")
+    ap.add_argument("--out", default=str(default_out),
+                    help="output parent directory; each invocation creates a unique run folder")
     args = ap.parse_args()
+    if args.env_file:
+        from ftl_bench.config import load_env_file
+        try:
+            load_env_file(args.env_file)
+        except (OSError, ValueError) as e:
+            ap.error(str(e))
+
+    for name in ("retries", "stall_limit"):
+        if getattr(args, name) < 0:
+            ap.error(f"--{name.replace('_', '-')} must be non-negative")
+    for name in ("budget_cap", "step_mult"):
+        value = getattr(args, name)
+        if value is not None and value <= 0:
+            ap.error(f"--{name.replace('_', '-')} must be greater than zero")
+    if args.max_instances is not None and args.max_instances < 0:
+        ap.error("--max-instances must be non-negative")
 
     scenarios = load_suite(args.suite)
     if args.tier:
         scenarios = [s for s in scenarios if s.tier == args.tier]
     if args.type:
         scenarios = [s for s in scenarios if s.type == args.type]
-    if args.budget_cap:
+    if args.budget_cap is not None:
         from dataclasses import replace
         scenarios = [replace(s, budget_jumps=min(s.budget_jumps, args.budget_cap))
                      for s in scenarios]
-    if args.max_instances:
+    if args.max_instances is not None:
         scenarios = scenarios[: args.max_instances]
-
-    out_dir = Path(args.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        for scenario in scenarios:
+            validate_supported_setup(scenario)
+    except SetupValidationError as e:
+        ap.error(str(e))
     sess = AgentSession()
-    # The LLM track is a factory (model/backend); scripted/random are plain functions.
+    play_to_gameover = args.play_to_gameover or args.mode == "gameover"
+    mode_manifest = {"mode": "gameover" if play_to_gameover else "budget",
+                     "play_to_gameover": play_to_gameover, "stall_limit": args.stall_limit}
+    _mode = f"-gameover{args.stall_limit}" if play_to_gameover else "-budget"
+    # Every agent uses the same evaluation mode and records it explicitly.
     if args.agent == "llm":
+        if scenarios:
+            from ftl_bench.doctor import inspect_installation
+            preflight = inspect_installation(backend=args.backend)
+            backend_check = next(c for c in preflight["checks"] if c["name"] == "model_backend")
+            if not backend_check["ok"]:
+                ap.error(backend_check["detail"])
         # gameover is the canonical mode; --play-to-gameover stays as a back-compat alias.
-        play_to_gameover = args.play_to_gameover or args.mode == "gameover"
         agent_fn = make_llm_agent(args.model, args.backend, args.step_mult, args.prompt_version,
                                   play_to_gameover=play_to_gameover,
                                   stall_limit=args.stall_limit)
-        _mode = f"-gameover{args.stall_limit}" if play_to_gameover else "-budget"
         agent_label = f"llm-{args.backend}-{args.model or 'default'}-{args.prompt_version}{_mode}"
         extra_manifest = {"model": args.model or "default", "backend": args.backend,
                           "prompt_version": args.prompt_version,
-                          "mode": "gameover" if play_to_gameover else "budget",
-                          "play_to_gameover": play_to_gameover,
-                          "stall_limit": args.stall_limit}
+                          **mode_manifest}
     else:
-        agent_fn = AGENTS[args.agent]
-        agent_label = args.agent
-        extra_manifest = None
+        def agent_fn(sess, scenario, log):
+            if args.agent == "scripted":
+                return scripted_play(sess, scenario.budget_jumps, log,
+                                     play_to_gameover=play_to_gameover, stall_limit=args.stall_limit)
+            return random_play(sess, scenario, log, play_to_gameover=play_to_gameover,
+                               stall_limit=args.stall_limit)
+        agent_label = args.agent + _mode
+        extra_manifest = mode_manifest
     # Retries are a distinct, labeled evaluation mode — never silently fold into the pass@1 number.
     if args.retries:
         agent_label += f"-retries{args.retries}"
-    run_id = f"{int(time.time())}-{os.getpid()}"
-    extra_manifest = {**(extra_manifest or {}), "retries": args.retries, "run_id": run_id}
+    run_id, out_dir = create_run_directory(Path(args.out))
+    extra_manifest = {**(extra_manifest or {}), **getattr(agent_fn, "metadata", {}),
+                      "retries": args.retries, "run_id": run_id}
+    from ftl_bench.installation import runtime_fingerprint
+    extra_manifest["runtime"] = runtime_fingerprint(
+        REPO, args.prompt_version if args.agent == "llm" else None)
+    run_metadata = {"run_id": run_id, "started_at": time.time(), "status": "running",
+                    "scenario_ids": [s.id for s in scenarios], "suite": str(Path(args.suite).resolve()),
+                    "agent": agent_label, "pid": os.getpid(), "runner_version": RUNNER_VERSION,
+                    "ruleset": RULESET_VERSION, "control_contract": CONTROL_CONTRACT,
+                    "economy_contract": ECONOMY_CONTRACT, "routing_contract": ROUTING_CONTRACT,
+                    "beacon_contract": BEACON_CONTRACT,
+                    "hostility_contract": HOSTILITY_CONTRACT,
+                    **extra_manifest}
+    run_metadata_path = out_dir / "run.json"
+    write_run_metadata(run_metadata_path, run_metadata)
 
     def log(m):
         print(m, flush=True)
 
     log(f"== ftl_bench: agent={agent_label}  instances={len(scenarios)} ==")
+    log(f"run directory: {out_dir}")
     results = []
-    for sc in scenarios:
-        log(f"-- {sc.id} ({sc.type}, seed {sc.seed}, budget {sc.budget_jumps}) --")
-        results.append(run_instance(sess, sc, agent_fn, agent_label, out_dir, log,
-                                    extra_manifest, retries=args.retries))
-
-    agg = aggregate(results, scenarios)
-    agg["agent"] = agent_label
-    agg["run_id"] = run_id
+    try:
+        for sc in scenarios:
+            log(f"-- {sc.id} ({sc.type}, seed {sc.seed}, budget {sc.budget_jumps}) --")
+            results.append(run_instance(sess, sc, agent_fn, agent_label, out_dir, log,
+                                        extra_manifest, retries=args.retries))
+            run_metadata["instances_done"] = len(results)
+            write_run_metadata(run_metadata_path, run_metadata)
+        run_metadata["status"] = "error" if any(r.get("status") == "error" for r in results) else "completed"
+    except KeyboardInterrupt:
+        run_metadata["status"] = "interrupted"
+        raise
+    except BaseException as e:
+        run_metadata["status"] = "error"
+        run_metadata["error"] = str(e)
+        raise
+    finally:
+        run_metadata["finished_at"] = time.time()
+        write_run_metadata(run_metadata_path, run_metadata)
+        agg = aggregate(results, scenarios)
+        agg.update({"agent": agent_label, "run_id": run_id, "status": run_metadata["status"]})
+        safe = agent_label.replace("/", "-").replace(":", "-")
+        summary_path = out_dir / f"summary_{safe}.json"
+        summary_path.write_text(json.dumps({"run": run_metadata, "aggregate": agg,
+                                           "instances": results}, indent=2), encoding="utf-8")
     log("\n== RESULTS ==")
     log(f"  {agg['headline']}")
     for k in ("ftl_score_median", "solve_pct", "median_jumps_per_instance"):
@@ -393,10 +607,9 @@ def main() -> None:
                 f"solve {c['solved']}/{agg['instances']} ({c['solve_pct']}%)")
     log(f"  by_type: {json.dumps(agg['by_type'])}")
     log(f"  by_tier: {json.dumps(agg['by_tier'])}")
-    safe = agent_label.replace("/", "-").replace(":", "-")
-    (out_dir / f"summary_{safe}.json").write_text(
-        json.dumps({"aggregate": agg, "instances": results}, indent=2))
-    log(f"\nsummary -> {out_dir / f'summary_{safe}.json'}")
+    log(f"\nsummary -> {summary_path}")
+    if run_metadata["status"] == "error":
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

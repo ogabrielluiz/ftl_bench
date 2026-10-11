@@ -1,0 +1,179 @@
+#include "Benchmark_Visual.h"
+#include <functional>
+#include <iostream>
+#include <vector>
+#include <cmath>
+#define CHECK(value) do { if (!(value)) { std::cerr << "failed: " #value "\n"; return 1; } } while (0)
+// The hook bodies below are extracted from the distributed engine source.
+// This double deliberately models the EXE's pause-time travel and render-time
+// jump progress, which a gui.bPaused-only implementation cannot freeze.
+namespace BenchmarkVisualEngine { BenchmarkVisual::FrameClock frame_clock; }
+struct State {
+    unsigned world_steps=0,pause_steps=0,gui_steps=0,controller_ticks=0,renders=0;
+    bool pending=false,jumping=false,choice_queued=false;
+    unsigned fuel=16,choice_commits=0;
+    double world_seconds=0,pause_seconds=0,gui_seconds=0,jump_seconds=0,ui_seconds=0;
+    double multiplied_seconds=0,temporarily_scaled_seconds=0;
+} state;
+struct CFPS {
+    float SpeedFactor=0.1f,wall_factor=0.1f,gameplay_multiplier=2.f;
+    void OnLoopHook();
+    float GetSpeedFactor() const { return SpeedFactor*gameplay_multiplier; }
+} fps;
+struct AnimationTracker { unsigned progress=0; void UpdateHook(); } ui_animation;
+struct ShipManager { AnimationTracker jumpAnimation; } ship_manager;
+struct CompleteShip { ShipManager* shipManager=&ship_manager; } ship;
+struct WorldManager {
+    CompleteShip* playerShip=&ship;
+    std::vector<CompleteShip*> ships={&ship};
+    void OnLoopHook(); void PauseLoopHook();
+};
+struct CommandGui { void OnLoopHook(); } gui;
+struct CApp {
+    WorldManager* world;
+    CommandGui* gui=&::gui;
+    bool paused=true;
+    std::function<void()> controller;
+    void OnLoopHook();
+};
+WorldManager world;
+CApp app;
+struct Global {
+    static Global* GetInstance() { static Global instance; return &instance; }
+    CApp* GetCApp() { return &app; }
+    CFPS* GetCFPS() { return &fps; }
+};
+namespace BenchmarkVisualEngine {
+    unsigned hover_refreshes=0;
+    void refresh_pointer_hover(CApp*) { ++hover_refreshes; }
+}
+void CApp::OnLoopHook()
+{
+    auto super=[this]() {
+        fps.OnLoopHook(); // real EXE CApp::OnLoop first calls CFPS::OnLoop
+        if (paused) world->PauseLoopHook(); else world->OnLoopHook();
+        gui->OnLoopHook();
+        ++state.controller_ticks;
+        if (controller) controller(); // native ON_TICK remains after its world phase
+    };
+    @APP_LOOP@
+}
+void CFPS::OnLoopHook()
+{
+    auto super=[this]() { SpeedFactor=wall_factor; };
+    @FPS_LOOP@
+}
+void WorldManager::OnLoopHook()
+{
+    auto super=[]() {
+        ++state.world_steps;
+        state.world_seconds+=fps.SpeedFactor*0.0625f;
+        state.multiplied_seconds+=fps.GetSpeedFactor()*0.0625f;
+        const float saved=fps.SpeedFactor;
+        fps.SpeedFactor*=3.f; // native custom weapon hooks temporarily scale this field
+        state.temporarily_scaled_seconds+=fps.GetSpeedFactor()*0.0625f;
+        fps.SpeedFactor=saved;
+    };
+    @WORLD_LOOP@
+}
+void WorldManager::PauseLoopHook()
+{
+    auto super=[]() {
+        ++state.pause_steps;
+        state.pause_seconds+=fps.SpeedFactor*0.0625f;
+        if (state.choice_queued) { ++state.choice_commits; state.choice_queued=false; }
+    };
+    @PAUSE_LOOP@
+}
+void CommandGui::OnLoopHook()
+{
+    auto super=[]() {
+        ++state.gui_steps;
+        state.gui_seconds+=fps.SpeedFactor*0.0625f;
+        if (state.pending) { --state.fuel; state.pending=false; state.jumping=true; }
+    };
+    @GUI_LOOP@
+}
+void AnimationTracker::UpdateHook()
+{
+    auto super=[this]() {
+        ++progress;
+        if (this==&ship_manager.jumpAnimation) state.jump_seconds+=fps.SpeedFactor*0.0625f;
+        else state.ui_seconds+=fps.SpeedFactor*0.0625f;
+    };
+    @JUMP_RENDER@
+}
+void render()
+{
+    ++state.renders; // native rendering remains available for every paused frame
+    ship_manager.jumpAnimation.UpdateHook();
+    ui_animation.UpdateHook(); // UI timing, including choice enable-delay, is independent
+    BenchmarkVisualEngine::frame_clock.finish_render();
+}
+int main()
+{
+    using namespace BenchmarkVisualEngine;
+    app.world=&world;
+    frame_clock.control(true,false);
+    state.pending=true; // normal zero-frame click queued a map departure
+    for (unsigned i=0;i<180;++i) { app.OnLoopHook(); render(); }
+    CHECK(state.pending && state.fuel==16 && !state.jumping);
+    CHECK(state.world_steps==0 && state.pause_steps==0 && state.gui_steps==0);
+    CHECK(frame_clock.world_updates==0 && ship_manager.jumpAnimation.progress==0);
+    CHECK(state.controller_ticks==180 && state.renders==180 && ui_animation.progress==180);
+    CHECK(hover_refreshes==180); // pure hover remains live with the clock closed
+    CHECK(state.world_seconds==0 && state.pause_seconds==0 && state.gui_seconds==0 && state.jump_seconds==0);
+    CHECK(std::abs(state.ui_seconds-180.0*0.1f*0.0625f)<0.00001);
+    frame_clock.control(true,true);
+    app.paused=false;
+    app.controller=[]() { BenchmarkVisualEngine::frame_clock.control(true,false); };
+    app.OnLoopHook(); // one permitted world update; ON_TICK then ends its budget
+    CHECK(frame_clock.world_updates==1 && state.world_steps==1 && state.gui_steps==1);
+    CHECK(std::abs(fps.SpeedFactor-16.f/60.f)<0.00000001);
+    CHECK(std::abs(state.world_seconds-1.0/60)<0.00000001);
+    CHECK(std::abs(state.multiplied_seconds-2.0/60)<0.00000001);
+    CHECK(std::abs(state.temporarily_scaled_seconds-6.0/60)<0.0000001);
+    CHECK(state.fuel==15 && state.jumping && !state.pending);
+    render(); // that final permitted world frame retains its matching render permit
+    CHECK(ship_manager.jumpAnimation.progress==1);
+    CHECK(std::abs(state.jump_seconds-1.0/60)<0.00000001); // permit survives final ON_TICK
+    app.controller={};
+    for (unsigned i=0;i<180;++i) { app.OnLoopHook(); render(); }
+    CHECK(frame_clock.world_updates==1 && ship_manager.jumpAnimation.progress==1);
+    CHECK(state.fuel==15 && state.jumping && state.gui_steps==1);
+    // A selected native event requires an explicitly permitted PauseLoop frame.
+    state.choice_queued=true;
+    app.paused=true;
+    app.OnLoopHook(); render();
+    CHECK(state.choice_commits==0 && frame_clock.world_updates==1);
+    frame_clock.control(true,true);
+    app.controller=[]() { BenchmarkVisualEngine::frame_clock.control(true,false); };
+    app.OnLoopHook(); render();
+    CHECK(state.choice_commits==1 && frame_clock.world_updates==2 && state.pause_steps==1);
+    // Releasing the visual controller restores ordinary native loop behavior.
+    app.controller={};
+    frame_clock.control(false,false);
+    app.OnLoopHook(); render();
+    CHECK(state.pause_steps==2 && frame_clock.world_updates==2);
+    CHECK(fps.SpeedFactor==fps.wall_factor);
+    // Equal admitted action/update streams are independent of wall delta.
+    app.paused=false;
+    frame_clock.control(true,true);
+    const double prior_world=state.world_seconds, prior_jump=state.jump_seconds;
+    for (int i=0;i<60;++i) { fps.wall_factor=0.5f; app.OnLoopHook(); render(); }
+    const double slow_world=state.world_seconds-prior_world, slow_jump=state.jump_seconds-prior_jump;
+    const double after_slow=state.world_seconds, jump_after_slow=state.jump_seconds;
+    for (int i=0;i<60;++i) { fps.wall_factor=0.0001f; app.OnLoopHook(); render(); }
+    CHECK(frame_clock.world_updates==122);
+    CHECK(std::abs(slow_world-1.0)<0.000001 && std::abs(slow_jump-1.0)<0.000001);
+    CHECK(state.world_seconds-after_slow==slow_world && state.jump_seconds-jump_after_slow==slow_jump);
+    CHECK(std::abs(state.multiplied_seconds-2.0*state.world_seconds)<0.000001);
+    CHECK(std::abs(state.temporarily_scaled_seconds-6.0*state.world_seconds)<0.00001);
+    frame_clock.control(true,false);
+    const double unchanged=state.world_seconds, ambient=state.ui_seconds;
+    fps.wall_factor=0.4f;
+    app.OnLoopHook(); render();
+    CHECK(state.world_seconds==unchanged && frame_clock.world_updates==122);
+    CHECK(fps.SpeedFactor==0.4f && std::abs(state.ui_seconds-ambient-0.4f*0.0625f)<0.0000001);
+    std::cout << "actual native world/GUI/render clock hook checks passed\n";
+}

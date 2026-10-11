@@ -31,12 +31,10 @@ def test_bench_root_contains_adapter_run_benchmark():
     assert (root / "adapter" / "run_benchmark.py").exists()
 
 
-def test_bench_root_is_an_ancestor_of_the_cli_module():
-    # The resolved root is found by walking parents of cli.py, so cli.py must
-    # live underneath it.
+def test_bench_root_uses_checkout_or_adjacent_bundled_data():
     root = cli._bench_root()
     cli_file = Path(cli.__file__).resolve()
-    assert root in cli_file.parents
+    assert root in cli_file.parents or root == cli_file.parent / "_bundled"
 
 
 def test_bench_root_is_stable_across_calls():

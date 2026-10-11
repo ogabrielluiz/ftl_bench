@@ -38,7 +38,7 @@ log the trajectory, and score the run.
 		error. Public and semi-private tiers discourage memorization.
 	</Card>
 	<Card title="Bring your own agent" icon="document">
-		Use the built-in loop with Anthropic, Claude CLI, or Codex CLI, or drive the environment
+		Use the built-in loop with Anthropic, OpenAI Responses, Jev typed choices, Claude CLI or Codex CLI, or drive the environment
 		directly through the same observe/act surface.
 	</Card>
 </CardGrid>
@@ -77,13 +77,11 @@ simulation, re-pauses on the next decision point, and records the result.
 3. Read the exact reporting rules: [Benchmark protocol](/introduction/protocol/).
 4. Plug in a model or custom agent: [Bring your model or agent](/evaluate/bring-your-model/).
 
-## Current public floor
+## Revised protocol
 
-Native Windows + Steam, 12-instance `suite_v1`, scripted heuristic floor:
-
-| Agent | FTL score | Solve |
-|---|---:|---:|
-| `scripted` | 143.75 +/- 13.05 | 3/12 |
+Native protocol 4 verifies setup identity and explicit victory. Ruleset v3 requires owned-player
+crew controls and counts confirmed
+navigation and retains terminal errors. Earlier published scores are not comparable with new rows.
 
 The reportable track uses held-out `semi_private` seeds. See
-[Results and baselines](/project/status/) for the current status and open rows.
+[Validation and baselines](/project/status/) for evidence limits and reference rows still needed.

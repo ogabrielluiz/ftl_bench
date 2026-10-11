@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -70,3 +71,48 @@ def test_changing_state_detected(tmp_path):
     second = client.read_latest()
     assert first.tick == 10
     assert second.tick == 20
+
+
+def test_transient_partial_json_and_file_lock_are_retried(monkeypatch, tmp_path):
+    import ftl_bench.observation as obs_mod
+    snapshots = iter([PermissionError("sharing violation"), '{"schema_version":',
+                      json.dumps({"schema_version": 3, "tick": 2, "seed": 1, "game_started": True})])
+    def read(_path, **_kwargs):
+        result = next(snapshots)
+        if isinstance(result, Exception):
+            raise result
+        return result
+    monkeypatch.setattr(obs_mod, "_read_observation_text", read)
+    monkeypatch.setattr(obs_mod.time, "sleep", lambda _: None)
+    assert ObservationClient(tmp_path / "observation.json").read_latest().tick == 2
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows file-sharing regression")
+def test_windows_reader_allows_atomic_replace_and_keeps_original_snapshot(tmp_path):
+    import ctypes
+    from ctypes import wintypes
+    from ftl_bench.observation import _open_observation_text
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    replace = kernel.ReplaceFileW
+    replace.argtypes = (wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR,
+                        wintypes.DWORD, wintypes.LPVOID, wintypes.LPVOID)
+    replace.restype = wintypes.BOOL
+    path = tmp_path / "observation.json"
+    replacement = tmp_path / "replacement.json"
+    first = {"schema_version": 3, "tick": 1, "seed": 7, "game_started": True,
+             "event": {"text": "Crew São Paulo"}}
+    second = {**first, "tick": 2, "event": {"text": "New observation Ω"}}
+    path.write_text(json.dumps(first, ensure_ascii=False), encoding="utf-8")
+    replacement.write_text(json.dumps(second, ensure_ascii=False), encoding="utf-8")
+    with _open_observation_text(path) as existing:
+        # Read only after replacement: Windows must retain the opened old snapshot.
+        # Match the native writer's ReplaceFile contract. MoveFileEx/os.replace
+        # cannot replace an open destination on this Windows installation, even
+        # with FILE_SHARE_DELETE, whereas ReplaceFile preserves both snapshots.
+        if not replace(str(path), str(replacement), None, 0, None, None):
+            raise ctypes.WinError(ctypes.get_last_error())
+        assert json.loads(existing.read()) == first
+        current = ObservationClient(path).read_latest()
+        assert current.tick == 2 and current.event["text"] == "New observation Ω"
+    assert ObservationClient(path).read_latest().tick == 2

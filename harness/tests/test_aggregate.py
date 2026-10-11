@@ -15,6 +15,17 @@ from ftl_bench import Scenario, SubObjective
 from ftl_bench.aggregate import aggregate
 
 
+def test_retry_curve_uses_the_same_solved_first_selection_as_headline():
+    result = {"scenario": "retry", "type": "full_run", "ftl_score": 500,
+              "solved": True, "status": "completed", "attempt_ftl_scores": [900, 500],
+              "attempt_solved": [False, True], "jumps_used": 20}
+    report = aggregate([result], [])
+    assert report["ftl_score_mean"] == 500
+    assert report["retry_curve"][0]["ftl_score_mean"] == 900
+    assert report["retry_curve"][1]["ftl_score_mean"] == 500
+    assert report["retry_curve"][1]["solved"] == 1
+
+
 # --- helpers ---------------------------------------------------------------
 
 def make_result(
@@ -52,10 +63,12 @@ def make_scenario(id="s0", tier="public", type="reach_sector"):
 
 # --- empty results ---------------------------------------------------------
 
-def test_empty_results_returns_minimal_dict():
+def test_empty_results_has_a_reportable_shape():
     out = aggregate([], [])
-    assert out == {"ftl_score_mean": None, "ftl_score_median": None,
-                   "solve_rate": "0/0", "instances": 0}
+    assert out["ftl_score_mean"] is None and out["ftl_score_median"] is None
+    assert out["solve_rate"] == "0/0" and out["instances"] == 0
+    assert out["headline"] == "No benchmark instances"
+    assert out["solve_pct"] == 0
 
 
 def test_empty_results_ignores_scenarios():
@@ -63,9 +76,8 @@ def test_empty_results_ignores_scenarios():
     out = aggregate([], [make_scenario("s0")])
     assert out["ftl_score_mean"] is None
     assert out["instances"] == 0
-    # The rich keys are absent on the empty path.
-    assert "headline" not in out
-    assert "by_type" not in out
+    assert out["headline"] == "No benchmark instances"
+    assert out["by_type"] == {}
 
 
 # --- mean FTL score --------------------------------------------------------

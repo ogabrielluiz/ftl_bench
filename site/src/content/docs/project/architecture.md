@@ -29,6 +29,11 @@ mod/ftl_bench_bridge/
   pause gating, observation JSON, command application
         |
         v
+native/
+  protocol-5 source patch and capabilities
+  reliable controls/setup/score/victory, exact upgrades and native fuel recovery
+        |
+        v
 FTL engine
 ```
 

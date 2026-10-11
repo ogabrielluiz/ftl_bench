@@ -1,116 +1,51 @@
 ---
 title: Bring your model or agent
-description: The integration contract for evaluating your own model or agent on ftl_bench.
+description: Text, structured-plan and typed-choice integrations through the shared action interface.
 ---
 
-There are two integration paths. Use the built-in LLM loop if you want a
-comparable model row. Drive the environment directly if you want to evaluate a
-larger custom agent system.
+Use the built-in agent loop for a model row, or `AgentSession` for a custom agent. All integrations act through the same bridge and record the same scoring evidence.
 
-## Option A: bring a model
+## Built-in backends
 
-Reuse the benchmark's agent loop and provide one completion function. The loop
-handles the prompt manual, objective, observation, rolling history, response
-parsing, dispatch, trajectory logging, and scoring.
-
-The backend contract is:
-
-```python
-def complete(system: str, user: str) -> str:
-    """Return the model reply for one turn.
-
-    The reply should include brief reasoning and an ACTION block. In v5, the
-    ACTION block may contain multiple commands and should end with advance N,
-    unless the model sends giveup alone to concede the instance.
-    """
-```
-
-Example model reply:
-
-```text
-I should stabilize oxygen and suppress the enemy weapons before waiting.
-ACTION:
-  power 3 3
-  crew 1 2
-  fire 0 3
-  fire 1 3
-  advance 150
-```
-
-The reference backends live in `adapter/llm_agent.py`:
-
-| Backend | Function | Notes |
+| Backend | Contract | Configuration |
 |---|---|---|
-| `anthropic` | `anthropic_complete(system, user, model)` | Anthropic Messages API over `urllib`; needs `ANTHROPIC_API_KEY`. |
-| `claude-cli` | `claude_cli_complete(system, user, model)` | Shells out to local `claude -p`. |
-| `codex` | `codex_complete(system, user, model)` | Shells out to local `codex exec`. |
+| `anthropic` | Messages action text | `ANTHROPIC_API_KEY` |
+| `openai` | Public Responses strict JSON action plan | `OPENAI_API_KEY` |
+| `jev` | Typed Choice over observed actuators | `TYPESAFE_API_KEY` or `JEV_API_KEY` |
+| `claude-cli` | Local action text | Authenticated `claude` |
+| `codex` | Local action text | Authenticated `codex`; optional `CODEX_BIN` |
 
-To add a backend, implement the same shape and wire it into `make_llm_agent`:
+```powershell
+ftlbench --env-file "C:\Projects\.env.txt" run --agent llm --backend <backend> --model <model-id> --mode gameover
+```
+
+Environment files are loaded only when explicitly selected. No model call is made by `doctor`.
+
+### Jev contract
+
+The separately labeled `jev-actuator-choice-v1` adapter enumerates observed power settings, crew rooms, weapon/beam targets, door operations, special systems, economy and navigation. Each actuator has a hold option; advance is another typed choice. It uses the documented [Choice API](https://docs.typesafe.ai/api).
+
+Questions are independent, so reactor or other actuator selections can conflict. The bridge reports their effects/rejections under the shared semantics. A question has at most 255 options; a plan has at most 12 commands. Invalid answers and oversized plans fail explicitly. This is a constrained action-selection track and must be labeled when comparing rows.
+
+### OpenAI contract
+
+The adapter calls the [public Responses API with structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs), generating a strict JSON action plan translated into the same paused commands. OpenAI Decisions preview is not implemented because its schema is unavailable here. Responses support does not imply preview access.
+
+## Custom completion function
 
 ```python
-# adapter/llm_agent.py
-def my_model_complete(system: str, user: str, model: str | None) -> str:
-    return call_my_model(system_prompt=system, user_prompt=user, model=model)
+from model_backend import Completion
 
-# in make_llm_agent(...)'s complete():
-if backend == "my-model":
-    return my_model_complete(system, user, model)
+def complete(system: str, user: str, model: str | None):
+    return Completion("ACTION:\n  advance 150", {"provider": "my-provider"})
 ```
 
-Then run:
+Text replies also remain supported. Wire the function into `make_llm_agent` and the runner backend parser. The loop supplies the interface manual, objective, compact JSON and recent action history; handles plans and recording; and finalizes provider errors.
 
-```bash
-cd harness
-uv run python ../adapter/run_benchmark.py --agent llm --backend my-model --model <your-model-id>
-```
+A plan contains at most 12 paused commands followed by advance. `giveup` alone concedes as unsolved. Changing prompting, memory, policy or the action-selection contract defines a different agent row.
 
-## What the model sees
+## Custom full agent
 
-Each turn includes:
+Use `AgentSession.reset_episode(seed)`, `observe()` and `step(actions, advance_frames)`. A runner hook accepts `agent_fn(sess, scenario, log, attempts=())` and should return terminal metadata such as `{"status": "completed", "reason": "victory"}` or a failed transport reason. Scoring still requires observation evidence; an agent's claimed win does not prove one.
 
-- a **system prompt**: the versioned interface manual
-  (`prompts/ftl_agent_v5.md` by default) plus the objective and run rules;
-- a **user turn**: the compact [observation](/reference/observation/) and recent
-  action history.
-
-The prompt manual is part of the agent identity. If you change it, report a new
-row and keep the version in the run label. The manifest records model, backend,
-prompt version, suite, mode, and retry count.
-
-## Option B: bring a whole agent
-
-If you want custom prompting, memory, tools, self-critique, planning, or
-multi-process orchestration, drive the environment directly. Each loop is still
-observation in, action out.
-
-- `adapter/play_cli.py`: turn CLI. `play_cli.py obs` prints the compact
-  observation; command invocations apply one action and return the next state.
-- `harness/src/ftl_bench/session.py`: Python API via `AgentSession`
-  (`reset_episode(seed)`, `observe()`, `step(actions, advance_frames)`, plus
-  helpers such as `jump`, `fire_weapon`, and `leave_sector`).
-- `adapter/run_benchmark.py`: runner hook. If your agent can be exposed as
-  `agent_fn(sess, scenario, log)`, the runner gives you scoring and aggregation
-  for free.
-
-The CLI, LLM track, and runner share the same command semantics, so results stay
-comparable. `giveup` is a terminal command: it records a concession and scores
-the instance as unsolved with the state reached so far.
-
-## Retry mode
-
-Run with `--retries N` to give the agent up to `N + 1` tries on the same seed.
-Before a retry, the runner passes prior attempts to agents that accept the
-`attempts` parameter:
-
-```python
-def agent_fn(sess, scenario, log, attempts=()):
-    ...
-```
-
-Each `Attempt` contains score, solve status, outcome, final state, breakdown,
-and a compact transcript. Retry mode scores the best try and reports a solve@k
-learning curve. Because this is a different evaluation condition, the agent
-label and manifest include `retries=N`.
-
-See [Action set](/reference/actions/) and [Observation schema](/reference/observation/)
-for the exact surface.
+Retry runs can receive prior attempt summaries and are separately labeled. See [actions](/reference/actions/), [observations](/reference/observation/) and [protocol](/introduction/protocol/).

@@ -32,7 +32,7 @@ surface.
 ## How the agent plays
 
 FTL is real-time-with-pause. `ftl_bench` keeps the game paused between turns.
-Each turn the agent receives a decision-complete JSON observation and returns an
+Each turn the agent receives a structured JSON observation with bound game facts and returns an
 `ACTION:` block. Commands are applied while paused, then the agent advances the
 clock:
 

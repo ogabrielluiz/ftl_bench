@@ -123,10 +123,29 @@ def store_sell(index: int) -> dict[str, Any]:
     return {"type": "store_sell", "index": int(index)}
 
 
+def close_store() -> dict[str, Any]:
+    """Close the native store window without purchasing or choosing an event."""
+    return {"type": "close_store"}
+
+
 def upgrade_system(system_id: int) -> dict[str, Any]:
-    """Spend scrap to raise a system's MAX power by one (e.g. a 2nd shield layer = shields
-    0). Available anytime, not just at a store."""
+    """Request one system upgrade at the native price when the upgrade UI permits it."""
     return {"type": "upgrade_system", "system_id": int(system_id)}
+
+
+def upgrade_reactor() -> dict[str, Any]:
+    """Request one reactor upgrade at the native price and capacity limit."""
+    return {"type": "upgrade_reactor"}
+
+
+def wait_for_fuel() -> dict[str, Any]:
+    """Press the native out-of-fuel Wait button for one recovery/world turn."""
+    return {"type": "wait_for_fuel"}
+
+
+def set_distress(enabled: bool = True) -> dict[str, Any]:
+    """Set the native distress beacon while the out-of-fuel UI permits it."""
+    return {"type": "set_distress", "enabled": bool(enabled)}
 
 
 def cloak() -> dict[str, Any]:
@@ -238,6 +257,8 @@ class AgentSession:
         # clears it into that step's trajectory record. Avoids threading a `thought` param through
         # step() and every apply_command helper. None for agents that don't reason (scripted/random).
         self.pending_thought: str | None = None
+        self.pending_model: dict[str, Any] | None = None
+        self.pending_decision_obs: dict[str, Any] | None = None
 
     def observe(self) -> Observation:
         """Latest validated observation (no action issued)."""
@@ -256,27 +277,34 @@ class AgentSession:
         self.action_seq = obs.last_action_seq or 0
         return obs
 
-    def _sync_seq(self) -> None:
+    def _sync_seq(self) -> Observation | None:
         """Bump action_seq past the game's persisted last_action_seq so the bridge's
         dedup never ignores us (the game-side seq survives reloads/restarts; a fresh
         session — e.g. a new MCP server — starts at 0)."""
         try:
             cur = self.client.read_latest()
             self.action_seq = max(self.action_seq, cur.last_action_seq or 0)
-        except (FileNotFoundError, ObservationValidationError):
-            pass
+            return cur
+        except (OSError, ObservationValidationError):
+            return None
 
     def step(
         self, actions: Iterable[dict[str, Any]], advance_frames: int = 30
     ) -> Observation:
         """Write an action, advance the world, return the resulting observation."""
-        self._sync_seq()
-        self.action_seq += 1
-        # Read+clear the pending thought BEFORE the ack: if _wait_for times out below, no record is
-        # written, and clearing here ensures the thought can't leak onto the next step. (The
+        # Read+clear pending decision context before dispatch so timeouts and write failures cannot
+        # leak it onto a later step. (The
         # leave_sector pump calls step() repeatedly; only the first sub-step carries the thought.)
         thought = self.pending_thought
         self.pending_thought = None
+        model = self.pending_model
+        self.pending_model = None
+        decision_obs = self.pending_decision_obs
+        self.pending_decision_obs = None
+        # Paused GUI/native recovery can advance while the model thinks. Keep this freshest
+        # readable pre-dispatch state separate from the raw observation used for that decision.
+        pre_obs = self._sync_seq()
+        self.action_seq += 1
         payload = {
             "seq": self.action_seq,
             "advance_frames": int(advance_frames),
@@ -287,12 +315,26 @@ class AgentSession:
         # re-paused, so the timeout must exceed the frame budget's wall-clock
         # (~60 fps) plus warp/animation slack and poll margin.
         timeout = max(self.step_timeout, advance_frames / 45.0 + 3.0)
-        obs = self._wait_for(
-            lambda o: o.last_action_seq == self.action_seq and o.paused,
-            timeout=timeout,
-        )
+        try:
+            obs = self._wait_for(
+                lambda o: o.last_action_seq == self.action_seq and o.paused,
+                timeout=timeout,
+            )
+        except TimeoutError:
+            # A late/missing ack does not prove the action failed. Retain the latest
+            # readable state and request trace, including wins/deaths during that wait.
+            if self.recorder is not None:
+                try:
+                    latest = self.observe()
+                except (OSError, ObservationValidationError):
+                    latest = None
+                self.recorder.record("step_timeout", payload["actions"], latest,
+                                     thought=thought, model=model, pre_obs=pre_obs,
+                                     decision_obs=decision_obs)
+            raise
         if self.recorder is not None:
-            self.recorder.record("step", payload["actions"], obs, thought=thought)
+            self.recorder.record("step", payload["actions"], obs, thought=thought, model=model,
+                                 pre_obs=pre_obs, decision_obs=decision_obs)
         return obs
 
     # ---- autonomy: start a game from the menu without a human click ----
@@ -318,13 +360,13 @@ class AgentSession:
         """Start a fresh seeded episode, even from in-game: abandon the current run
         back to the main menu, then launch a new game. (start_game only works from
         the menu; this works anywhere.)"""
+        deadline = time.monotonic() + timeout
         try:
             started = self.observe().game_started
         except (OSError, ObservationValidationError):
-            # A Windows file-race during a just-completed restart (obs briefly absent/locked)
-            # must not abort the reset: assume we're in-game and fall through to issuing the
-            # reset_episode action — the _wait_for calls below already tolerate these.
-            started = True
+            # A transient read failure is not evidence that a game is running.
+            # Wait for a valid menu/game observation before choosing a reset path.
+            started = self._wait_for(lambda o: True, timeout=max(0.1, deadline - time.monotonic())).game_started
         if not started:
             return self.start_game("new", seed=seed)
         self._sync_seq()
@@ -334,7 +376,6 @@ class AgentSession:
             act["seed"] = int(seed)
         self._write_action_atomic(
             {"seq": self.action_seq, "advance_frames": 0, "actions": [act]})
-        deadline = time.monotonic() + timeout
         self._wait_for(lambda o: not o.game_started,           # reached the menu
                        timeout=max(2.0, deadline - time.monotonic()))
         obs = self._wait_for(lambda o: o.game_started,         # new run loaded
@@ -385,6 +426,10 @@ class AgentSession:
     def choose_event(self, choice_index: int, advance_frames: int = 60) -> Observation:
         return self.step([choose_event(choice_index)], advance_frames=advance_frames)
 
+    def close_store(self, advance_frames: int = 20) -> Observation:
+        """Close the native store window and retain its explicit action feedback."""
+        return self.step([close_store()], advance_frames=advance_frames)
+
     def fire_weapon(self, weapon_slot: int, target_room_id: int,
                     target_ship_id: int = 1, advance_frames: int = 60) -> Observation:
         return self.step(
@@ -424,9 +469,14 @@ class AgentSession:
             cur = m.get("sector")
             if start_sector is not None and cur is not None and cur > start_sector:
                 break  # committed — the sector advanced
+            feedback = next((item for item in reversed(obs.raw.get("action_feedback") or [])
+                             if item.get("type") == "leave_sector"), None)
+            if (feedback and feedback.get("status") == "rejected"
+                    and feedback.get("reason") not in {"drive_charging", "mid_warp", "transition_pending"}):
+                break  # The bridge refused this departure; advancing cannot repair it.
             if not m.get("at_exit"):
                 break  # no longer on the exit beacon; nothing left to pump
-            if obs.enemy_ship is not None:
+            if (obs.enemy_ship or {}).get("hostile") is True and (obs.enemy_ship or {}).get("destroyed") is not True:
                 break  # refused: can't leave with a live enemy (re-issuing won't help)
             # preconditions still hold (incl. a drive mid-charge) -> pump more frames
             obs = self.step([leave_sector()], advance_frames=advance_frames)

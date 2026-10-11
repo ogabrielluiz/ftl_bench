@@ -1,69 +1,38 @@
 ---
 title: How scoring works
-description: ftl_bench reports FTL native score, solve/win rate, efficiency, and per-suite breakdowns over seeded instances.
+description: Native score, strict verified wins, confirmed movement and retained outcomes.
 ---
 
-`ftl_bench` reports the game's own run score as the headline metric. The runner
-evaluates agents on reproducible seeded instances and aggregates the resulting
-trajectories.
+The runner reports FTL's native run score plus scenario progress and strict solve rate. The scorer reads recorded observations and terminal outcomes; it does not execute a game policy.
 
-## Headline metric: FTL score
+## Native score and goal progress
 
-At the end of a run, FTL computes a native score from real game progress: scrap
-collected, ships destroyed, beacons and sectors explored, flagship progress, and
-difficulty. `ftl_bench` reports the mean of that value over the evaluated suite.
+`ftl_score` is the latest authoritative current-run score observed during the attempt, tagged `ftl_score_source: native_live_v1`. Aggregate reports include its mean, median and seed standard error.
 
-Using the native score is useful because it is:
+The pure native getter matches FTL 1.6.9: `(scrap collected + 20 × ships destroyed + 10 × beacons explored) × difficulty multiplier`, truncated to an integer. Multipliers are 1.0 easy, 1.25 normal and 1.5 hard. The only automatic benchmark setup currently supported is easy. Components are recorded in raw observations.
 
-- **Holistic:** it rewards the same progress the game rewards.
-- **Hard to farm:** it requires real exploration, combat, loot, sector progress,
-  and ultimately the flagship.
-- **Comparable:** it is easier to interpret than a newly invented scalar.
-- **Unsaturated:** full wins and stronger routes leave room for better agents.
+The saved `TopScore.currentScore` snapshot can retain a previous run until FTL saves; it is not accepted as live score evidence. Missing or legacy score sources remain unverified.
 
-## Solve and win rate
+Mixed scenarios have weighted goals such as surviving confirmed jumps or reaching a sector with enough hull. Full-run progress has target 11: eight sectors plus three completed flagship phases. Native sector indices are zero-based, so index 7 gives eight sectors of progress.
 
-Each instance also has a strict goal check. The aggregate reports `Solve N/M`.
-For full-game runs, a solve is the real win: destroying the rebel flagship. For
-mixed-suite probes, solve means the instance's explicit goal was met, such as
-surviving enough jumps or reaching a sector while healthy.
+The current native getter reports a verified final win. No completed intermediate phases are guessed from raw flagship stage counters; a verified win supplies all three completed phases.
 
-## Efficiency
+## Strict solve
 
-Efficiency is reported separately, usually as jumps or turns per instance. It is
-not the headline number, but it helps distinguish an agent that reaches the same
-goal cleanly from one that burns many turns in no-op loops or low-value detours.
+A full-run solve requires explicit `victory: true` (or a future verified completed-phases field). Game over alone also occurs on losses and cannot establish a win. Survival requires the player still alive at the end.
 
-## Terminal concessions
+Player survival counts living player-owned crew, including own boarders; hostile intruders never count as surviving player crew. Observed zero health is excluded even if a native death flag lags. The v3 control contract also rejects hostile or uncontrollable movement before the engine call.
 
-Agents may explicitly concede with `giveup`. This ends the benchmark instance
-immediately and records `gave_up: 1` in trajectory-derived metrics. It is always
-an unsolved terminal outcome; it does not add score or satisfy any objective.
-The native FTL score and final observed state are still preserved so conceded
-runs remain comparable in aggregate analysis.
+Travel is counted from changed observed map identity, not jump commands. Resets, rejected moves and repeated commands at the same beacon earn no travel credit. Minimum distinct-beacon requirements continue to gate applicable scenarios.
 
-## Instances and tiers
+Concession, stall, error or interruption is unsolved. Partial progress and native score remain recorded; they do not turn a failed attempt into a solve.
 
-An instance pins the run:
+## Lifecycle and retries
 
-```text
-(seed, ship, difficulty, tier, goal)
-```
+Each attempt ends with a terminal record containing status, reason and optional error. A real loss is a completed game outcome; a model/transport failure is an error. The dashboard and reports retain both.
 
-The seed fixes map and event RNG. Tiers split development seeds from held-out
-reporting seeds:
+`--retries N` allows up to N extra same-seed attempts and reports best-of-k results plus solve@k. Compare these only with equally labeled retry rows.
 
-- `public`: tune, debug, and compare during development.
-- `semi_private`: report the benchmark number.
+**Ruleset v7 requires `owned-player-crew-v1` and `native-economy-and-fuel-recovery-v1`. Pre-v7 rows are not comparable.** The v3 Sol concession at score 329 and v2 Jev score 59 remain diagnostic/historical evidence. Diagnostic runs preserve results but are excluded from model comparison metrics. Compare the same suite, tier, mode, prompt, native artifacts, all five contracts, action-selection contract and retry count.
 
-## Baseline ladder
-
-Scores should be interpreted against reference floors:
-
-- `random`: legal actions sampled from the same interface.
-- `scripted`: heuristic navigation, fleeing, event handling, and simple combat.
-- model rows: real LLM or agent systems, using the same runner and scorer.
-
-The scoring and aggregation code lives in
-`harness/src/ftl_bench/{scoring,aggregate}.py`. Suites live in `scenarios/`, and
-the runner is `adapter/run_benchmark.py`.
+Implementation: `harness/src/ftl_bench/scoring.py` and `aggregate.py`.

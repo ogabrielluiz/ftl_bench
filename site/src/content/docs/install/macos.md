@@ -3,6 +3,13 @@ title: Install on macOS (Rosetta)
 description: Set up FTL + Hyperspace on macOS. Works, but full runs are limited by the Rosetta freeze class.
 ---
 
+:::caution[Secondary development platform]
+The revised runner requires native protocol 5, verified setup identity and a victory binding.
+The Windows patch/build has been compiled locally; an equivalent macOS build and retained
+full-game validation are still required. These historical macOS setup steps alone do not
+establish compatibility with the revised benchmark.
+:::
+
 `ftl_bench` runs on macOS, but with a caveat worth knowing up front.
 
 :::caution[Rosetta limits full runs]

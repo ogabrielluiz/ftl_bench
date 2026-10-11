@@ -104,13 +104,20 @@ def summarize_attempt(records: list[dict[str, Any]], result: dict[str, Any], ind
     crew = ach.get("crew_alive")
     o2 = ach.get("oxygen_pct")
     hull = ach.get("final_hull")
-    if result.get("solved"):
+    if result.get("status") in {"error", "failed", "interrupted"}:
+        outcome = f"run failed: {result.get('termination_reason') or result.get('reason') or 'infrastructure error'}"
+    elif ach.get("gave_up"):
+        outcome = "conceded the instance"
+    elif ach.get("victory"):
+        outcome = "WON: defeated the rebel flagship"
+    elif result.get("solved"):
         outcome = "met the scenario goal"
     elif ach.get("alive", 1) == 0:
         clauses = [f"killed {kills} enemies", f"crew alive {crew}"]
         if o2 is not None:
             clauses.append(f"O2 was {o2}%")
-        outcome = (f"LOST: ship destroyed in sector-{sector} combat "
+        cause = "crew lost" if crew == 0 and (hull or 0) > 0 else "ship destroyed"
+        outcome = (f"LOST: {cause} in sector-{sector} combat "
                    f"({'; '.join(clauses)})")
     else:
         outcome = (f"survived but did not win: reached sector {sector} with hull {hull}, "
@@ -120,7 +127,7 @@ def summarize_attempt(records: list[dict[str, Any]], result: dict[str, Any], ind
     transcript: list[str] = []
     step = 0
     for r in records:
-        if r.get("kind") == "meta":
+        if r.get("kind") in {"meta", "end"}:
             continue
         acts = r.get("actions") or []
         obs = r.get("obs") or {}

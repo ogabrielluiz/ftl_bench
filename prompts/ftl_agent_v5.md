@@ -1,125 +1,162 @@
 <!-- prompt_version: v5 -->
 # FTL Bench — Interface Reference (v5)
 
-You are playing **FTL: Faster Than Light** through a turn-based text interface. You already know
-the game — its goal, ships, systems, weapons, enemies, hazards, and how to play it well. This
-document tells you ONLY what you can't infer from knowing FTL: how to operate THIS interface — how
-to read the observation and what commands to issue. **All strategy and judgement are yours.**
+You are playing **FTL: Faster Than Light** through a paused text interface. This manual describes
+the observations and command semantics. All game strategy and judgment are yours.
 
-## Turn & pause model (you plan, then the game runs)
-- The game is PAUSED between turns. Each turn you receive one OBSERVATION (a JSON snapshot of the
-  whole game) and reply with a **PLAN: as many commands as the situation needs, then one
-  `advance`** saying how long to let the game run. You have unlimited thinking time per turn; the
-  clock only moves when you advance.
-- The commands in a plan are applied **in order, while the game is still paused** — so a turn is
-  exactly how a good player uses the spacebar: pause, set power, position crew, target weapons, set
-  doors, *then* unpause and watch it play out. Set up everything you need in ONE turn rather than
-  one click at a time.
-- End the plan with **`advance <frames>`**: how long to run before your next turn. A combat beat is
-  ~150; a `jump` warp needs ~260; use a long advance (e.g. `advance 600`) to let weapons charge
-  or a repair finish, a short one (`advance 30`) to react again soon. If you omit
-  `advance`, a short default beat is used.
-- An advance also **stops early** if something critical happens; the observation's `interrupted_by`
-  field says what — `combat_started` / `took_damage` / `boarder_aboard` / `fire` / `event` — so you
-  get a turn to respond. (A minimum beat runs first, so a single hit won't chop your turn short.)
-- Reply with a brief reasoning, then an `ACTION:` block — **one command per line**, e.g.:
-  ```
-  ACTION:
-    power 3 3        # max weapons
-    crew 0 8         # send crew to fight the fire in room 8
-    doors close 9    # contain it
-    fire 1 3         # release one burst laser volley at their weapons room
-    advance 150
-  ```
-  `#` comments are ignored. A reply with no commands just advances (a pure wait).
+## Turn model
 
-## Observation fields
-Top level: `hull` {current,max} (0 = destroyed), `oxygen_pct`, `fuel`, `missiles`, drone `parts`,
-`scrap`, `reactor_free`/`reactor_total` (bars free vs total; `reactor_usable_free` is the true cap
-when an ion storm caps your reactor), `evasion` (your dodge %), `crew_count`,
-`game_status` (absent = alive; `DESTROYED`/`GAME_OVER` = run over), `interrupted_by` (why the last
-advance stopped early, if it did).
-- `systems`: each `{id, name, power: "cur/max", room, damage, needs_repair, on_fire, broken,
-  repair_room, ion}`. `broken` names why power alone will not fix it (`needs_repair`, `damaged`,
-  `on_fire`, or a `+` combination).
-- `crew`: each `{id, room, species, hp, busy, boarding}`. `intruders`: enemy crew aboard YOUR ship
-  `{room, health, species}`. `fires`: burning rooms `{room_id, fires}`.
-- `rooms`: player ship rooms with available `{room_id, oxygen, fires, breaches/breached, rect}`.
-  `doors`: door topology/state `{id/index, room_a, room_b, open, locked, forced_open, hacked}`.
-- `weapons` (yours): each `{slot, type (LASER/MISSILES/BURST/BEAM/BOMB), is_beam, dmg, pierces
-  (shield layers ignored), eff_pierce, ready_to_fire, queued_fire, targeted, charge, charge_max,
-  req_power, shots}`.
-- `enemy` (null if none): `{hull, shields: "NL charger=..", evasion, targetable, active (false once
-  it forfeits/flees), flagship, super_shield, power_surge_timer, rooms: [{room_id, system,
-  hacked}], rooms_with_crew: [{room_id, crew, controllable, members?}], crew:
-  [{room_id, health, species, repairing, mind_controlled}], weapons: [{type?, dmg, pierces,
-  about_to_fire, charge, charge_max}], systems: [{name, power}]}`.
-- `shots` (during combat): how your weapons are doing this fight —
-  `{fired, hit, shields_blocked, missed, damage_dealt, recent[]}`.
-- `map`: `{at_exit, jump_charged, jump_charge_pct, hazard (none/nebula/ion_storm/sun/pulsar/
-  asteroids), pds, current_pos, exit_pos, choosing_new_sector, out_of_fuel, beacons: [{index,
+The game is paused between turns. You receive one compact JSON observation and return a brief
+reason plus an `ACTION:` block, with one command per line. At most 12 commands apply in order
+while paused; end with `advance <frames>` (20–1200) to run the simulation and receive the next
+observation. A reply without commands is a wait. Comments beginning with `#` are ignored.
+
+```text
+ACTION:
+  power 3 3
+  crew 1 2
+  fire 0 3
+  advance 150
+```
+
+An advance may stop early for `combat_started`, `took_damage`, `boarder_aboard`, `fire` or
+`event`; `interrupted_by` reports why. The returned state is paused again. Charging and repairs
+only progress while time advances. A warp generally needs about 260 frames and weapon cooldowns
+use game seconds (about 60 frames per second). Short intervals may return before these finish.
+
+`giveup` must be the only command and immediately concedes the benchmark instance as unsolved.
+
+## Observation
+
+Top level includes `game_started`, `paused`, zero-based `sector`, `hull: "current/max"`,
+`oxygen_pct`, `fuel`, `missiles`, `drone_parts`, `scrap`, `crew_count`, `evasion`,
+`ftl_score`, `ship` (blueprint), `difficulty` and `capabilities`.
+
+`reactor_free`/`reactor_total` are reactor bars; `reactor_usable_free`/`reactor_usable_total`
+include the current storm/ion/hacking cap. `reactor_power_penalty` reports unavailable bars.
+
+`game_status` is absent while alive, `DESTROYED` or `GAME_OVER` for a terminal state, and
+`VICTORY` for an explicit native win. `victory: true` is authoritative. Ordinary game over
+and raw flagship phase/stage counters do not establish victory.
+
+- `systems`: `{id, name, power: "current/max", room, damage, needs_repair, on_fire,
+  broken, repair_room, ion, ioned, hacked}`. Repair/fire facts describe why power alone may
+  not restore a system. `ion` is a positive lock count when available.
+- `crew`: player-owned living crew with their original native `id`; ownership is
+  `player_owned`/`owner_ship_id`, location is `current_ship_id`/`boarding`.
+  `controllable: false` means movement is unavailable (for example, mind control).
+  Crew also include `room`, `species`, `hp`, and repair/fight `busy` state.
+  `intruders`: enemy crew aboard your ship. `fires`: `{room_id, fires}`.
+- `action_feedback`: crew movement or event-selection results, including rejection reasons.
+  Enemy boarders belong in `intruders`; they are not player crew and cannot be moved.
+- `rooms`: available `{room_id, oxygen, fires, breaches/breached, rect}`.
+  `doors`: `{id, index, room_a, room_b, open, locked, forced_open, hacked, airlock}`.
+  Airlocks have `airlock: true`; endpoint -1 is space.
+- `weapons`: `{slot, powered, type, is_beam, dmg, pierces, eff_pierce, ready_to_fire,
+  queued_fire, targeted, charge, charge_max, req_power, shots}`.
+- `enemy` (null if absent): hull, shields, evasion, active, hostile, targetable, fleeing,
+  jump_charge_pct, rooms/systems/weapons, rooms_with_crew, optional crew health/tasks and
+  flagship/super_shield/power_surge facts. Room rows carry room_id, system and hacked.
+  `active` describes powered/inbound activity only for a natively hostile ship;
+  `active: false` is not proof of destruction or victory. Inbound projectiles remain separately visible.
+  `targetable: false` means the native target is unavailable.
+  `hostile` is the native hostility flag, or unknown if unavailable. A surrendered ship may
+  remain visible with positive hull and powered systems while `hostile: false, targetable: false`.
+  Its presence or weapon power does not establish a valid firing target. Enemy fire requests
+  require native hostility and targetability; rejection feedback reports an unaccepted request,
+  while applied feedback confirms a queued request rather than a projectile or a hit.
+- `shots`: observed `{fired, hit, shields_blocked, missed, damage_dealt, recent[]}`.
+- `map`: at_exit, can_jump, jump_charged, jump_charge_pct, jump_charge,
+  enemy_defeat_pending, jump_blocked_reason, hazard, pds, current_pos, exit_pos,
+  choosing_new_sector, out_of_fuel and connected `beacons`. Beacon rows include index,
   visited, exit, fleet, quest, known, danger_zone, boss, nebula, store, distress, has_event,
-  new_sector, pos, dist_to_exit}], sector_choices?}`.
-- Special-system blocks appear when installed/known: `cloak`, `battery`, `hacking`, `drones`,
-  `teleporter`, `mind_control`. Read their `ready`/`charged`/`active`/`locked` fields before using
-  the matching command.
-- `event` (null unless a popup is blocking the game): `{text, selected_choice?,
-  potential_choice?, choices: [{index, text, blue?, enabled?, available?, disabled?, locked?,
-  cost?}]}`.
-- `store` (null unless you're on a store beacon): `{buy: [{i, name, price}], sell: [...]}`.
+  new_sector, pos and dist_to_exit. Sector choices are included only when bound.
+  `can_jump` and its `jump_charged` alias come only from native navigation readiness.
+  Native `economy.navigation` also exposes `drive_current`, `drive_max`, pending defeat
+  and a refusal reason. A destroyed enemy can still be awaiting defeat resolution/rewards;
+  pending defeat is separate context, while `can_jump` controls native jump eligibility.
+  Actual frame advance allows native defeat resolution to proceed.
+  Charge progresses during actual frame advance; elapsed model response time is not a frame budget.
+- Special systems: `cloak`, `battery`, `hacking`, `drones`, `teleporter`,
+  `mind_control`. Their blocks expose installed/ready/charged/active/locked facts when
+  available; drone slots and organic teleporter occupants are listed.
+- `event`: non-null while a blocking popup is open, with text and indexed choices.
+  Optional blue/native_type/enabled/available/disabled/locked/cost markers are included when bound.
+  `native_type` is the engine's choice type; type 1 is disabled. Availability flags describe
+  whether selection is allowed. `open_time` is seconds since the popup opened. `dialog_keys` describes the native
+  keyboard setting: 0 disables dialog hotkeys, 1 is normal, and 2 imposes a 0.3-second opening delay.
+- `store`: visible indexed buy/sell item lists and prices.
+- `economy` (native protocol 5): `upgrade_available`, and `systems` keyed by original
+  `system_id`, with `current_max_power`, `max_level`, `next_upgrade_cost` and `can_upgrade`.
+  The optional `reactor` block has the same upgrade facts. Costs come from the native
+  upgrade interface; missing costs are unknown. `can_upgrade` includes affordability,
+  the level cap and current legal context. A visible cost alone does not permit a purchase.
+  `fuel_recovery` contains `out_of_fuel`, `distress_on`, `can_wait` and `waiting`.
 
-## Commands (put as many as you need in the ACTION block, one per line)
+Optional fields are omitted when the native build does not expose them. Missing fields are
+unknown, not fabricated zero/false values.
+
+## Commands
+
+```text
+power <sys_id> <level>             set reactor allocation for a system
+crew <crew_id> <room>              move player crew to a room
+fire <slot> <enemy_room>           queue one manual shot/burst release
+beam <slot> <room_a> [room_b]      queue one beam sweep between room centers
+jump <beacon_index>                jump to an observed connected beacon
+event <choice_index>               select an indexed blocking popup choice
+leave                              cross sectors at the exit beacon
+buy <i> / sell <i>                 indexed store transaction
+upgrade <sys_id>                   spend scrap to raise system maximum
+reactor                            buy the available native next reactor level
+waitfuel                           take one native out-of-fuel recovery turn
+distress <on|off>                  set the native out-of-fuel distress beacon
+cloak                              activate cloaking
+battery                            activate backup battery
+hack <enemy_sys_id>                deploy/arm hacking at an enemy system
+drone [slot] [crew]                deploy a drone; crew flag allows crew drones
+dronerecall                        power down the drone system
+board <enemy_room>                 teleport organic crew from the teleporter room
+recall [enemy_room]                recall organic boarders
+mindcontrol <enemy_room>           target an occupied enemy room
+doors <open|close> [room]          set doors, including airlocks; optional room filter
+giveup                             concede as unsolved; must stand alone
+advance <frames>                   run time and end the paused plan
 ```
-power <sys_id> <level>          set a system's power (needs reactor_free >= the added cost)
-fire <slot> <enemy_room>        manually release/queue ONE shot or burst at an enemy room
-beam <slot> <room_a> [room_b]   fire a BEAM weapon, sweeping room_a -> room_b
-jump <beacon_index>             jump to a connected beacon (see map.beacons[].index)
-event <choice_index>            resolve a blocking event / popup
-leave                           cross into the next sector (only at the exit beacon: at_exit=true)
-crew <crew_id> <room>           move a crew member to a room
-buy <i> / sell <i> / upgrade <sys_id>   store transactions (upgrade raises a system's max power)
-cloak | battery | hack <enemy_sys> | drone | dronerecall
-board <enemy_room> | recall | mindcontrol <enemy_room> | doors <open|close> [room]
-giveup                          concede this benchmark instance as unsolved
-advance <frames>                end the plan; let the game run this long (a wait if alone)
-```
-System ids: 0 shields, 1 engines, 2 oxygen, 3 weapons, 4 drones, 5 medbay, 6 piloting,
-7 sensors, 8 doors, 9 teleporter, 10 cloaking, 12 battery, 14 mind, 15 hacking.
 
-## Manual weapon control
-- Weapons do **not** autofire. `fire <slot> <room>` queues exactly one release for that weapon.
-  After that shot/burst releases, the weapon idles again. To fire another cycle, issue another
-  `fire` command.
-- Expert play is volley play: wait until the weapons you need are charged (`ready_to_fire:true`),
-  then issue several `fire` commands in the same paused ACTION block so the shots land together and
-  overwhelm shields. Do not dribble lasers one at a time into a regenerating shield layer.
-- Missiles and bombs cost ammo. Hold them by not issuing `fire`; spend them only when the damage is
-  worth the missile.
-- `queued_fire:true` means a one-shot release is pending for that slot. `queued_fire:false` means
-  the weapon will not fire just because time advances, even if it is powered and charged.
+System IDs: 0 shields, 1 engines, 2 oxygen, 3 weapons, 4 drones, 5 medbay, 6 piloting,
+7 sensors, 8 doors, 9 teleporter, 10 cloaking, 11 artillery, 12 battery, 13 clonebay,
+14 mind control, 15 hacking. Passive subsystems do not accept reactor allocation.
 
-## Interface quirks (these differ from clicking in the real game)
-- **Most commands are one-time SETS.** `power`, `crew`, `doors`, and weapon targeting set a state
-  once; re-issuing the identical command when it's already in effect does nothing. Read the
-  observation's current state and do the NEXT thing instead of repeating.
-- **A broken module is not a power problem.** A system with `damage > 0`, `needs_repair:true`, or
-  `on_fire:true` is BROKEN — it works poorly or not at all no matter how much power it has. Fix it
-  by sending a crew member to its `room` (`crew <id> <room>`) to repair/extinguish. Powering it will
-  NOT restore it.
-- **Powering a weapon does NOT fire it.** `fire <slot> <enemy_room>` queues one manual release for
-  that weapon. Use it when you want that charged shot/burst to go out; do not spam it every beat.
-  If `ready_to_fire:true` and `queued_fire:false`, the weapon is being held. That is correct when
-  waiting for a coordinated volley or conserving missiles.
-- **`enemy.targetable:false`** means it's warping out or gone — firing hits nothing; jump on instead.
-  **`enemy.active:false`** means it forfeited/fled (guns depowered) — it's no longer a threat.
-- A non-null `event` freezes the entire sim until you resolve it with `event <choice_index>`.
-- You move between beacons with `jump`; you advance to the next SECTOR with `leave`, only when
-  `at_exit` is true. `jump_charged:false` means the FTL drive is still recharging.
-- After firing, `shots` tells you whether your shots are landing, shield-blocked, or missing — read
-  it instead of guessing from the enemy's hull alone.
+## Execution details
 
-- `giveup` ends the current benchmark instance immediately. It records a concession and is scored
-  as unsolved with the state/FTL score reached so far.
+Each `fire`/`beam` command queues exactly one release, including when the weapon is charging.
+It returns to idle after that release; another cycle requires another command. Beam endpoints
+remain distinct. `queued_fire: true` means pending; a charged weapon without a pending queue
+will not fire just because time advances. Missiles/bombs consume their ammunition cost on release.
 
-Reply with a brief reasoning, then an `ACTION:` block (one command per line, ending with `advance`;
-or `giveup` alone to concede).
+Power, crew and door settings can produce no change if already applied. Power does not repair
+damage or remove fire. A non-null event blocks simulation until resolved. An uncharged FTL drive
+rejects a jump; observe changed map position/sector to confirm movement. `leave` requires the
+exit and a safe native transition. Rejected actuator requests do not guarantee state changes.
+
+Upgrade commands require `capabilities.upgrade_rules`, `economy.upgrade_available`,
+the item's `can_upgrade`, and its known affordable native cost. System upgrade IDs come
+from `economy.systems[].system_id`; power allocation and system upgrades are distinct.
+Fuel recovery requires `capabilities.fuel_recovery` and the native out-of-fuel context.
+`waitfuel` takes a native recovery turn only when `can_wait` is true and `waiting` is false.
+`distress on|off` sets an explicit desired beacon state in the same legal recovery context;
+it is refused during a pending recovery animation or blocking transition. Ordinary frame advance (`wait`
+in the CLI, or `advance` in a plan) only advances simulation; it does not request a fuel
+recovery turn. Recovery has no guaranteed reward. Observe native feedback and subsequent
+resource/event state before issuing another request.
+
+Event commands use the original observed choice index. A disabled or unavailable choice cannot
+be selected. The native keyboard path rejects selections with `dialog_keys: 0`, or with
+`dialog_keys: 2` while `open_time` is below 0.3 seconds. Select one available choice per plan.
+Applied event feedback confirms that the native selection is queued, not that its branch has
+processed. Observe the returned popup and `action_feedback` to confirm the result. If the popup
+remains open, it is still unresolved; use the reported reason and current event fields when
+deciding the next plan.
+
+Reply with a brief reason and an `ACTION:` block ending in `advance`, or `giveup` alone.

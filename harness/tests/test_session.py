@@ -136,6 +136,36 @@ def test_step_times_out_without_bridge(tmp_path):
         sess.step([set_system_power(0, 1)])  # no bridge ever acks seq 1
 
 
+def test_step_records_model_metadata_once_and_clears_it_on_timeout(tmp_path, monkeypatch):
+    _write_obs(tmp_path, seq=None, paused=True)
+    sess = AgentSession(tmp_path)
+    sess.recorder = TrajectoryRecorder(tmp_path / "traj.jsonl")
+    model = {"provider": "openai", "model": "requested-model", "request_id": "req_123",
+             "usage": {"input_tokens": 100, "output_tokens": 20}, "latency_seconds": 0.25}
+    # An acknowledged step records the actual API usage once, alongside its action.
+    monkeypatch.setattr(sess, "_wait_for", lambda *_args, **_kwargs: sess.observe())
+    sess.pending_model = model
+    sess.step([], advance_frames=0)
+    sess.step([], advance_frames=0)
+    records = [json.loads(line) for line in sess.recorder.path.read_text().splitlines()]
+    assert records[1]["model"] == model
+    assert "model" not in records[2]
+
+    def timeout(*_args, **_kwargs):
+        raise TimeoutError("no ack")
+
+    monkeypatch.setattr(sess, "_wait_for", timeout)
+    sess.pending_model = model
+    with pytest.raises(TimeoutError):
+        sess.step([], advance_frames=0)
+    assert sess.pending_model is None
+    records = [json.loads(line) for line in sess.recorder.path.read_text().splitlines()]
+    assert len(records) == 4
+    assert records[-1]["kind"] == "step_timeout"
+    assert records[-1]["model"] == model
+    assert records[-1]["obs"] == sess.observe().raw
+
+
 def test_abandon_to_menu_bails_immediately_at_game_over(tmp_path):
     # The crew-death / win GAME OVER screen can't be cleared by return_to_menu/confirm_menu, so
     # abandon_to_menu must NOT spin the menu loop to its timeout — it returns at once and issues
@@ -154,3 +184,40 @@ def test_abandon_to_menu_bails_immediately_at_game_over(tmp_path):
     assert out.game_over is True
     assert time.monotonic() - start < 5.0          # did not spin to the 30s timeout
     assert not (tmp_path / "ftl_agent_action.json").exists()   # issued no menu-return action
+
+
+@pytest.mark.parametrize("ack_timeout", [False, True])
+def test_step_records_model_input_and_idle_gui_pre_dispatch_state_without_leaking(tmp_path, monkeypatch, ack_timeout):
+    _write_obs(tmp_path, seq=4, tick=1)
+    sess = AgentSession(tmp_path, recorder=TrajectoryRecorder(tmp_path / "traj.jsonl"))
+    decision = sess.observe().raw
+    decision["event"] = {"open_time": 0.1, "dialog_keys": 2}
+    sess.pending_decision_obs = decision
+    sess.pending_thought = "select the offered branch after the input delay"
+    sess.pending_model = {"provider": "codex", "model": "gpt-6.1-sol"}
+    # Native GUI state advances while generation is in flight, even with the game paused.
+    latest = {**decision, "tick": 9, "last_action_seq": 7,
+              "event": {"open_time": 1.0, "dialog_keys": 2}}
+    sess.obs_path.write_text(json.dumps(latest), encoding="utf-8")
+
+    def ack(*_args, **_kwargs):
+        if ack_timeout:
+            raise TimeoutError("missing ack")
+        return sess.observe()
+
+    monkeypatch.setattr(sess, "_wait_for", ack)
+    if ack_timeout:
+        with pytest.raises(TimeoutError):
+            sess.step([{"type": "choose_event", "choice_index": 0}], advance_frames=0)
+    else:
+        sess.step([{"type": "choose_event", "choice_index": 0}], advance_frames=0)
+    record = json.loads(sess.recorder.path.read_text().splitlines()[-1])
+    assert record["kind"] == ("step_timeout" if ack_timeout else "step")
+    assert record["decision_obs"] == decision
+    assert record["pre_obs"] == latest
+    assert json.loads(sess.action_path.read_text())["seq"] == 8
+    assert sess.pending_decision_obs is sess.pending_thought is sess.pending_model is None
+    monkeypatch.setattr(sess, "_wait_for", lambda *_args, **_kwargs: sess.observe())
+    sess.step([], advance_frames=0)
+    next_record = json.loads(sess.recorder.path.read_text().splitlines()[-1])
+    assert "decision_obs" not in next_record and "model" not in next_record and "thought" not in next_record

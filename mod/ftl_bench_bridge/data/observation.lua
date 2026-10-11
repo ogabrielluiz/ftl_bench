@@ -47,14 +47,23 @@ local function ship_snapshot(mgr)
   if crew_list then
     for i = 0, crew_list:size() - 1 do
       local crew = crew_list[i]
-      snap.crew[#snap.crew + 1] = {
-        id = i,
-        room = crew.iRoomId,
-        health_current = crew.health.first,
-        health_max = crew.health.second,
-        dead = crew.bDead,
-        mind_controlled = crew.bMindControlled,
-      }
+      -- Native lists include enemy boarders. Keep ownership separate from physical
+      -- location and retain each original vector index for action addressing.
+      if crew and crew.iShipId == mgr.iShipId then
+        local cok, controllable = pcall(function() return crew:GetControllable() end)
+        snap.crew[#snap.crew + 1] = {
+          id = i,
+          owner_ship_id = crew.iShipId,
+          current_ship_id = crew.currentShipId,
+          player_owned = crew.iShipId == 0,
+          controllable = cok and controllable == true,
+          room = crew.iRoomId,
+          health_current = crew.health.first,
+          health_max = crew.health.second,
+          dead = crew.bDead,
+          mind_controlled = crew.bMindControlled,
+        }
+      end
     end
   end
 

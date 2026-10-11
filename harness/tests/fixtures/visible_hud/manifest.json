@@ -1,0 +1,298 @@
+{
+  "contract": {
+    "contract": "ftl-visible-hud-pixels-v1",
+    "method": "exact-raster-glyphs-1280x720",
+    "config_sha256": "a77364c44bc31b6ce8257b218f874c86e015464fbc1d641e6894e7568aca3f00",
+    "template_sha256": "a4f64da624652ea546ac111fecc5cfba453fd15fd986735de44a48c357ed3905",
+    "input_source": "exact_png_pixels"
+  },
+  "review_method": "Manual transcription from full original PNGs using view_image before reader execution; no native observation used for expectations. Fixtures preserve original RGB top 96 rows exactly and replace all lower pixels with black to keep regression artifacts small. Source image hashes refer to full archived originals.",
+  "limitations": [
+    "Native terminal, hangar, settings, equipment, upgrades and sector-picker full screenshots have not been independently reviewed in this corpus.",
+    "Exact pixel template matching does not establish general OCR capability; changed font, scale, color or crop is omitted.",
+    "Hull is left aligned; single-digit hulls are deliberately omitted because erasing a complete trailing digit cannot be distinguished from a smaller valid hull.",
+    "An overlay that perfectly changes a glyph into a different valid glyph with correct alignment and colors cannot be detected from pixels alone. Exact matching assumes recognized HUD glyphs are unobscured."
+  ],
+  "cases": [
+    {
+      "name": "ship",
+      "fixture": "ship.png",
+      "fixture_sha256": "fa65a75a87da0fe1c93fc33cc7e75ffb9ca48798d4eed072b50609c0275f2a81",
+      "source": "tooltip-final-20261009T0504/screens/00001-6e8bec0abe38c6bf.png",
+      "source_sha256": "6e8bec0abe38c6bffd2dc833d35c707742223fb9a0a646a2f7402c30830843ab",
+      "source_top96_rgb_sha256": "1ba83aa95462d8fea6f61aa2f69f9e72c6e205b83ce4da8fe91774c0ca0b2903",
+      "manually_visible_values": {
+        "hull_current": 30,
+        "fuel": 16,
+        "scrap": 30,
+        "missiles": 8,
+        "drone_parts": 2
+      },
+      "expected_values": {
+        "hull_current": 30,
+        "fuel": 16,
+        "scrap": 30,
+        "missiles": 8,
+        "drone_parts": 2
+      },
+      "conservative_omissions": []
+    },
+    {
+      "name": "combat",
+      "fixture": "combat.png",
+      "fixture_sha256": "38357734e53d29021dea5768d798ec90ad78d2e590814374b22dd64872872283",
+      "source": "sol-fullgame-20261009T0429/screens/00053-5a489b728a6d8693.png",
+      "source_sha256": "5a489b728a6d869377109a1d455f3999808ce06440298f647895768810b589f9",
+      "source_top96_rgb_sha256": "f1a37ce20c7fd8acfccf9d45c67de96121c093b23391e93f00bb7e57639a09b6",
+      "manually_visible_values": {
+        "hull_current": 27,
+        "fuel": 16,
+        "scrap": 61,
+        "missiles": 9,
+        "drone_parts": 3
+      },
+      "expected_values": {
+        "hull_current": 27,
+        "fuel": 16,
+        "scrap": 61,
+        "missiles": 9,
+        "drone_parts": 3
+      },
+      "conservative_omissions": []
+    },
+    {
+      "name": "combat-four-nine",
+      "fixture": "combat-four-nine.png",
+      "fixture_sha256": "bf1bae7adb9b5b0788dcdfc5758c4cd46512f319c7d6cf18efc51c2b8d8a9d58",
+      "source": "sol-fullgame-20261009T0429/screens/00020-aa51dcbd940332ae.png",
+      "source_sha256": "aa51dcbd940332aedfb43c63d3f68198c51b07e410a66963ef4cb1eaee90a54f",
+      "source_top96_rgb_sha256": "64244552ad00bc23014b35ca1ee41fbc0aa14538a52a762995dfbca42910565c",
+      "manually_visible_values": {
+        "hull_current": 29,
+        "fuel": 16,
+        "scrap": 49,
+        "missiles": 7,
+        "drone_parts": 3
+      },
+      "expected_values": {
+        "hull_current": 29,
+        "fuel": 16,
+        "scrap": 49,
+        "missiles": 7,
+        "drone_parts": 3
+      },
+      "conservative_omissions": []
+    },
+    {
+      "name": "store-pointer-clips-hull-label",
+      "fixture": "store-pointer-clips-hull-label.png",
+      "fixture_sha256": "f213776597d24ad4aab529e917a593f209eceb16ef2cfc089bd1aa91233ec8af",
+      "source": "sol-store-20261009T0242/screens/00001-d333c6f59c3feabd.png",
+      "source_sha256": "d333c6f59c3feabd41eed53b51d25a97f737ab31165b9ba4c9268b61fe4170e1",
+      "source_top96_rgb_sha256": "1ae09143ffd50a14ae542672aca6afc074ffaa80ca3ecaaaf151fe94819d2d51",
+      "manually_visible_values": {
+        "hull_current": 28,
+        "fuel": 16,
+        "scrap": 49,
+        "missiles": 6,
+        "drone_parts": 3
+      },
+      "expected_values": {
+        "fuel": 16,
+        "scrap": 49,
+        "missiles": 6,
+        "drone_parts": 3
+      },
+      "conservative_omissions": [
+        "hull_current"
+      ]
+    },
+    {
+      "name": "store-floating-labels",
+      "fixture": "store-floating-labels.png",
+      "fixture_sha256": "2e7da87cf683ffa595ff4044bc5a2a200e503355879b4a839a6002bbeb536913",
+      "source": "sol-store-20261009T0242/screens/00002-8bb4286025c428a5.png",
+      "source_sha256": "8bb4286025c428a53367674bfabeffbd6d34ba6439fb8c55d726fe0df4d637c8",
+      "source_top96_rgb_sha256": "a185bbab85a379acfb3f99f90c020b89d931d33466cf4af3095adfcd0f8094d4",
+      "manually_visible_values": {
+        "hull_current": 28,
+        "fuel": 17,
+        "scrap": 46,
+        "missiles": 6,
+        "drone_parts": 3
+      },
+      "expected_values": {
+        "hull_current": 28,
+        "missiles": 6,
+        "drone_parts": 3
+      },
+      "conservative_omissions": [
+        "fuel",
+        "scrap"
+      ]
+    },
+    {
+      "name": "map",
+      "fixture": "map.png",
+      "fixture_sha256": "911c25f769cb97e1093455c4c94d91bdc0e5e14f5d0144e29c1abf6bc2c6c6ae",
+      "source": "sol-store-final-20261009T0347/screens/00004-2b64926f76cd34c7.png",
+      "source_sha256": "2b64926f76cd34c7c0641dec3175729fa132c2a8c56ae6a2b8e06f85c139fdde",
+      "source_top96_rgb_sha256": "1d42133889088fbcca9195b068d65be83a743c99e042ea8e15d0f54cf25ea2db",
+      "manually_visible_values": {
+        "hull_current": 30,
+        "fuel": 16,
+        "scrap": 27,
+        "missiles": 8,
+        "drone_parts": 2
+      },
+      "expected_values": {
+        "hull_current": 30,
+        "fuel": 16,
+        "scrap": 27,
+        "missiles": 8,
+        "drone_parts": 2
+      },
+      "conservative_omissions": []
+    },
+    {
+      "name": "menu",
+      "fixture": "menu.png",
+      "fixture_sha256": "d7bce7cb908eb111bd044d46e26a73eb3b74786cc56bd2f4a5da8bf507c390e6",
+      "source": "tooltip-final-20261009T0504/screens/00010-263349810d760b76.png",
+      "source_sha256": "263349810d760b761c7276102fe608d5131b337c2bf555e7391103e469973203",
+      "source_top96_rgb_sha256": "32468071982fdcd05be53072146dad2a92954e301ce84fadae71f9c365ec1363",
+      "manually_visible_values": {
+        "hull_current": 30,
+        "fuel": 16,
+        "scrap": 30,
+        "missiles": 8,
+        "drone_parts": 2
+      },
+      "expected_values": {
+        "hull_current": 30,
+        "fuel": 16,
+        "scrap": 30,
+        "missiles": 8,
+        "drone_parts": 2
+      },
+      "conservative_omissions": []
+    },
+    {
+      "name": "menu-dismissal-dark-ship-bright-hud",
+      "fixture": "menu-dismissal-dark-ship-bright-hud.png",
+      "fixture_sha256": "62d832e889c53c799409af1d6413b41b66a6e82f1ae02bdb9aa2aaf91f3fdb3d",
+      "source": "tooltip-final-20261009T0504/screens/00011-236d1df03078e20f.png",
+      "source_sha256": "236d1df03078e20f99f9cd9ac73c671ced15a036c3736b2cf473028d12055743",
+      "source_top96_rgb_sha256": "f535325104415211e6f6f0f2c6aa20c63c5e7f8dc7ec99861d04576e58d0605a",
+      "manually_visible_values": {
+        "hull_current": 30,
+        "fuel": 16,
+        "scrap": 30,
+        "missiles": 8,
+        "drone_parts": 2
+      },
+      "expected_values": {
+        "hull_current": 30,
+        "fuel": 16,
+        "scrap": 30,
+        "missiles": 8,
+        "drone_parts": 2
+      },
+      "conservative_omissions": []
+    },
+    {
+      "name": "event",
+      "fixture": "event.png",
+      "fixture_sha256": "f92b29eb9b703636e3feda3ee605dd63f84e0a5faa5147df9253c1b19244e5d1",
+      "source": "sol-fullgame-20261009T0429/screens/00000-a60790dcc28fbabf.png",
+      "source_sha256": "a60790dcc28fbabf7719395fc04280f47984166ecb93d98a1734e44ee44a2688",
+      "source_top96_rgb_sha256": "c5e7a90162f2beea782d0abf3ae38e3d544295745b48a11e7a3cb52850e9854a",
+      "manually_visible_values": {
+        "hull_current": 30,
+        "fuel": 16,
+        "scrap": 30,
+        "missiles": 8,
+        "drone_parts": 2
+      },
+      "expected_values": {
+        "fuel": 16,
+        "scrap": 30,
+        "missiles": 8,
+        "drone_parts": 2
+      },
+      "conservative_omissions": [
+        "hull_current"
+      ]
+    },
+    {
+      "name": "damage-one-seven",
+      "fixture": "damage-one-seven.png",
+      "fixture_sha256": "baaca81669a64f28c7d34b096d032b260c117c8b8259349bf652dc6034502b58",
+      "source": "sol-pilot-final-20261009T0508/screens/00024-e22155de8dbbbbbf.png",
+      "source_sha256": "e22155de8dbbbbbf6bdc263485d682d2cde1f60e1205b2556c88463c20e3ec0f",
+      "source_top96_rgb_sha256": "67b41b5b395d56fed9fa197c54c75d8b949366904d2327fe552fe9813f3fa360",
+      "manually_visible_values": {
+        "hull_current": 17,
+        "fuel": 15,
+        "scrap": 30,
+        "missiles": 8,
+        "drone_parts": 2
+      },
+      "expected_values": {
+        "hull_current": 17,
+        "fuel": 15,
+        "scrap": 30,
+        "missiles": 8,
+        "drone_parts": 2
+      },
+      "conservative_omissions": []
+    },
+    {
+      "name": "midwarp-small-ship",
+      "fixture": "midwarp-small-ship.png",
+      "fixture_sha256": "567527233b3f73926396c187534fcc4ec80efb40a1c39893cbe5cfdb6852c006",
+      "source": "sol-store-final-20261009T0340/screens/00008-4bb425f81f958ebe.png",
+      "source_sha256": "4bb425f81f958ebe79d588b04a4ea0ccdbece2ef35ec4e1eb2ea7ddf4324f536",
+      "source_top96_rgb_sha256": "9397fe3959fb6e14f57e359c33dc499d26dd6a9b56c58e21496cbe591967e510",
+      "manually_visible_values": {
+        "hull_current": 30,
+        "fuel": 15,
+        "scrap": 27,
+        "missiles": 8,
+        "drone_parts": 2
+      },
+      "expected_values": {
+        "hull_current": 30,
+        "fuel": 15,
+        "scrap": 27,
+        "missiles": 8,
+        "drone_parts": 2
+      },
+      "conservative_omissions": []
+    },
+    {
+      "name": "jump-floating-minus",
+      "fixture": "jump-floating-minus.png",
+      "fixture_sha256": "d373b8b645d4a10350f0a4aeaeb420a56ff4669fa6d3b3ddf87551b5dc006f86",
+      "source": "transition-final-20261009T0417/screens/00006-0f84de85929209ff.png",
+      "source_sha256": "0f84de85929209ff0381f48a6b556f95c16aac7ad3476a11671303bfd85f9571",
+      "source_top96_rgb_sha256": "eb14f4d1ab6cc73b918cd12f1688eca4e728a7c25fbe83ba4be06a715e56a6c4",
+      "manually_visible_values": {
+        "hull_current": 30,
+        "fuel": 14,
+        "scrap": 30,
+        "missiles": 8,
+        "drone_parts": 2
+      },
+      "expected_values": {
+        "hull_current": 30,
+        "scrap": 30,
+        "missiles": 8,
+        "drone_parts": 2
+      },
+      "conservative_omissions": [
+        "fuel"
+      ]
+    }
+  ]
+}

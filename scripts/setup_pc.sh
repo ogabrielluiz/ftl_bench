@@ -133,10 +133,13 @@ if want build; then
   log "build: Hyperspace.dll (Docker devcontainer, MinGW cross-compile)"
   command -v docker >/dev/null 2>&1 || die "docker not found in WSL. Install Docker Desktop (enable WSL integration) or 'sudo apt-get install -y docker.io && sudo usermod -aG docker $USER' then re-login."
   docker info >/dev/null 2>&1 || die "docker daemon not reachable. Start Docker Desktop (or 'sudo service docker start') and re-run 'build'."
+  command -v python3 >/dev/null 2>&1 || die "python3 is required to validate the versioned native patch"
+  python3 "$FTLB/scripts/apply_native_patch.py" --source "$HS" || die "native patch conflicts; existing source changes were preserved"
   docker pull "$DEVCONTAINER" && ok "devcontainer image present"
   (cd "$HS" && buildscripts/windows/build-releaseonly-from-docker.sh) || die "Hyperspace.dll build failed"
   DLL="$HS/build-windows-release/Hyperspace.dll"
   [ -f "$DLL" ] || die "expected $DLL, not produced"
+  python3 "$FTLB/scripts/write_native_provenance.py" --source "$HS" --dll "$DLL" --output "$FTLB/dist/native-build.protocol5.json" --image "$DEVCONTAINER" || die "could not record native build provenance"
   ok "built $(du -h "$DLL" | cut -f1) Hyperspace.dll"
 fi
 
@@ -191,12 +194,16 @@ if want install; then
   REL="$HS/Release Files/Windows"
   DLL="$HS/build-windows-release/Hyperspace.dll"
   [ -f "$DLL" ] || die "build the DLL first (stage build)"
+  [ -f "$FTLB/dist/native-build.protocol5.json" ] || die "build provenance missing; run stage build first"
+  # WSL must inspect the Windows process, not pgrep a Linux/macOS process name.
+  live_processes="$(/mnt/c/Windows/System32/tasklist.exe /fi 'imagename eq FTLGame.exe' 2>/dev/null)" \
+    || die "cannot verify FTL is closed; no installation changes made"
+  case "$live_processes" in *FTLGame.exe*) die "close FTL before installing native files";; esac
   # stage the files to copy into a temp dir on C: that the .bat will read
   STAGEDIR="/mnt/c/ftl_bench_install"
   mkdir -p "$STAGEDIR"
   cp "$REL/xinput1_4.dll" "$REL/lua-5.3.dll" "$REL/downgrade.bat" "$STAGEDIR/" 2>/dev/null
   cp -r "$REL/patch" "$STAGEDIR/" 2>/dev/null
-  cp "$DLL" "$STAGEDIR/Hyperspace.dll"
   # convert the WSL game path to a Windows path for the .bat
   GAME_WIN="$(wslpath -w "$GAME")"
   BAT="$STAGEDIR/install_into_game.bat"
@@ -208,21 +215,24 @@ echo Installing into "%GAME%"
 cd /d "%GAME%"
 echo --- downgrading FTL to 1.6.9 (if not already) ---
 if not exist FTLGame_orig.exe ( copy /Y "C:\\ftl_bench_install\\downgrade.bat" downgrade.bat >nul & call downgrade.bat ) else ( echo already downgraded )
-echo --- copying Hyperspace loader + DLL ---
+echo --- copying Hyperspace loader ---
 copy /Y "C:\\ftl_bench_install\\xinput1_4.dll" . >nul
 copy /Y "C:\\ftl_bench_install\\lua-5.3.dll" . >nul
-copy /Y "C:\\ftl_bench_install\\Hyperspace.dll" . >nul
 xcopy /E /I /Y "C:\\ftl_bench_install\\patch" patch >nul
 echo --- done ---
-echo You can close this window.
-pause
+exit /b %errorlevel%
 EOF
   ok "generated $BAT"
   warn "running it elevated (accept the UAC prompt on the PC)..."
   # try to launch elevated; user must click 'Yes' on the UAC dialog
-  powershell.exe -NoProfile -Command "Start-Process -Verb RunAs -FilePath cmd.exe -ArgumentList '/c','C:\\ftl_bench_install\\install_into_game.bat'" 2>/dev/null \
-    && ok "elevated installer launched (watch the PC for the UAC prompt + window)" \
-    || warn "could not auto-elevate. On the PC: right-click C:\\ftl_bench_install\\install_into_game.bat -> Run as administrator"
+  powershell.exe -NoProfile -Command '$nativeLoader = Start-Process -WindowStyle Hidden -Wait -PassThru -Verb RunAs -FilePath cmd.exe -ArgumentList "/c","C:\ftl_bench_install\install_into_game.bat"; exit $nativeLoader.ExitCode' 2>/dev/null \
+    || die "loader installation failed or elevation was declined; native DLL was not replaced"
+  # Install the verified DLL and matching provenance through the same backed-up
+  # code path used by native Windows. FTL_SAVE_DIR activates Windows process checks.
+  FTL_SAVE_DIR="$SAVE" PYTHONPATH="$FTLB/harness/src" python3 -m ftl_bench.cli install-native \
+    --dll "$DLL" --manifest "$FTLB/dist/native-build.protocol5.json" --game-dir "$GAME" \
+    || die "verified native installation failed; inspect the reported error"
+  ok "native DLL and matching provenance installed with retained backups"
 fi
 
 # ===========================================================================

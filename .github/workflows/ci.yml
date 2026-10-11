@@ -1,0 +1,49 @@
+name: validate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  harness:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.11', '3.13']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v8.2.0
+      - name: Test Python and real Lua bridge contracts
+        run: uv run --directory harness --python ${{ matrix.python }} --extra dev --extra dashboard pytest -q
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v8.2.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build dashboard
+        working-directory: dashboard
+        run: npm ci && npm run build
+      - name: Build documentation
+        working-directory: site
+        run: npm ci && npm run build
+      - name: Build self-contained wheel and source package
+        run: uv build --directory harness
+      - name: Smoke installed CLI outside the checkout
+        run: |
+          uv run --directory harness python ../scripts/smoke_package.py
+      - name: Test unpacked source release outside the checkout
+        run: uv run --directory harness python ../scripts/smoke_sdist.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-distributions
+          path: harness/dist/*
