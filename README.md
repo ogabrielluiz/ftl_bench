@@ -7,22 +7,35 @@ An agent benchmark that drives the real **FTL: Faster Than Light** engine throug
 ## Status: work in progress
 
 The visual benchmark is an **alpha implementation with partial live validation**.
-At 2026-10-11 09:00 UTC (06:00 in São Paulo), the frozen `2174cc9` matrix has
-10 finished cells and 26 remaining: seven task successes, two budget failures and
-one preserved technical exclusion; nine trials have eligible evidence. Sol/image
-finished nine cells (six successes, two budget failures, one technical exclusion).
-The first Sol/hybrid combat trial succeeded after 10 decisions, with all ten HUD
-summaries bound to their exact input PNGs. The rendered replay shows its first
-summary and explicit hull omission, successful outcome checks and saved restoration.
-All five full-game/pilot entries remain planned; fixture-free native-ending full
-games remain **0/4**, with no qualified model/observation comparison.
+At the 2026-10-11 09:25 UTC (06:25 in São Paulo) boundary, the frozen
+`2174cc9` matrix has all 18 Sol cells finished and 18 Luna cells remaining:
+**17 eligible, 12 task successes, five budget failures and one preserved technical
+exclusion**. The six fixed-seed challenge conditions are:
+
+| Challenge | Sol/image: success / budget / excluded | Sol/hybrid: success / budget / excluded |
+| --- | --- | --- |
+| Combat | 2 / 1 / 0 | 3 / 0 / 0 |
+| Fire recovery | 1 / 1 / 1 | 1 / 2 / 0 |
+| Repair-charge-escape | 3 / 0 / 0 | 2 / 1 / 0 |
+
+All 79 hybrid requests retain non-null screenshot-bound HUD provenance and pass
+saved derivation checks. Usage is available for 198/199 Sol calls; complete token
+totals remain unknown because the excluded image/fire call reported no usage.
+All five full-game/pilot entries were planned at this boundary; fixture-free
+native-ending full games remain **0/4**. The comparison is unqualified while Luna
+is unstarted, and the retained image/fire repeat-one exclusion will leave that
+four-condition pair incomplete even after the remaining cells finish.
+
+After this boundary, the Sol/image sector pilot launched and is underway;
+no pilot result or new native full-game completion is claimed.
 
 An audit import created an extra bytecode cache inside frozen-source; the next
 controller rejected it before game/model launch or a new ledger trial. All 78
 pinned executable files remained unchanged. After preserving the extra file and
 original failure, the static recheck matched both original admissions and protocol
 hashes (78 sources, 565 evidence files each). The reviewed helper resumed only
-unstarted Sol/hybrid cells; no additional completed result is claimed here.
+unstarted Sol/hybrid cells and completed the nine-cell hybrid boundary without
+a new technical exclusion.
 The separate preserved `078a5e2` cohort and failed trials remain unchanged;
 cohorts are not pooled and finished failures are not silently retried.
 See exact identities, receipts and remaining [WIP](docs/NEXT.md).

@@ -1,14 +1,17 @@
 # Current validation and next work
 
-**WIP / alpha. Snapshot: 2026-10-11 09:00 UTC (06:00 in São Paulo).**
-The admitted `2174cc9` matrix has 10 finished cells and 26 remaining: seven task
-successes, two budget failures and one technical exclusion; nine are eligible.
-Sol/image finished nine cells (six successes, two budget failures, one technical
-exclusion). First Sol/hybrid combat succeeded after 10 decisions; all ten HUD
-provenance joins passed. All five full-game/pilot entries remain planned, and
-fixture-free native-ending completion remains **0/4**. The comparison remains
-incomplete and unqualified. The static admission recheck passed after the
-frozen-source bytecode incident below; unstarted Sol/hybrid cells resumed.
+**WIP / alpha. Snapshot: 2026-10-11 09:25 UTC (06:25 in São Paulo).**
+The admitted `2174cc9` matrix has all 18 Sol cells finished and 18 Luna cells
+remaining: **17 eligible, 12 task successes, five budget failures and one
+preserved technical exclusion**. All five full-game/pilot entries were planned
+at this boundary; fixture-free native-ending completion remains **0/4**.
+After this boundary, the Sol/image sector pilot launched and is underway;
+no pilot result or new native full-game completion is claimed.
+Usage covers 198/199 calls, so complete token totals remain unknown. The
+comparison is incomplete and unqualified; the retained image/fire repeat-one
+exclusion also prevents that four-condition pair from qualifying after Luna
+finishes. The static admission recheck passed after the frozen-source bytecode
+incident below, and the nine hybrid cells finished without a new technical error.
 
 The preserved `078a5e2` cohort remains separate: nine Sol/image cells finished,
 with six task successes, two idle-budget failures and one technical exclusion;
@@ -26,8 +29,8 @@ runs remain historical; see the [store-arrival diagnosis](native-store-arrival.m
 | Observation modes | Image-only play and hybrid HUD numerals extracted from the same PNG; no hidden native-state fallback. The comparative model trials remain incomplete. |
 | Repeatable setup | Nine no-model fixture-6 probes passed measured starting-state and step equality across three wall delays. This covers the tested inputs, not every hidden RNG stream or full-game determinism. |
 | Protected lifecycle | Save backups, exact restoration, runtime identities and terminal evidence are recorded. Cooperative-stop probes passed before the actor and during one real CLI request; the returned cancelled response was retained and its actions discarded. |
-| Challenges | Frozen 36-cell controller, versioned public tasks, outcome audits, retained failures and exact replays. Ten current cells are finished; the separate historical nine-cell results are below. |
-| Full-game support | Fixture-free startup and the five-cell controller are implemented. Startup preserves the opening choice. The pilot ended in audited native defeat after 78 decisions; the Sol/image full-game attempt was interrupted by a confirmed harness store-arrival defect. |
+| Challenges | Frozen 36-cell controller, versioned public tasks, outcome audits, retained failures and exact replays. All 18 current Sol cells are finished; the separate historical nine-cell results are below. |
+| Full-game support | Fixture-free startup and the five-cell controller are implemented. Startup preserves the opening choice. The historical pilot ended in audited native defeat after 78 decisions; its subsequent Sol/image full-game attempt was interrupted by a confirmed harness store-arrival defect. The current pilot is underway. |
 | Dashboard | Saved challenge/full-game overviews, exact screenshots and inputs, outcome reasons, task identities and saved cleanup receipts. The dashboard is read-only. |
 
 The visual track is `visual-v1`; historical structured runs retain runner/ruleset
@@ -56,10 +59,49 @@ protocol identities and hashes of the complete `protocol.json` bytes differ:
 
 | Cohort | Embedded protocol SHA-256 | Protocol file SHA-256 | Snapshot |
 | --- | --- | --- | --- |
-| `matrix-main-2174cc9-20261011` | `14b187e91c25d675f3f9e1c532f4dfa6ec75d137334dc62e122f9a254118b613` | `b04b9dab9e7f85b24c092f9b53117238506dd5cc5a75f66e4b8368a94ac2910e` | 10 finished, 26 remaining |
+| `matrix-main-2174cc9-20261011` | `14b187e91c25d675f3f9e1c532f4dfa6ec75d137334dc62e122f9a254118b613` | `b04b9dab9e7f85b24c092f9b53117238506dd5cc5a75f66e4b8368a94ac2910e` | 18 finished, 18 Luna remaining |
 | `fullgame-main-2174cc9-20261011` | `0714ba2975bc1b1fa37ff09a0be85087fda35037e237cc3a15ca4631b590935d` | `53b5b6cac94aef5b9177381b1a103abc14b6b991e656bebe296a71ceeb4288ac` | Pilot plus four conditions planned, zero finished |
 
 ### Current results and retained failure
+
+At the 09:25 UTC boundary, each row has three attempted repeats per mode:
+
+| Challenge | Sol/image: success / budget / excluded | Sol/hybrid: success / budget / excluded |
+| --- | --- | --- |
+| Combat | 2 / 1 / 0 | 3 / 0 / 0 |
+| Fire recovery | 1 / 1 / 1 | 1 / 2 / 0 |
+| Repair-charge-escape | 3 / 0 / 0 | 2 / 1 / 0 |
+
+All nine hybrid trials are eligible. All 79 actual hybrid model rows have
+non-null visible-summary provenance, with saved PNG/HUD derivations verified.
+Fire failures retain injured firefighters after premature full-health claims;
+repair repeat two jumped with one engine bar still damaged. Native task gates
+withheld success despite otherwise genuine recovery or arrival. Independent
+ending-PNG, input/frame, native-outcome and seven recorded-save restoration
+checks passed for every closed hybrid trial. These are saved-only checks, not
+current live-state verification or proof of backend model weights.
+
+Independent boundary cleanup passed at 09:26:01 UTC, followed by the actual
+browser UI review. Their local receipts are
+`dist/store-warp-diagnosis-20261011/2174-main-sol-challenges-current-cleanup-review.json`
+and `dist/store-warp-diagnosis-20261011/2174-main-sol-challenges-ui-review.json`.
+These dated reviews precede the separately running pilot.
+
+The saved comparison file SHA-256 is
+`d99b098399ce91e4450b2c4c276710f0b6fe333e6315b89b0bd892c47ce9c243`,
+separate from the embedded protocol identity above. Compact local receipt:
+`dist/store-warp-diagnosis-20261011/2174-main-sol-18-saved-boundary-review.json`.
+Sol/image and Sol/hybrid have eight eligible descriptive mode pairs out of nine;
+none of the nine declared four-condition pairs is yet qualified because Luna
+is unstarted. Fire repeat one additionally retains its technical exclusion.
+These fixed-seed samples establish no model ranking or general hybrid advantage.
+
+All 199 Sol calls have recorded latency, totalling 3,152.904 seconds. Usage is
+reported for 198 calls: observed input 3,720,079 (cached subset 2,423,040), output
+50,386 (reasoning subset 18,237). The excluded image/fire call has unknown usage,
+so these observed sums are not complete totals. Hybrid alone has complete usage
+for 79 calls: input 1,476,793 (cached 1,006,976), output 16,756 (reasoning 5,133),
+and 1,130.195 seconds recorded latency. Cached and reasoning counts are subsets.
 
 All three Sol/image combat repeats are eligible with no exclusions: repeat one
 reached the 60-decision budget without task success; repeats two and three
@@ -91,7 +133,8 @@ with three successes. Saved batch/UI receipts include
 `2174-main-sol-image-ui-review.json` and `2174-main-sol-hybrid-01-ui-review.json`
 under `dist/store-warp-diagnosis-20261011/`.
 
-First Sol/hybrid combat succeeded after 10 decisions. Its rendered first input
+Sol/hybrid combat repeats one, two and three succeeded after 10, 10 and 13
+decisions respectively. The first trial's rendered first input
 summary shows fuel 15, scrap 30, missiles 8 and drone parts 2, with hull explicitly
 omitted because its HUD anchor was unrecognized or occluded. The summary displays
 the same PNG hash as the replay. All seven recorded combat outcome checks passed;
@@ -108,7 +151,9 @@ The static recheck passed at 08:59:14 UTC: both original admissions matched
 exactly, each with 78 sources and 565 evidence files; protocol hashes were
 unchanged. Combat repeat two remained planned with no output before the fresh
 launch. Root resumed the reviewed helper for eight unstarted Sol/hybrid cells.
-No additional completed cells are claimed in this snapshot.
+All eight resumed cells subsequently finished: five task successes and three
+idle-budget failures, with no new technical exclusion. Together with the first
+hybrid combat trial, this completes the nine-cell Sol/hybrid boundary.
 
 Frozen executable files must remain unchanged. Later actor source changes require
 another fresh diagnostic collection, independent review and new admission/cohorts.
@@ -576,14 +621,17 @@ documentation snapshot, and no new release is published.
 
 ## Remaining work
 
-1. Refresh source-bound admission and freeze new cohorts for the reporting fix;
-   retain the previous false exclusion and separate diagnostic reanalysis.
-   Exercise full-game child admission and broader gameplay checks.
-2. Execute the replacement 36-cell challenge matrix, sector pilot and four
-   fixture-free full-game conditions sequentially. Preserve every attempted
-   outcome and stop for technical failures or ambiguous cleanup.
+1. Run the planned Sol/image sector pilot and two Sol native-ending full-game
+   conditions after the verified 18-Sol challenge boundary and cleanup review.
+   Keep pilot and budget outcomes distinct from the four required native endings.
+2. Complete the remaining 18 Luna challenge cells and two Luna full-game conditions
+   sequentially. Preserve every attempted outcome, including the image/fire
+   technical exclusion, and stop for new technical failures or ambiguous cleanup.
 3. Report matched conditions with denominators, exclusions, outcome reasons,
    latency and available usage. Keep incomplete games distinct from native endings.
+   The excluded fire repetition prevents three complete paired repetitions;
+   resolve that gap through a separately declared balanced cohort, preserving
+   this cohort and reporting its results separately.
 4. Make native acceptance/evidence setup reproducible from a fresh checkout,
    validate the merged headless runtime, and revalidate any
    changed implementation and rebuild packages before release.
