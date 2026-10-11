@@ -111,6 +111,11 @@ def audit_trial_admission(output, protocol, *, protocol_file):
         raw = paths[0].read_bytes()
         receipt, manifest, fingerprint = (read_json(p.read_bytes()) for p in paths)
         selector = protocol["admission_selector"]
+        admitted = selector["admission"]
+        if (admitted.get("contract") != "portable-visual-controller-admission-v1"
+                or admitted.get("controller_admission") is not True
+                or admitted.get("production_accepted") is not False):
+            raise AdmissionError("Saved controller admission state is invalid")
         _require_configuration(protocol, receipt["configuration"], output, Path(protocol_file).parent)
         common = {"model": manifest.get("model"), "mode": manifest.get("observation_mode"),
                   "seed": manifest.get("seed"), "reasoning_effort": manifest.get("reasoning_effort"),

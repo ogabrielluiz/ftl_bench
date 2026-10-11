@@ -100,6 +100,31 @@ all five full-game-controller cells planned. These frozen cohorts remain preserv
 new reporter source bytes require fresh diagnostic admission and new cohorts
 before further model trials. No complete comparison or full-game ending is claimed.
 
+## Saved full-game admission projection
+
+A separate review found that the v2 dashboard could keep showing verified
+full-game completion after the saved child admission receipt was deleted or
+rejected. Controller auditing already rejected those cases. The dashboard now
+checks the saved receipt, manifest digest, protocol and recorded runtime before
+projecting verified completion. Missing, changed, rejected, mismatched or oversized
+evidence withholds completion and totals. This reads bounded local evidence; it
+does not rerun live admission. Synthetic regression fixtures establish the
+reporting behavior, not a played full game. The shared saved auditor requires
+the exact admission contract, controller admission `true` and production
+acceptance `false`, including their boolean types. Focused runner, saved-audit,
+dashboard and controller checks passed (363 passed, one explicit skip); related
+reporting and controller checks also passed (231). Independent review reproduced
+the original omission, then confirmed rejection of altered admission states
+even when their enclosing fixture hashes were updated. The retained real Sol
+combat trial still passes its saved admission audit without changing its report.
+
+The `main-admission-reportfix-20261011T060114Z` collection passed startup and
+all nine timing probes at commit `31f589f`. Independent review matched its 78
+archived source files to that commit, recomputed scoped validation using its
+archived verifier and confirmed all ten cleanup inventories, the seven original
+saves and absence of an FTL process. This collection remains diagnostic-only:
+the subsequent dashboard change requires its own prospective admission.
+
 ## Preserved challenge results
 
 Cohort: `harness/runs/validation/visual-v1/matrix-task-v2-stop-v1-20261011`.

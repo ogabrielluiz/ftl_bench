@@ -796,7 +796,9 @@ def portable_fullgame(tmp_path, protected_cli, monkeypatch):
     bridge_hash = hashlib.sha256((runner.ROOT / "mod/ftl_bench_bridge/dev/ftl_bench_dev.lua").read_bytes()).hexdigest()
     files = {name: "a" * 64 for name in RUNTIME_FILES}
     build = {**CAPABILITIES, "matches_installed_dll": True, "dll_sha256": "a" * 64, "patch_sha256": "b" * 64}
-    admitted = {"runtime_files": files, "runtime": {"dll_sha256": "a" * 64,
+    admitted = {"contract": "portable-visual-controller-admission-v1",
+                "controller_admission": True, "production_accepted": False,
+                "runtime_files": files, "runtime": {"dll_sha256": "a" * 64,
                 "patch_sha256": "b" * 64, "production_bridge_sha256": bridge_hash}}
     protocol = {"contract": visual_admission.FULLGAME_CONTRACT,
                 "codex_cli": runner.codex_runtime_identity(), "seed": 1, "reasoning_effort": "medium",

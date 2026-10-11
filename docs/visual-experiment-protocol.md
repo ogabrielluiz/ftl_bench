@@ -27,6 +27,9 @@ cell configuration before the first model call. The trial retains an exclusive
 `controller-admission.json` on acceptance or rejection. Saved audits require its
 protocol, runtime and manifest bindings alongside existing native/cleanup proofs;
 the dashboard shows stored admission metadata without claiming a new live audit.
+Before projecting verified v2 full-game completion, it also checks the saved
+child receipt against its manifest digest, exact protocol and recorded runtime.
+Missing or inconsistent admission evidence withholds completion and totals.
 Changed sources or cell settings require a new freeze. The first real diagnostic
 collection and v2 freezes have passed, followed by live admission of the first
 Sol/image combat child. That trial completed its task, but a legacy-receipt check

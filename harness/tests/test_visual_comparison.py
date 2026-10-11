@@ -348,7 +348,7 @@ def test_v1_explicit_wrong_contract_rejected_but_absent_legacy_field_remains_val
 def test_v2_fullgame_preserves_native_cleanup_and_audit_joins(tmp_path):
     from test_fullgame_comparison import fullgame
     root, directory, _, _, report = fullgame.__wrapped__(tmp_path)
-    upgrade_saved_protocol(directory, "ftl-fullgame-experiment-v2")
+    add_portable_fullgame_receipt(directory)
     view = comparison.comparison_view(root, "fullgame")
     assert view["fullgame_summary"] == report["counts"]
     assert view["trials"][1]["verified_fullgame_complete"] is True
@@ -372,3 +372,115 @@ def test_v2_fullgame_does_not_accept_a_v1_report(tmp_path):
     save(directory / "comparison.json", report)
     view = comparison.comparison_view(root, "fullgame")
     assert view["fullgame_summary"] is None and view["issues"]
+
+
+def add_portable_fullgame_receipt(directory):
+    """Saved synthetic gate with actual audit schema; no played-run claim."""
+    from ftl_bench.native_acceptance import CAPABILITIES, RUNTIME_FILES
+    from ftl_bench.visual_admission import TRIAL_CONTRACT
+    protocol = upgrade_saved_protocol(directory, "ftl-fullgame-experiment-v2")
+    protocol["reasoning_effort"] = "medium"
+    admission = protocol["admission_selector"]["admission"]
+    admission.update(contract="portable-visual-controller-admission-v1",
+                     controller_admission=True, production_accepted=False)
+    admission["runtime"].update(patch_sha256="f" * 64, production_bridge_sha256="1" * 64)
+    admission["runtime_files"] = {name: "e" * 64 for name in RUNTIME_FILES}
+    protocol.pop("protocol_sha256")
+    protocol["protocol_sha256"] = hashlib.sha256(json.dumps(protocol, sort_keys=True,
+        separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+    save(directory / "protocol.json", protocol)
+    cell = protocol["cells"][1]
+    trial = directory / "trials" / cell["id"]
+    installed = {"files_sha256": admission["runtime_files"], "native_build": {
+        **CAPABILITIES, "matches_installed_dll": True, "dll_sha256": "e" * 64, "patch_sha256": "f" * 64}}
+    receipt = {"contract": TRIAL_CONTRACT, "accepted": True,
+        "protocol_sha256": hashlib.sha256((directory / "protocol.json").read_bytes()).hexdigest(),
+        "selector_spec_sha256": protocol["admission_selector"]["spec"]["sha256"],
+        "admission": admission, "installed_runtime": installed, "deployed_bridge_sha256": "1" * 64,
+        "configuration": {"model": cell["model"], "mode": cell["mode"], "scope": cell["scope"],
+            "stop_after_sector": None, "seed": 1, "reasoning_effort": "medium", "budgets": protocol["budgets"]}}
+    save(trial / "controller-admission.json", receipt)
+    manifest = json.loads((trial / "run.json").read_text())
+    manifest.update(model=cell["model"], observation_mode=cell["mode"], seed=1,
+        reasoning_effort="medium", budgets=protocol["budgets"],
+        controller_admission_sha256=hashlib.sha256((trial / "controller-admission.json").read_bytes()).hexdigest())
+    save(trial / "run.json", manifest)
+    save(trial / "runtime-fingerprint.json", {"native_build": installed["native_build"],
+        "bridge_lua": {"sha256": "1" * 64}})
+    repin_fullgame_cleanup(directory, protocol)
+    return trial
+
+
+def repin_fullgame_cleanup(directory, protocol):
+    ledger = json.loads((directory / "ledger.json").read_text())
+    ledger["protocol_sha256"] = protocol["protocol_sha256"]
+    for cell in ledger["cells"]:
+        for check in cell.get("cleanup_checks", []):
+            path = directory / check["path"]
+            cleanup = json.loads(path.read_text())
+            cleanup["protocol_sha256"] = protocol["protocol_sha256"]
+            cleanup["artifact_sha256"] = {name: hashlib.sha256(
+                (directory / "trials" / cell["id"] / name).read_bytes()).hexdigest()
+                for name in comparison.FULLGAME_ARTIFACTS}
+            save(path, cleanup)
+            check["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    save(directory / "ledger.json", ledger)
+    report = json.loads((directory / "comparison.json").read_text())
+    report["protocol_sha256"] = protocol["protocol_sha256"]
+    save(directory / "comparison.json", report)
+
+
+@pytest.mark.parametrize("change", ["missing", "rejected", "changed", "runtime", "protocol", "large"])
+def test_v2_fullgame_saved_gate_rejects_without_live_verification(tmp_path, monkeypatch, change):
+    from test_fullgame_comparison import fullgame
+    import ftl_bench.visual_admission as admission
+    root, directory, _, _, _ = fullgame.__wrapped__(tmp_path)
+    trial = add_portable_fullgame_receipt(directory)
+    monkeypatch.setattr(admission, "installed_runtime", lambda *a: pytest.fail("live runtime read"))
+    assert comparison.comparison_view(root, "fullgame")["trials"][1]["verified_fullgame_complete"] is True
+    path = trial / "controller-admission.json"
+    receipt = json.loads(path.read_text())
+    if change == "missing": path.unlink()
+    elif change == "changed": path.write_bytes(path.read_bytes() + b"\n")
+    elif change == "large": path.write_bytes(b" " * (comparison.MAX_JSON_BYTES + 1))
+    else:
+        if change == "rejected": receipt["accepted"] = False
+        elif change == "runtime": receipt["installed_runtime"]["files_sha256"]["ftl.dat"] = "2" * 64
+        else: receipt["protocol_sha256"] = "2" * 64
+        save(path, receipt)
+        manifest = json.loads((trial / "run.json").read_text())
+        manifest["controller_admission_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+        save(trial / "run.json", manifest)
+        repin_fullgame_cleanup(directory, json.loads((directory / "protocol.json").read_text()))
+    view = comparison.comparison_view(root, "fullgame")
+    assert view["trials"][1]["verified_fullgame_complete"] is None
+    assert view["fullgame_summary"] is None
+    assert any("Saved full-game admission unavailable" in issue for issue in view["issues"])
+
+
+@pytest.mark.parametrize("value", [False, None, 1])
+def test_v2_fullgame_repinned_invalid_admission_state_withholds_completion(tmp_path, value):
+    from test_fullgame_comparison import fullgame
+    root, directory, _, _, _ = fullgame.__wrapped__(tmp_path)
+    trial = add_portable_fullgame_receipt(directory)
+    protocol = json.loads((directory / "protocol.json").read_text())
+    admitted = protocol["admission_selector"]["admission"]
+    if value is None: admitted.pop("controller_admission")
+    else: admitted["controller_admission"] = value
+    protocol.pop("protocol_sha256")
+    protocol["protocol_sha256"] = hashlib.sha256(json.dumps(protocol, sort_keys=True,
+        separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+    save(directory / "protocol.json", protocol)
+    path = trial / "controller-admission.json"
+    receipt = json.loads(path.read_text())
+    receipt["admission"] = admitted
+    receipt["protocol_sha256"] = hashlib.sha256((directory / "protocol.json").read_bytes()).hexdigest()
+    save(path, receipt)
+    manifest = json.loads((trial / "run.json").read_text())
+    manifest["controller_admission_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    save(trial / "run.json", manifest)
+    repin_fullgame_cleanup(directory, protocol)
+    view = comparison.comparison_view(root, "fullgame")
+    assert view["trials"][1]["verified_fullgame_complete"] is None
+    assert view["fullgame_summary"] is None
+    assert any("Saved controller admission state is invalid" in x for x in view["issues"])

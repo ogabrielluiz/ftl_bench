@@ -23,7 +23,8 @@ def trial(tmp_path, monkeypatch, request):
     production = digest(b"production Lua")
     build = {**CAPABILITIES, "dll_sha256": files["Hyperspace.dll"],
              "patch_sha256": digest(b"patch"), "matches_installed_dll": True}
-    admission = {"runtime_files": files,
+    admission = {"contract": "portable-visual-controller-admission-v1",
+                 "controller_admission": True, "production_accepted": False, "runtime_files": files,
                  "runtime": {"dll_sha256": build["dll_sha256"], "patch_sha256": build["patch_sha256"],
                              "production_bridge_sha256": production}}
     installed = {"files_sha256": files, "native_build": build}
@@ -252,3 +253,22 @@ def test_configuration_builds_fullgame_pilot_and_challenge():
 def test_legacy_saved_audit_does_not_require_portable_receipt(tmp_path):
     assert a.audit_trial_admission(tmp_path, {"contract": "ftl-fullgame-experiment-v1"},
                                    protocol_file=tmp_path / "missing.json") == []
+
+
+@pytest.mark.parametrize("field,value", [("controller_admission", False), ("controller_admission", None),
+    ("controller_admission", 1), ("production_accepted", True), ("production_accepted", None),
+    ("production_accepted", 0), ("contract", "wrong-contract"), ("contract", None)])
+def test_saved_audit_rejects_repinned_invalid_admission_state(trial, field, value):
+    receipt, manifest = saved_trial(trial)
+    admitted = trial["protocol"]["admission_selector"]["admission"]
+    if value is None: admitted.pop(field)
+    else: admitted[field] = value
+    write(trial["experiment_file"], trial["protocol"])
+    receipt["admission"] = admitted
+    receipt["protocol_sha256"] = digest(trial["experiment_file"].read_bytes())
+    path = trial["output"] / "controller-admission.json"
+    write(path, receipt)
+    manifest["controller_admission_sha256"] = digest(path.read_bytes())
+    write(trial["output"] / "run.json", manifest)
+    issues = a.audit_trial_admission(trial["output"], trial["protocol"], protocol_file=trial["experiment_file"])
+    assert issues == ["Controller admission: Saved controller admission state is invalid"]

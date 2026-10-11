@@ -257,6 +257,20 @@ def fullgame_view(root, directory, key, protocol, ledger, protocol_hash, ledger_
                          or saved.get("issues") != []):
             consistent = False
             issues.append("Native ending verification is pending or inconsistent for " + name)
+        if verified and protocol["contract"] == FULLGAME_CONTRACTS[1]:
+            try:
+                # Confine and bound each saved input before the reusable audit.
+                for filename in ("controller-admission.json", "run.json", "runtime-fingerprint.json"):
+                    read_json(root, trial_directory / filename)
+                read_json(root, directory / "protocol.json")
+                from ftl_bench.visual_admission import audit_trial_admission
+                admission_issues = audit_trial_admission(
+                    trial_directory, protocol, protocol_file=directory / "protocol.json")
+                if admission_issues:
+                    raise ValueError("; ".join(admission_issues))
+            except (OSError, ValueError, UnicodeError) as error:
+                consistent = False
+                issues.append("Saved full-game admission unavailable for " + name + ": " + str(error))
         selection, url = replay_link(root, trial_directory)
         rows.append({"id": name, "model": cell["model"], "mode": cell["mode"], "scope": cell["scope"],
             "status": cell["status"], "kind": "model_trial", "reason": saved.get("reason", cell.get("result_reason")),

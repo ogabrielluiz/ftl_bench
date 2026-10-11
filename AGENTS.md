@@ -81,7 +81,11 @@ native outcome or protected-cleanup verification. Comparison aggregation must
 select the protocol-specific admission path: v2 uses admitted runtime plus the
 saved child audit, while v1 retains its legacy receipts. Cover successful v2
 aggregation without mocking the aggregator; dashboard projection tests alone
-cannot verify eligibility. Preserve old reports when repairing their interpretation.
+cannot verify eligibility. For v2 full-game dashboard completion, also join the
+saved child admission receipt to its manifest, protocol and recorded runtime;
+a saved completion flag alone is insufficient. Keep this projection read-only
+and avoid live admission or installed-runtime checks. Preserve old reports when
+repairing their interpretation.
 
 Visual startup requires native protocol 5, clock 2 with fixed step 1/60, and
 `fresh-start-seed-v3`; protocol 5 alone is insufficient. Preserve the structured

@@ -48,6 +48,8 @@ cleanup. Its saved comparison report falsely excluded it by requiring legacy
 receipts; a tested reporting fix now recognizes v2 admission. The original result
 and exclusion remain preserved. Fresh admission is required for the changed
 reporter before further trials; complete games and the comparison remain WIP.
+The full-game dashboard also checks saved child admission before showing
+verified completion, withholding totals when that evidence is missing or changed.
 
 ## Visual iteration
 
