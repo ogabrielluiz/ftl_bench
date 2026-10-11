@@ -1,12 +1,14 @@
 # Current validation and next work
 
-**WIP / alpha. Snapshot: 2026-10-11 08:31 UTC (05:31 in São Paulo).**
-The admitted `2174cc9` matrix has four finished cells and 32 planned: two combat
-successes, one eligible decision-budget failure and one fire technical exclusion.
-Continuation is held after the retained fourth-call routing failure below; no
-failed-trial retry is planned. All five full-game/pilot entries remain planned,
-and fixture-free native-ending completion remains **0/4**. The comparison is
-incomplete and unqualified.
+**WIP / alpha. Snapshot: 2026-10-11 09:00 UTC (06:00 in São Paulo).**
+The admitted `2174cc9` matrix has 10 finished cells and 26 remaining: seven task
+successes, two budget failures and one technical exclusion; nine are eligible.
+Sol/image finished nine cells (six successes, two budget failures, one technical
+exclusion). First Sol/hybrid combat succeeded after 10 decisions; all ten HUD
+provenance joins passed. All five full-game/pilot entries remain planned, and
+fixture-free native-ending completion remains **0/4**. The comparison remains
+incomplete and unqualified. The static admission recheck passed after the
+frozen-source bytecode incident below; unstarted Sol/hybrid cells resumed.
 
 The preserved `078a5e2` cohort remains separate: nine Sol/image cells finished,
 with six task successes, two idle-budget failures and one technical exclusion;
@@ -24,7 +26,7 @@ runs remain historical; see the [store-arrival diagnosis](native-store-arrival.m
 | Observation modes | Image-only play and hybrid HUD numerals extracted from the same PNG; no hidden native-state fallback. The comparative model trials remain incomplete. |
 | Repeatable setup | Nine no-model fixture-6 probes passed measured starting-state and step equality across three wall delays. This covers the tested inputs, not every hidden RNG stream or full-game determinism. |
 | Protected lifecycle | Save backups, exact restoration, runtime identities and terminal evidence are recorded. Cooperative-stop probes passed before the actor and during one real CLI request; the returned cancelled response was retained and its actions discarded. |
-| Challenges | Frozen 36-cell controller, versioned public tasks, outcome audits, retained failures and exact replays. Four current cells are finished; the separate historical nine-cell results are below. |
+| Challenges | Frozen 36-cell controller, versioned public tasks, outcome audits, retained failures and exact replays. Ten current cells are finished; the separate historical nine-cell results are below. |
 | Full-game support | Fixture-free startup and the five-cell controller are implemented. Startup preserves the opening choice. The pilot ended in audited native defeat after 78 decisions; the Sol/image full-game attempt was interrupted by a confirmed harness store-arrival defect. |
 | Dashboard | Saved challenge/full-game overviews, exact screenshots and inputs, outcome reasons, task identities and saved cleanup receipts. The dashboard is read-only. |
 
@@ -54,10 +56,10 @@ protocol identities and hashes of the complete `protocol.json` bytes differ:
 
 | Cohort | Embedded protocol SHA-256 | Protocol file SHA-256 | Snapshot |
 | --- | --- | --- | --- |
-| `matrix-main-2174cc9-20261011` | `14b187e91c25d675f3f9e1c532f4dfa6ec75d137334dc62e122f9a254118b613` | `b04b9dab9e7f85b24c092f9b53117238506dd5cc5a75f66e4b8368a94ac2910e` | 4 finished, 32 planned |
+| `matrix-main-2174cc9-20261011` | `14b187e91c25d675f3f9e1c532f4dfa6ec75d137334dc62e122f9a254118b613` | `b04b9dab9e7f85b24c092f9b53117238506dd5cc5a75f66e4b8368a94ac2910e` | 10 finished, 26 remaining |
 | `fullgame-main-2174cc9-20261011` | `0714ba2975bc1b1fa37ff09a0be85087fda35037e237cc3a15ca4631b590935d` | `53b5b6cac94aef5b9177381b1a103abc14b6b991e656bebe296a71ceeb4288ac` | Pilot plus four conditions planned, zero finished |
 
-### Current four-cell results and retained failure
+### Current results and retained failure
 
 All three Sol/image combat repeats are eligible with no exclusions: repeat one
 reached the 60-decision budget without task success; repeats two and three
@@ -79,14 +81,34 @@ saves, prior bridge and six runtime files matched baseline, with no FTL process.
 Both protocols and their 78-source/565-evidence archives remained unchanged.
 This is a dated check; continuation was held at the 08:31 snapshot.
 
-After that snapshot, a separate text-only connectivity diagnostic succeeded at
-08:31:50 UTC using the frozen CLI, Sol and medium reasoning (11.071 seconds,
-strict audited JSON with no tools). It is outside the benchmark and establishes
-no image/gameplay acceptance. Following review, the next unstarted cell, fire
-repeat two, began prospectively at about 08:33 UTC; fire repeat one was not retried.
-The separate receipt is
-`dist/store-warp-diagnosis-20261011/cli-connectivity-diagnostic-20261011T083139Z/receipt.json`.
-The failed cell and its exclusion remain unchanged.
+A separate text-only connectivity diagnostic succeeded at 08:31:50 UTC using
+the frozen CLI, Sol and medium reasoning (11.071 seconds, strict audited JSON
+with no tools). It remains outside the benchmark. Following review, only
+unstarted cells continued; fire repeat one was not retried. Its exclusion and
+unknown failed-call usage remain preserved. Sol/image fire finished with one
+success, one idle-budget failure and that technical exclusion; repair finished
+with three successes. Saved batch/UI receipts include
+`2174-main-sol-image-ui-review.json` and `2174-main-sol-hybrid-01-ui-review.json`
+under `dist/store-warp-diagnosis-20261011/`.
+
+First Sol/hybrid combat succeeded after 10 decisions. Its rendered first input
+summary shows fuel 15, scrap 30, missiles 8 and drone parts 2, with hull explicitly
+omitted because its HUD anchor was unrecognized or occluded. The summary displays
+the same PNG hash as the replay. All seven recorded combat outcome checks passed;
+the UI displays saved originals restored and verified. These are saved evidence
+checks, not a claim of current live cleanup.
+
+At 08:53:51 UTC, an audit import created one `.pyc` in frozen-source. At 08:57:16,
+the next controller rejected the extra archive file before game/model launch or
+a new ledger trial. All 78 pinned executable files remained unchanged. Root
+preserved the extra file, original rejection and before-inventory; the bytecode
+preservation/restoration receipt is
+`dist/store-warp-diagnosis-20261011/frozen-source-cache-incident-20261011T085716Z/restoration-receipt.json`.
+The static recheck passed at 08:59:14 UTC: both original admissions matched
+exactly, each with 78 sources and 565 evidence files; protocol hashes were
+unchanged. Combat repeat two remained planned with no output before the fresh
+launch. Root resumed the reviewed helper for eight unstarted Sol/hybrid cells.
+No additional completed cells are claimed in this snapshot.
 
 Frozen executable files must remain unchanged. Later actor source changes require
 another fresh diagnostic collection, independent review and new admission/cohorts.

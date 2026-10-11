@@ -87,6 +87,12 @@ a saved completion flag alone is insufficient. Keep this projection read-only
 and avoid live admission or installed-runtime checks. Preserve old reports when
 repairing their interpretation.
 
+Read frozen archives as data. When re-executing archived Python for an audit,
+disable bytecode before any import (`python -B` or
+`sys.dont_write_bytecode = True`), or compile the archived bytes directly.
+Never default-import code into an immutable archive: an extra `.pyc` must fail
+its exact inventory gate even when every pinned source file is unchanged.
+
 When a frozen cohort is active, keep viewer-only fixes in a separate checkout
 and point it at the existing absolute runs directory. The 2026-10-11 dashboard
 repair orders mixed numeric/ISO timestamps by UTC seconds, falling back to file

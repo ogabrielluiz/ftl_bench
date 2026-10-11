@@ -7,26 +7,25 @@ An agent benchmark that drives the real **FTL: Faster Than Light** engine throug
 ## Status: work in progress
 
 The visual benchmark is an **alpha implementation with partial live validation**.
-At 2026-10-11 08:31 UTC (05:31 in São Paulo), the frozen `2174cc9` matrix has
-four finished cells and 32 planned. All three Sol/image combat trials are eligible:
-two successes and one decision-budget failure. Fire repeat one is technically
-excluded after three completed decisions; its fourth CLI call retained a workspace
-routing discovery failure. Failed-call usage is unknown. Continuation is held;
-the failed trial is preserved without retry. All five full-game/pilot entries
-remain planned. Scoped admission passed startup, nine timing probes and eight
-independent rejection checks; the latest current cleanup audit passed.
-The separate preserved `078a5e2` cohort has nine completed Sol/image cells:
-six task successes, two idle-budget failures and one technical exclusion, with
-eight eligible trials. Its failed call's usage remains unknown. Failures are not
-silently retried or relabelled, and cohorts are not pooled. Fixture-free
-native-ending full games remain **0/4**, with no qualified model/observation
-comparison. See the exact cohort identities and remaining [WIP](docs/NEXT.md).
+At 2026-10-11 09:00 UTC (06:00 in São Paulo), the frozen `2174cc9` matrix has
+10 finished cells and 26 remaining: seven task successes, two budget failures and
+one preserved technical exclusion; nine trials have eligible evidence. Sol/image
+finished nine cells (six successes, two budget failures, one technical exclusion).
+The first Sol/hybrid combat trial succeeded after 10 decisions, with all ten HUD
+summaries bound to their exact input PNGs. The rendered replay shows its first
+summary and explicit hull omission, successful outcome checks and saved restoration.
+All five full-game/pilot entries remain planned; fixture-free native-ending full
+games remain **0/4**, with no qualified model/observation comparison.
 
-After that snapshot, a separate text-only connectivity diagnostic succeeded at
-08:31:50 UTC using the frozen CLI, Sol and medium reasoning (11.071 seconds,
-strict audited JSON with no tools). It is outside the benchmark and establishes
-no image/gameplay acceptance. Following review, the next unstarted cell, fire
-repeat two, began prospectively at about 08:33 UTC; fire repeat one was not retried.
+An audit import created an extra bytecode cache inside frozen-source; the next
+controller rejected it before game/model launch or a new ledger trial. All 78
+pinned executable files remained unchanged. After preserving the extra file and
+original failure, the static recheck matched both original admissions and protocol
+hashes (78 sources, 565 evidence files each). The reviewed helper resumed only
+unstarted Sol/hybrid cells; no additional completed result is claimed here.
+The separate preserved `078a5e2` cohort and failed trials remain unchanged;
+cohorts are not pooled and finished failures are not silently retried.
+See exact identities, receipts and remaining [WIP](docs/NEXT.md).
 
 Screenshot play, conservative image-derived HUD summaries, protected saves,
 frozen challenge/full-game controllers and exact dashboard replays are
