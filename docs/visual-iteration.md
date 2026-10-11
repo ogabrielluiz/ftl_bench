@@ -55,6 +55,33 @@ ftlbench visual --model gpt-6-luna --mode hybrid --seed 1 --max-decisions 300 --
 
 Image mode is the default. Visual runs use the locally authenticated Codex CLI; the declared experiment models are `gpt-6.1-sol` and `gpt-6-luna`. The executable resolves through `CODEX_BIN`, the command path, or the installed Codex desktop executable. From a checkout, prefix the commands with `uv run --directory harness`. Each output directory must be new. The examples declare model, observation mode, seed, reasoning effort and budgets; they do not establish a model comparison by themselves.
 
+### Pending-launch recovery
+
+A Steam launch can remain queued behind cloud/sign-in prompts after readiness
+times out. New protected runs claim `ftl_bench_pending_launch.json` in the explicit
+save folder before backup/launch. An unresolved pending timeout blocks verified
+restoration-success and new protected runs; an empty FTL process list does not
+prove Steam cancelled the request. First cancel the pending Steam launch manually
+and close FTL. Read `ownership_id` and the backup path from that named marker,
+then run from the source checkout:
+
+```powershell
+uv run --directory harness ftlbench recover-protected --backup <save-backup-path> --ownership-id <ownership_id> --confirm-pending-launch-cancelled
+```
+
+If backup was interrupted before its manifest was complete, also pass the marker's
+explicit `--save-dir <save-folder>`; recovery does not discover save folders.
+Recovery verifies marker/backup identity, absence of FTL and applicable backup
+hashes, retaining a separate `recovery-restoration.json` before releasing the
+guard. It never rewrites the failed trial or its original restoration receipt.
+Cancellation acknowledgement is operator testimony, not automatic queue proof.
+The fix passes 240 focused offline checks after the final recovery fixes. The
+broader harness suite passed 2,583 tests with 17 skips before those fixes; final
+CI and live validation remain pending, with no new admission or cohort. It does not retrofit
+the historical bb6014b Steam failure: that request still awaits operator action,
+has no new-code marker, and must not be passed to recovery without one created
+by the new code. Keep further game runs stopped until cancellation is confirmed.
+
 For reproducible settings and durable cooperative stopping, prefer the full-game
 experiment controller. The standalone examples above do not configure a stop
 file; controller children do. From the checkout root, with the harness environment

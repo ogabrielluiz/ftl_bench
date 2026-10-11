@@ -118,8 +118,8 @@ def test_existing_backup_is_not_overwritten(game):
 
 
 def test_previous_bridge_is_restored_alongside_original_saves(game):
+    (game.save / "ftl_bench_dev.lua").write_bytes(b"original bridge")
     game.backup_saves()
-    (game.backup / "ftl_bench_dev.lua").write_bytes(b"original bridge")
     (game.save / "ftl_bench_dev.lua").write_bytes(b"fixture bridge")
     game.restore_saves()
     assert (game.save / "ftl_bench_dev.lua").read_bytes() == b"original bridge"
@@ -178,12 +178,22 @@ def test_launch_accepts_main_menu_without_requiring_game_pause(game, monkeypatch
 
     monkeypatch.setattr(protected, "ObservationClient", Client)
     monkeypatch.setattr(protected.subprocess, "Popen", lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(protected, "_processes", lambda: [{"id": 42,
+        "path": str(game.game / "FTLGame.exe"),
+        "started": (game.launched_at + timedelta(seconds=1)).isoformat()}])
     monkeypatch.setattr(protected.time, "sleep", lambda seconds: sleeps.append(seconds))
     game.launch()
     assert len(calls) == 1
     assert calls[0][0][0] == [str(steam / "steam.exe"), "-applaunch", "212680"]
     assert len(sleeps) == len(states) - 1
     assert game.launched_at is not None
+    assert json.loads(game.pending_launch.read_text())["state"] == "ready_owned"
+    # Once admitted, another FTL with the same executable must not inherit ownership.
+    owned = game._guard["process"]
+    assert game._owns_process(owned)
+    assert not game._owns_process({**owned, "id": 99})
+    assert not game._owns_process({**owned, "started":
+        (game.launched_at + timedelta(seconds=2)).isoformat()})
 
 
 def test_launch_timeout_mentions_both_ready_states(game, monkeypatch, tmp_path):

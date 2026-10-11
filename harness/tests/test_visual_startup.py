@@ -272,7 +272,9 @@ def test_absent_bridge_cleanup_refuses_unowned_content_or_surviving_game(native,
         launch(self)
         if unsafe == "changed": target.write_text("unexpected bridge")
         elif unsafe == "directory": target.unlink(); target.mkdir()
-        else: monkeypatch.setattr(probe, "_processes", lambda: [{"id": 999}])
+        else:
+            monkeypatch.setattr(probe, "_processes", lambda: [{"id": 999}])
+            monkeypatch.setattr(protection, "_processes", lambda: [{"id": 999}])
     monkeypatch.setattr(protection.ProtectedGame, "launch", interfere)
     output = tmp_path / "refused"
     with pytest.raises((RuntimeError, ExceptionGroup)): probe.validate(output)
@@ -280,4 +282,8 @@ def test_absent_bridge_cleanup_refuses_unowned_content_or_surviving_game(native,
     receipt = json.loads((output / "validation.json").read_text())
     assert receipt["status"] == "error" and receipt["cleanup_error"]
     assert not (output / "portable-cleanup.json").exists()
-    assert (save / "original.sav").read_bytes() == b"original save"
+    # Unsafe cleanup now retains ownership and the backups before overwriting
+    # any live state, so a later explicit recovery can inspect the interference.
+    assert (output / "save-backup/original.sav").read_bytes() == b"original save"
+    assert (save / protection.PENDING_LAUNCH).exists()
+    assert not (output / "save-backup/restoration.json").exists()

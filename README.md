@@ -19,6 +19,13 @@ saves were restored and independent current cleanup passed. Steam reported
 cloud-sync failure and `login=false` at 16:07:33 UTC (13:07:33 local). Sign-in
 refresh and cancellation of the queued launch are awaiting the operator. Further
 game runs are stopped: no running FTL process does not prove queue cancellation.
+The new pending-launch guard now blocks restoration-success and new protected
+runs until explicit operator recovery; 240 focused offline checks passed. The
+broader harness suite passed 2,583 tests with 17 skips before the final recovery
+edge-case fixes; final CI and live validation remain pending. It cannot cancel Steam requests and
+does not retrofit this historical unguarded failure. Do not apply the recovery
+command to it without a marker created by the new code. See
+[pending-launch recovery](docs/visual-iteration.md#pending-launch-recovery).
 No new controller admission or cohort exists. After Steam is resolved, a new
 exclusive startup/all-nine-timing collection and independent review must precede
 admission and a matched 1,500 / 86,400 / 8 full-game freeze. All new Sol conditions

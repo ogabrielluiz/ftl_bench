@@ -244,3 +244,67 @@ def test_run_and_play_are_not_invoked_by_other_commands(monkeypatch):
 
     monkeypatch.setattr(cli, "_adapter_on_path", _boom)
     cli.main(["version"])  # should not raise
+
+
+def test_recover_protected_dispatch_and_json(monkeypatch, capsys, tmp_path):
+    import json
+    from ftl_bench import protected_game
+    calls = []
+    receipt = {"verified": True, "ownership_id": "owner-123"}
+    def recover(backup, **kwargs):
+        calls.append((backup, kwargs))
+        return receipt
+    monkeypatch.setattr(protected_game, "recover_protected", recover, raising=False)
+    monkeypatch.setattr(cli, "_adapter_on_path", lambda: pytest.fail("Recovery must not load an action runner"))
+    backup = tmp_path / "backup"
+    cli.main(["recover-protected", "--backup", str(backup), "--ownership-id", "owner-123",
+              "--confirm-pending-launch-cancelled"])
+    assert calls == [(backup, {"ownership_id": "owner-123", "confirm_pending_launch_cancelled": True})]
+    assert json.loads(capsys.readouterr().out) == receipt
+
+
+@pytest.mark.parametrize("missing", ["acknowledgement", "ownership", "backup"])
+def test_recover_protected_required_inputs_before_helper(monkeypatch, capsys, tmp_path, missing):
+    from ftl_bench import protected_game
+    monkeypatch.setattr(protected_game, "recover_protected", lambda *a, **k: pytest.fail("Recovery must not run"), raising=False)
+    args = ["recover-protected"]
+    if missing != "backup": args += ["--backup", str(tmp_path / "backup")]
+    if missing != "ownership": args += ["--ownership-id", "owner-123"]
+    if missing != "acknowledgement": args += ["--confirm-pending-launch-cancelled"]
+    with pytest.raises(SystemExit) as error:
+        cli.main(args)
+    assert error.value.code == 2
+    assert "required" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("failure", [OSError("read failed"), ValueError("bad ownership"), RuntimeError("FTL running")])
+def test_recover_protected_helper_errors_exit_2(monkeypatch, capsys, tmp_path, failure):
+    from ftl_bench import protected_game
+    def recover(*args, **kwargs):
+        raise failure
+    monkeypatch.setattr(protected_game, "recover_protected", recover, raising=False)
+    with pytest.raises(SystemExit) as error:
+        cli.main(["recover-protected", "--backup", str(tmp_path / "backup"), "--ownership-id", "owner-123",
+                  "--confirm-pending-launch-cancelled"])
+    assert error.value.code == 2
+    output = capsys.readouterr()
+    assert str(failure) in output.err and output.out == ""
+
+
+def test_recover_protected_is_advertised():
+    assert "recover-protected --backup <path> --ownership-id <ID> --confirm-pending-launch-cancelled" in cli.USAGE
+
+
+def test_recover_protected_explicit_save_directory(monkeypatch, capsys, tmp_path):
+    from ftl_bench import protected_game
+    calls = []
+    def recover(backup, **kwargs):
+        calls.append((backup, kwargs))
+        return {"verified": True}
+    monkeypatch.setattr(protected_game, "recover_protected", recover, raising=False)
+    backup, save = tmp_path / "incomplete-backup", tmp_path / "explicit-save"
+    cli.main(["recover-protected", "--backup", str(backup), "--ownership-id", "owner-123",
+              "--confirm-pending-launch-cancelled", "--save-dir", str(save)])
+    assert calls == [(backup, {"ownership_id": "owner-123", "confirm_pending_launch_cancelled": True,
+                              "save_directory": save})]
+    assert "verified" in capsys.readouterr().out

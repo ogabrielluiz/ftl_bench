@@ -16,6 +16,7 @@ Commands:
   ftlbench dashboard         serve the read-only dashboard
   ftlbench report <run-dir>  recompute and export recorded results
   ftlbench deploy-bridge     deploy the bridge script, retaining a backup
+  ftlbench recover-protected recover after operator cancellation of a pending launch
 """
 from __future__ import annotations
 
@@ -34,6 +35,7 @@ usage:
   ftlbench dashboard [--runs <directory>] [--suite <path>] [--port 8765]
   ftlbench report <run-directory> [--json] [--output <path>] [--legacy-suite <path>]
   ftlbench deploy-bridge
+  ftlbench recover-protected --backup <path> --ownership-id <ID> --confirm-pending-launch-cancelled [--save-dir <folder>]
   ftlbench install-native --dll <built.dll> --manifest <native-build.json> [--game-dir <folder>]
 
 `ftlbench run --help` / `ftlbench play` show the full per-command options.
@@ -129,6 +131,29 @@ def main(argv: list[str] | None = None) -> None:
         return
     if cmd == "install-mod":
         _install_mod(rest)
+        return
+    if cmd == "recover-protected":
+        import argparse
+        import json
+        ap = argparse.ArgumentParser(prog="ftlbench recover-protected")
+        ap.add_argument("--backup", required=True, type=Path)
+        ap.add_argument("--ownership-id", required=True)
+        ap.add_argument("--save-dir", type=Path,
+                        help="explicit save folder for recovery before the backup manifest existed")
+        ap.add_argument("--confirm-pending-launch-cancelled", action="store_true",
+                        help="acknowledge that the operator cancelled the pending Steam launch")
+        args = ap.parse_args(rest)
+        if not args.confirm_pending_launch_cancelled:
+            ap.error("--confirm-pending-launch-cancelled is required after operator cancellation")
+        from ftl_bench.protected_game import recover_protected
+        options = {"ownership_id": args.ownership_id, "confirm_pending_launch_cancelled": True}
+        if args.save_dir is not None:
+            options["save_directory"] = args.save_dir
+        try:
+            receipt = recover_protected(args.backup, **options)
+        except (OSError, ValueError, RuntimeError) as error:
+            ap.error(str(error))
+        print(json.dumps(receipt, indent=2))
         return
     if cmd == "report":
         import argparse

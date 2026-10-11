@@ -22,10 +22,18 @@ FTL; receipt `bb6014b-failed-timing-current-cleanup-review.json` SHA-256
 
 Steam reported cloud-sync failure and `login=false` at 16:07:33 UTC (13:07:33
 local). The operator has been asked to refresh sign-in, cancel the pending FTL
-launch and leave FTL closed; confirmation is still pending. The protected
-lifecycle currently checks running FTL processes but cannot cancel a queued
-Steam launch. Verified save restoration and no running process therefore do not
-prove cancellation; further game runs remain stopped. Bounded, redacted Steam
+launch and leave FTL closed; confirmation is still pending. New code implements
+a durable pending-launch guard and explicit recovery: 240 focused offline checks
+pass after the final recovery fixes. The broader harness suite passed 2,583 tests
+with 17 skips before those final fixes; final CI, live validation and fresh
+admission remain pending.
+An unresolved guarded timeout blocks restoration-success and new protected runs.
+The harness still cannot cancel Steam's queued request, and the fix does not
+retrofit this historical bb failure, which has no guard. Do not run recovery for
+that attempt without a marker created by the new code. Verified historical save
+restoration and no process do not prove cancellation; further game runs remain
+stopped. See [recovery instructions](visual-iteration.md#pending-launch-recovery).
+Bounded, redacted Steam
 log excerpts are retained at
 `dist/store-warp-diagnosis-20261011/steam-launch-failure-20261011T160733Z/`;
 receipt SHA-256

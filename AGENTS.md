@@ -153,12 +153,19 @@ from the protected lifecycle receipts, and distinguish their recorded time
 from a current live audit. Credentials must remain outside Git and logs;
 environment files are selected explicitly, never discovered automatically.
 
-A Steam cloud/sign-in prompt can retain an FTL launch request after the protected
-launch timeout. An empty FTL process list and verified save restoration do not
-prove that request was cancelled. After such a failure, keep further game runs
-stopped until the operator cancels the pending request and leaves FTL closed;
-never approve a delayed launch outside the protected lifecycle. Preserve the
-failed collection and use a new output directory for fresh diagnostics.
+A Steam cloud/sign-in prompt can retain an FTL launch request after timeout.
+New protected runs use `ftl_bench_pending_launch.json` in the save folder; an
+unresolved guard blocks restoration-success and new protected runs. Recovery
+requires the operator to cancel the pending request and close FTL, then use
+`ftlbench recover-protected --backup <path> --ownership-id <ownership_id from the marker> --confirm-pending-launch-cancelled`.
+Use optional `--save-dir` for backup interrupted before its manifest was complete.
+The acknowledgement is a human trust input; an empty process list is not proof
+of cancellation. Recovery writes separate `recovery-restoration.json` and never
+rewrites the failed attempt. Do not fabricate a marker for historical unguarded
+failures or run this command on the old bb failure, whose cancellation remains
+pending. Never approve a delayed launch outside protection; preserve failed
+collections and use new outputs for fresh diagnostics. The fix is offline-tested,
+not fresh live admission.
 
 ## Git scope
 
