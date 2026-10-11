@@ -1,7 +1,8 @@
 # Current validation and next work
 
-**WIP / alpha. Snapshot: 2026-10-11 06:31 UTC (03:31 in São Paulo).**
-Nine of 36 challenge cells finished in the preserved original cohort. The sector pilot ended in native defeat;
+**WIP / alpha. Snapshot: 2026-10-11 06:55 UTC (03:55 in São Paulo).**
+Nine of 36 challenge cells finished in the preserved original cohort. The
+sector pilot ended in native defeat;
 Sol/image full-game was cooperatively stopped at 276 decisions after a confirmed
 native store-arrival blocker froze warp. Three full-game cells remain unstarted.
 The original failed run restored all seven saves and its 15 baseline paths. No
@@ -18,8 +19,10 @@ the reproduced defect only. Fresh startup, nine timing probes, independent
 rejection checks and local admission have now passed. Replacement cohorts are
 frozen as described below. Their first completed challenge exposed a reporting
 false exclusion, now repaired prospectively. Both reporting fixes passed fresh
-source-bound admission at `078a5e2`; new cohorts are frozen and the first Sol
-image combat trial is running. See [store-arrival diagnosis](native-store-arrival.md).
+source-bound admission at `078a5e2`; the first current Sol/image combat trial is
+finished and independently reviewed. Repeat two is also finished and
+independently reviewed; repeat three succeeded with verified cleanup. See the
+[store-arrival diagnosis](native-store-arrival.md).
 
 ## Implemented and verified scope
 
@@ -60,9 +63,53 @@ Budgets remain 60 decisions / 1,800 seconds / eight idle decisions for challenge
 and 300 / 14,400 / eight for full-game attempts, seed 1 and medium reasoning.
 Independent freeze review records protocol IDs separately from file-byte hashes
 in `dist/store-warp-diagnosis-20261011/main-078a5e2-cohort-review.json`. The
-first Sol/image combat trial is running; no result is claimed yet. No model
-cells from these cohorts have been pooled with earlier attempts. The updated
-local dashboard at port 8768 shows both current and preserved cohorts.
+first Sol/image combat trial ended after 33 decisions at `idle_decision_budget`:
+task success is false, evidence eligibility is true, and exclusions are empty.
+Independent final review is retained locally as
+`dist/store-warp-diagnosis-20261011/main-combat-01-final-review.json`. It records
+33 model calls, 623,067 input tokens including 324,096 cached input tokens, and
+8,901 output tokens including 3,117 reasoning output tokens. Total recorded model
+latency is 512.978 seconds, with a 15.576-second median. Cached and reasoning
+counts are subsets, not additional tokens. Repeat two also ended at the idle
+budget after 27 decisions: task success false, evidence eligible, no exclusions.
+Its saved audit passed with 29 PNGs and all seven saved restoration checks
+verified; no live restoration check ran while repeat three was active. The enemy
+fled at 7/9 hull without a reward; player hull was 25/30 and all three crew
+survived. The receipt is `main-combat-02-final-review.json` in the same diagnosis
+directory. Repeat three completed successfully after 12 decisions with 14 PNGs,
+18 reward, one additional kill and the same beacon. Its independent saved and
+current cleanup audit passed: seven original saves, bridge, six-file runtime,
+frozen sources and evidence verified, with no FTL process remaining. Player hull
+was 28/30 and all three crew survived. The receipt is
+`main-combat-03-final-review.json` in the same diagnosis directory. The current
+combat result is **1/3 task successes, 3/3 eligible trials**. These results are
+not pooled with earlier cohorts, and fixture-free native-ending full games
+remain **0/4**. The next six Sol/image fire and repair cells have started under
+the unchanged frozen protocol.
+
+### Separate dashboard repair and rendered check (2026-10-11 06:55 UTC)
+
+The dashboard initially returned HTTP 500 when latest-run ordering compared ISO
+diagnostic `started_at` metadata with numeric model-run timestamps. The isolated
+`ftl_bench-dashboard` viewer normalizes finite numeric and ISO timestamps to UTC
+seconds and falls back to activity for invalid or unrepresentable values,
+including oversized integers. Discovered raw metadata is preserved. The
+evaluation checkout stays at documentation commit `e0a688e` with the admitted
+`078a5e2` executable sources unchanged; the corrected viewer reads its existing
+saved artifacts through the same absolute runs directory. No raw report was
+rewritten and the existing built UI assets were reused.
+
+The focused live/visual-live suites passed **74 tests with one skip**; an
+independent 11-test timestamp subset and positive/negative oversized-integer
+probes also passed. Actual Chrome inspection at port 8768 selected the current
+cohort and completed repeat one: the unsuccessful task, eligible/unexcluded
+evidence, restored-save status, exact before/after images, four delivered clicks
+and 600 requested/600 simulated frames all matched the saved report and replay.
+The comparison remained partial and unqualified. The original rendered HTTP-500
+failure and the successful UI receipt/screenshots are preserved separately under
+`dist/store-warp-diagnosis-20261011/dashboard-current-cohort-ui-review.*` and
+`dashboard-current-cohort-ui-fixed-review.*`. These are viewer checks, not a new
+admission or evidence of general determinism.
 
 ## First portable cohorts (preserved)
 

@@ -17,6 +17,7 @@ import json
 import hashlib
 import ipaddress
 import math
+from datetime import datetime, timezone
 import os
 import sys
 import time
@@ -812,10 +813,34 @@ def visual_trial_report(trajectory: str | None) -> dict | None:
             **trial_annotations(directory)}
 
 
+def _run_order_key(run: dict) -> tuple[float, float]:
+    """Normalize timestamps for ordering without changing recorded metadata."""
+    def timestamp(value):
+        if type(value) in (int, float):
+            try:
+                result = float(value)
+                return result if math.isfinite(result) else None
+            except OverflowError:
+                return None
+        if isinstance(value, str):
+            try:
+                parsed = datetime.fromisoformat(value)
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                result = parsed.timestamp()
+                return result if math.isfinite(result) else None
+            except (ValueError, OverflowError, OSError):
+                return None
+        return None
+    activity = timestamp(run.get("activity")) or 0.0
+    started = timestamp(run.get("started_at"))
+    return started or activity, activity
+
+
 def build(sel: str | None) -> dict:
     files = all_files()
     runs, file_runs = discover_runs(files)
-    latest = max(runs.values(), key=lambda run: (run.get("started_at") or run["activity"], run["activity"]), default=None)
+    latest = max(runs.values(), key=_run_order_key, default=None)
     current_paths = set((latest or {}).get("paths") or [])
     states = {path: lifecycle(path, runs[file_runs[path]]) for path in files}
     file_by_name = {name_of(path): path for path in files}

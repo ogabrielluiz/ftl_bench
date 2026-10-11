@@ -35,9 +35,23 @@ collection and v2 freezes have passed, followed by live admission of the first
 Sol/image combat child. That trial completed its task, but a legacy-receipt check
 falsely excluded it from the saved rollup. The prospective reporter fix retains
 its original outcome and exclusion. Fresh admission of source `078a5e2` and new
-cohort freezes now pass; the first replacement Sol/image combat trial is
-running. Full-game child admission and completed comparisons remain WIP. Neither
-an offline test nor an admission receipt establishes general determinism.
+cohort freezes now pass. At 2026-10-11 06:55 UTC, current Sol/image combat repeat
+one finished at the idle budget after 33 decisions: task success false, evidence
+eligible with no exclusions. Repeat two also finished at the idle budget after
+27 decisions, with independently reviewed eligible evidence and task success
+false. Repeat three succeeded after 12 decisions with independently verified
+cleanup: current combat totals are 1/3 task successes and 3/3 eligible trials.
+The next six Sol/image fire and repair cells have started. Earlier cohorts are
+not pooled, and fixture-free native-ending full games remain 0/4. Full-game
+child admission and completed comparisons remain WIP. Neither an offline test
+nor an admission receipt establishes general determinism.
+
+A separate viewer checkout repairs mixed ISO/numeric run-timestamp ordering that
+caused HTTP 500. It preserves recorded metadata and reads the frozen evaluation
+checkout's saved artifacts without changing its admitted executable sources.
+Focused API tests and an actual rendered current-cohort/replay check passed;
+valid evidence remains distinct from task success. See [the dated viewer and
+trial snapshot](NEXT.md) for receipts, usage and the remaining review limits.
 
 ## Preserved cohort and prospective repairs (2026-10-11)
 

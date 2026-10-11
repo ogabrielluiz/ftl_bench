@@ -7,50 +7,43 @@ An agent benchmark that drives the real **FTL: Faster Than Light** engine throug
 ## Status: work in progress
 
 The visual benchmark is an **alpha implementation with partial live validation**.
-At the 2026-10-11 04:52 UTC snapshot, nine of the 36 planned challenge trials were
-finished, all with Sol in image mode: combat 1/3, fire/crew recovery 3/3 and
-repair/charge/escape 2/3 task successes. The sector pilot ended in audited native
-defeat after 78 decisions. Sol's first full-game attempt was cooperatively
-stopped after 276 decisions because a harness defect froze store arrival during
-warp. All seven original saves were restored. The remaining 27 challenge trials
-and three full-game conditions are unstarted; no full-game completion is claimed.
-The repaired native runtime passed a protected store-arrival check at 05:28 UTC:
-warp finished, Continue opened the store, and CLOSE worked with exact save
-restoration. The [diagnosis](docs/native-store-arrival.md) records both defects,
-the retained failures and the limited validation scope. Fresh startup, all nine
-timing probes, independent rejection checks and local controller admission have
-passed. Replacement cohorts were frozen at 05:41 UTC; their model trials remain
-to be completed.
+At 2026-10-11 06:55 UTC (03:55 in São Paulo), the current `078a5e2` cohort has
+three completed Sol/image combat repeats: one task success and two idle-budget
+failures, all independently reviewed with eligible evidence and no exclusions.
+The next six Sol/image fire and repair trials have started. Fixture-free
+native-ending full games remain **0/4**, and there is no qualified
+model/observation comparison. Older cohorts are not pooled with these results.
 
 Screenshot play, conservative image-derived HUD summaries, protected saves,
-frozen experiment controllers and dashboard replays are implemented. A complete
-model/observation comparison and fixture-free native-ending full games remain
-unproven. CI passes on Windows and Linux with Python 3.11 and 3.13. Startup and
-nine measured timing probes passed again with the repaired native runtime. These
-checks establish their documented scopes, not completion of the benchmark plan.
+frozen challenge/full-game controllers and exact dashboard replays are
+implemented. CI passes on Windows and Linux with Python 3.11 and 3.13. The
+repaired native runtime passed the protected natural store-arrival regression,
+fixture-free startup and all nine timing probes. Both saved-report admission
+fixes passed fresh source-bound validation at `078a5e2`; new challenge and
+full-game cohorts are frozen. These checks establish their documented scopes,
+not completion of the benchmark plan or general determinism.
 
-Read [current results, evidence and remaining work](docs/NEXT.md), the
+The optional [portable v2 workflow](docs/native-acceptance.md) archives local
+startup/timing evidence, original build records, reconstructed native sources
+and independent review. Controllers verify installed runtime bytes and frozen
+trial settings before model calls, retaining accepted and rejected gates in
+replay artifacts. The full-game dashboard checks saved child admission before
+showing verified completion. Raw runs, native binaries and local acceptance
+artifacts are not shipped in Git; controllers require the complete local
+evidence chain and matching runtime. Fresh-checkout setup remains WIP.
+
+A separate corrected viewer fixes an HTTP 500 caused by mixed ISO and numeric
+run timestamps. Its rendered current-cohort outcome and replay check passed
+without changing frozen execution sources or saved evidence. Read the dated
+[current results, usage, evidence and remaining work](docs/NEXT.md), the
 [experiment protocol](docs/visual-experiment-protocol.md), and
-[agent/contributor guidance](AGENTS.md). The detailed
-[validation history](docs/validation-history-2026-10-11.md) preserves superseded
-attempts. Raw runs, native binaries and local acceptance artifacts are not shipped
-in Git; the frozen controllers need those artifacts and a matching runtime.
-Fresh-checkout setup of that complete evidence chain remains WIP. The
-[portable evidence tools](docs/native-acceptance.md) collect protected startup
-and timing probes, require a common recorded runtime, and optionally reconstruct
-all patched native sources from authenticated Git objects. An optional v2
-controller workflow archives that evidence with original build records and an
-independent review. It verifies installed bytes and frozen trial settings before
-model calls, retaining accepted and rejected gates in the replay artifacts.
-The first portable admission and cohort freezes passed against real diagnostic
-evidence. Sol then completed one combat challenge in ten decisions with verified
-cleanup. Its saved comparison report falsely excluded it by requiring legacy
-receipts; a tested reporting fix now recognizes v2 admission. The original result
-and exclusion remain preserved. Both reporting fixes subsequently passed fresh
-admission at `078a5e2`; new challenge and full-game cohorts are frozen, with the
-first Sol image combat trial running. Complete games and the comparison remain WIP.
-The full-game dashboard also checks saved child admission before showing
-verified completion, withholding totals when that evidence is missing or changed.
+[agent/contributor guidance](AGENTS.md).
+
+The [validation history](docs/validation-history-2026-10-11.md) preserves
+earlier diagnostics. The current-results page retains the original cohorts,
+sector pilot and portable reporting failure. The
+[store-arrival diagnosis](docs/native-store-arrival.md) records both native
+defects, their fixes and the limited validation scope.
 
 ## Visual iteration
 

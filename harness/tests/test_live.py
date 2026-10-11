@@ -467,3 +467,41 @@ def test_diagnostic_failures_remain_recorded_when_excluded_from_comparison(bench
     assert report["aggregate"]["failed"] == 0
     assert report["recorded_aggregate"]["failed"] == 1
     assert report["recorded_aggregate"]["attempt_failures"] == snapshot["agg"]["attempt_failures"]
+
+
+@pytest.mark.parametrize("iso,numeric,expected", [
+    ("2026-10-11T06:00:00Z", 1791698460, "numeric-model"),
+    ("2026-10-11T03:02:00-03:00", 1791698460, "iso-startup"),
+])
+def test_state_api_orders_mixed_iso_and_numeric_start_times(bench, iso, numeric, expected):
+    from test_visual_comparison import asgi_request
+    startup = run(bench, "iso-startup", started=iso)
+    model = run(bench, "numeric-model", started=numeric)
+    attempt(startup)
+    attempt(model)
+    app = live.create_app()
+    if app is None: pytest.skip("dashboard dependency unavailable")
+    status, state = asgi_request(app, "/api/state")
+    assert status == 200 and state["run"]["run_id"] == expected
+    runs, _ = live.discover_runs(live.all_files())
+    assert runs[str(startup.resolve())]["started_at"] == iso
+    assert runs[str(model.resolve())]["started_at"] == numeric
+
+
+@pytest.mark.parametrize("started", [None, "invalid-date", {}, True, float("nan"), float("inf"), 10**500, -(10**500)])
+def test_invalid_start_time_falls_back_to_activity(bench, monkeypatch, started):
+    valid = run(bench, "valid", started=100)
+    fallback = run(bench, "fallback", started=started)
+    attempt(valid)
+    attempt(fallback)
+    monkeypatch.setattr(live, "_mtime", lambda path: 200 if "fallback" in str(path) else 10)
+    assert live.build("live")["run"]["run_id"] == "fallback"
+
+
+def test_equivalent_iso_and_numeric_start_times_use_activity_tiebreaker(bench, monkeypatch):
+    iso = run(bench, "iso", started="2026-10-11T06:00:00+00:00")
+    numeric = run(bench, "numeric", started=1791698400)
+    attempt(iso)
+    attempt(numeric)
+    monkeypatch.setattr(live, "_mtime", lambda path: 200 if "numeric" in str(path) else 100)
+    assert live.build("live")["run"]["run_id"] == "numeric"

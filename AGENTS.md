@@ -87,6 +87,13 @@ a saved completion flag alone is insufficient. Keep this projection read-only
 and avoid live admission or installed-runtime checks. Preserve old reports when
 repairing their interpretation.
 
+When a frozen cohort is active, keep viewer-only fixes in a separate checkout
+and point it at the existing absolute runs directory. The 2026-10-11 dashboard
+repair orders mixed numeric/ISO timestamps by UTC seconds, falling back to file
+activity for invalid or unrepresentable values while preserving raw metadata.
+Validate the real saved-run API and rendered replay separately; an HTTP 200 alone
+does not establish that the outcome, eligibility and images are visible.
+
 Visual startup requires native protocol 5, clock 2 with fixed step 1/60, and
 `fresh-start-seed-v3`; protocol 5 alone is insufficient. Preserve the structured
 runner's separate contracts. Native DLLs, local acceptance receipts, `dist/`,
