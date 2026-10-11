@@ -51,6 +51,25 @@ def test_native_patch_conflict_and_bad_hash_preserve_source(tmp_path, monkeypatc
     assert (source / "control.cpp").read_bytes() == b"user local change\n"
 
 
+def test_strict_base_is_checked_before_applying_even_a_compatible_patch(tmp_path, monkeypatch):
+    module, source, fixture = helper(tmp_path, monkeypatch)
+    for args in (["add", "control.cpp"], ["-c", "user.name=Benchmark Test", "-c",
+                 "user.email=test@example.invalid", "commit", "--quiet", "-m", "fixture base"]):
+        subprocess.run(["git", *args], cwd=source, check=True, capture_output=True)
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, text=True).strip()
+    path = fixture / "native/manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest["base_commit"] = "0" * 40
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="base_commit"):
+        module.apply_patch(source, require_base=True)
+    assert (source / "control.cpp").read_bytes() == b"idle=-1\n"
+    manifest["base_commit"] = commit
+    path.write_text(json.dumps(manifest))
+    assert module.apply_patch(source, check_only=True, require_base=True) == "ready to apply"
+    assert module.apply_patch(source, require_base=True) == "applied"
+
+
 @pytest.mark.parametrize("available", [False, True])
 def test_shipped_economy_getter_serializes_sector_navigation_version(available):
     """Decode the actual getter prefix used in both menus and an active game.

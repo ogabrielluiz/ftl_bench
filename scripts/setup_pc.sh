@@ -9,8 +9,9 @@
 # WHY this works without MSVC / Visual Studio:
 #   The Hyperspace Windows build is a Docker (MinGW cross-compile) build. The
 #   whole toolchain (vcpkg + MinGW + cmake + ninja) lives in a published image
-#   ghcr.io/ftl-hyperspace/hs-devcontainer:v2. We pull it and run the repo's own
-#   build script. Output: build-windows-release/Hyperspace.dll.
+#   Require DEVCONTAINER=registry/repository@sha256:<digest> for the build stage.
+#   The native base comes from native/manifest.json; no floating native HEAD.
+#   Output: dist/Hyperspace.visual-v1.dll + native-build.visual-v1.json.
 #
 # WHAT is platform-independent (reused as-is from the Mac work):
 #   - Hyperspace.ftl data mod  (re-zipped from the repo's "Mod Files/" to match
@@ -37,9 +38,7 @@ set -uo pipefail
 # ---- config ---------------------------------------------------------------
 PROJ="${PROJ:-$HOME/projects}"
 FTLB_REPO="https://github.com/ogabrielluiz/ftl_bench.git"
-HS_REPO="https://github.com/ogabrielluiz/FTL-Hyperspace.git"
-HS_BRANCH="bench"
-DEVCONTAINER="ghcr.io/ftl-hyperspace/hs-devcontainer:v2"
+DEVCONTAINER="${DEVCONTAINER:-}" # explicit immutable registry digest; build stage only
 FTLMAN_VER="${FTLMAN_VER:-}"   # empty = latest
 WIN_USER="${WIN_USER:-}"        # auto-detected if empty
 
@@ -50,6 +49,14 @@ log()  { printf '\n\033[1;36m== %s\033[0m\n' "$*"; }
 ok()   { printf '   \033[1;32m✓ %s\033[0m\n' "$*"; }
 warn() { printf '   \033[1;33m! %s\033[0m\n' "$*"; }
 die()  { printf '\n\033[1;31mFATAL: %s\033[0m\n' "$*" >&2; exit 1; }
+
+load_native_pins() {
+  local pins
+  pins="$(python3 "$FTLB/scripts/stage_native_artifacts.py" config)" || die "invalid native manifest/patch"
+  mapfile -t native_pins <<< "$pins"
+  [ "${#native_pins[@]}" = "2" ] || die "invalid native source configuration"
+  HS_REPO="${native_pins[0]}"; HS_COMMIT="${native_pins[1]}"
+}
 
 # stage selection ------------------------------------------------------------
 ALL_STAGES="durability repos build datamod locate install patch deploy verify"
@@ -114,14 +121,20 @@ fi
 # STAGE repos — clone/update both repos
 # ===========================================================================
 if want repos; then
-  log "repos: clone/update ftl_bench (main) + FTL-Hyperspace ($HS_BRANCH)"
+  log "repos: clone/update ftl_bench; prepare the declared native base"
   mkdir -p "$PROJ"
   if [ -d "$FTLB/.git" ]; then (cd "$FTLB" && git pull --ff-only) && ok "ftl_bench updated"
   else git clone "$FTLB_REPO" "$FTLB" && ok "ftl_bench cloned"; fi
-  if [ -d "$HS/.git" ]; then
-    (cd "$HS" && git fetch origin && git checkout "$HS_BRANCH" && git pull --ff-only) && ok "Hyperspace @ $HS_BRANCH updated"
+  load_native_pins
+  if [ -e "$HS/.git" ]; then
+    [ "$(git -C "$HS" rev-parse HEAD)" = "$HS_COMMIT" ] \
+      || die "existing Hyperspace HEAD differs from $HS_COMMIT; preserve it and use a separate checkout"
+    ok "Hyperspace already at declared base $HS_COMMIT (local changes preserved)"
   else
-    git clone --branch "$HS_BRANCH" "$HS_REPO" "$HS" && ok "Hyperspace cloned @ $HS_BRANCH"
+    git clone --no-checkout "$HS_REPO" "$HS" \
+      && git -C "$HS" checkout --detach "$HS_COMMIT" \
+      || die "could not prepare declared native base $HS_COMMIT"
+    ok "Hyperspace cloned @ $HS_COMMIT"
   fi
   (cd "$HS" && echo "   HEAD: $(git log --oneline -1)")
 fi
@@ -131,16 +144,31 @@ fi
 # ===========================================================================
 if want build; then
   log "build: Hyperspace.dll (Docker devcontainer, MinGW cross-compile)"
+  [[ "$DEVCONTAINER" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*@sha256:[0-9a-f]{64}$ ]] \
+    || die "set DEVCONTAINER to an immutable registry/repository@sha256:<digest>; a tag or local image ID is insufficient"
   command -v docker >/dev/null 2>&1 || die "docker not found in WSL. Install Docker Desktop (enable WSL integration) or 'sudo apt-get install -y docker.io && sudo usermod -aG docker $USER' then re-login."
   docker info >/dev/null 2>&1 || die "docker daemon not reachable. Start Docker Desktop (or 'sudo service docker start') and re-run 'build'."
   command -v python3 >/dev/null 2>&1 || die "python3 is required to validate the versioned native patch"
-  python3 "$FTLB/scripts/apply_native_patch.py" --source "$HS" || die "native patch conflicts; existing source changes were preserved"
-  docker pull "$DEVCONTAINER" && ok "devcontainer image present"
-  (cd "$HS" && buildscripts/windows/build-releaseonly-from-docker.sh) || die "Hyperspace.dll build failed"
+  load_native_pins
+  python3 "$FTLB/scripts/apply_native_patch.py" --source "$HS" --require-base || die "native base/patch conflicts; existing source changes were preserved"
+  docker pull --platform linux/amd64 "$DEVCONTAINER" || die "declared immutable toolchain image unavailable"
+  # Bypass the upstream Docker wrapper, which selects a mutable v2 tag.
+  BUILD_CMD=(docker run --rm --platform linux/amd64
+    -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/workspaces/FTL-Hyperspace \
+    -v "$HS:/workspaces/FTL-Hyperspace" -w /workspaces/FTL-Hyperspace
+    "$DEVCONTAINER" bash -c 'source .devcontainer/devcontainer-fixes.sh && buildscripts/windows/build-releaseonly.sh')
+  "${BUILD_CMD[@]}" || die "Hyperspace.dll build failed"
+  printf -v BUILD_COMMAND '%q ' "${BUILD_CMD[@]}"
   DLL="$HS/build-windows-release/Hyperspace.dll"
   [ -f "$DLL" ] || die "expected $DLL, not produced"
-  python3 "$FTLB/scripts/write_native_provenance.py" --source "$HS" --dll "$DLL" --output "$FTLB/dist/native-build.protocol5.json" --image "$DEVCONTAINER" || die "could not record native build provenance"
-  ok "built $(du -h "$DLL" | cut -f1) Hyperspace.dll"
+  PROVENANCE="$HS/build-windows-release/native-build.visual-v1.json"
+  python3 "$FTLB/scripts/write_native_provenance.py" --source "$HS" --dll "$DLL" --output "$PROVENANCE" \
+    --image "$DEVCONTAINER" --require-base --require-immutable-image \
+    --build-command "$BUILD_COMMAND" \
+    || die "could not record native build provenance"
+  python3 "$FTLB/scripts/stage_native_artifacts.py" stage --dll "$DLL" --provenance "$PROVENANCE" \
+    || die "could not stage the visual DLL/provenance pair"
+  ok "built and staged visual-v1 DLL/provenance; live acceptance is still required"
 fi
 
 # ===========================================================================
@@ -192,9 +220,11 @@ if want install; then
   log "install: loader + DLL into the game dir (needs Windows admin)"
   [ -n "$GAME" ] || locate_game || die "run 'locate' first"
   REL="$HS/Release Files/Windows"
-  DLL="$HS/build-windows-release/Hyperspace.dll"
+  DLL="$FTLB/dist/Hyperspace.visual-v1.dll"
+  PROVENANCE="$FTLB/dist/native-build.visual-v1.json"
   [ -f "$DLL" ] || die "build the DLL first (stage build)"
-  [ -f "$FTLB/dist/native-build.protocol5.json" ] || die "build provenance missing; run stage build first"
+  python3 "$FTLB/scripts/stage_native_artifacts.py" verify --dll "$DLL" --provenance "$PROVENANCE" \
+    || die "staged visual pair is invalid; run stage build first"
   # WSL must inspect the Windows process, not pgrep a Linux/macOS process name.
   live_processes="$(/mnt/c/Windows/System32/tasklist.exe /fi 'imagename eq FTLGame.exe' 2>/dev/null)" \
     || die "cannot verify FTL is closed; no installation changes made"
@@ -230,7 +260,7 @@ EOF
   # Install the verified DLL and matching provenance through the same backed-up
   # code path used by native Windows. FTL_SAVE_DIR activates Windows process checks.
   FTL_SAVE_DIR="$SAVE" PYTHONPATH="$FTLB/harness/src" python3 -m ftl_bench.cli install-native \
-    --dll "$DLL" --manifest "$FTLB/dist/native-build.protocol5.json" --game-dir "$GAME" \
+    --dll "$DLL" --manifest "$PROVENANCE" --game-dir "$GAME" \
     || die "verified native installation failed; inspect the reported error"
   ok "native DLL and matching provenance installed with retained backups"
 fi

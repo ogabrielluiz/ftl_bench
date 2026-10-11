@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 
 
-def apply_patch(source: Path, *, check_only: bool = False) -> str:
+def apply_patch(source: Path, *, check_only: bool = False, require_base: bool = False) -> str:
     root = Path(__file__).resolve().parents[1]
     manifest = json.loads((root / "native/manifest.json").read_text())
     patch = root / manifest["patch"]
@@ -18,6 +18,10 @@ def apply_patch(source: Path, *, check_only: bool = False) -> str:
     top = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], cwd=source, text=True).strip()
     if Path(top).resolve() != source:
         raise ValueError("--source must be the native Git checkout root")
+    if require_base:
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, text=True).strip()
+        if commit != manifest.get("base_commit"):
+            raise ValueError("native checkout HEAD differs from native/manifest.json base_commit; local changes were preserved")
 
     def check(*args):
         return subprocess.run(["git", "apply", "--check", *args, str(patch)],
@@ -39,9 +43,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--check", action="store_true", help="validate without modifying the checkout")
+    parser.add_argument("--require-base", action="store_true", help="require the exact manifest base commit")
     args = parser.parse_args()
     try:
-        print(apply_patch(args.source, check_only=args.check))
+        print(apply_patch(args.source, check_only=args.check, require_base=args.require_base))
     except (ValueError, OSError, subprocess.CalledProcessError) as error:
         parser.exit(1, f"{error}\n")
 

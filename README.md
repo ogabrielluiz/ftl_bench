@@ -103,8 +103,11 @@ The visual artifact is `dist/Hyperspace.visual-v1.dll` with
 protocol 5 alone is insufficient for visual startup. The retained structured
 pair is `dist/Hyperspace.protocol5.dll` with `dist/native-build.protocol5.json`.
 Protocol-4 artifacts remain archived and do not satisfy the current runner.
-These `dist/` paths name locally retained artifacts; `setup_pc.sh` does not
-produce the complete accepted visual evidence bundle under those names. See the
+The bootstrap now stages the visual pair under these names after checking its
+file identities. Its build stage requires an explicit immutable Docker image
+reference and the native base declared in the manifest. See
+[PC build setup](site/src/content/docs/install/pc.md) for selecting those inputs.
+Staging does not produce the complete accepted visual evidence bundle. See the
 [remaining setup work](docs/NEXT.md#validation-evidence-and-distribution-limits).
 
 To install a locally built DLL into an existing native environment, close FTL and run:

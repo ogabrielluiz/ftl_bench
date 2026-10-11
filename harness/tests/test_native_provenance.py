@@ -54,7 +54,7 @@ def test_snapshot_refuses_patch_path_outside_source(tmp_path):
         _helper().source_snapshot(source, patch)
 
 
-def _run_provenance_cli(tmp_path, monkeypatch, *, capabilities=None, built_at=None):
+def _run_provenance_cli(tmp_path, monkeypatch, *, capabilities=None, built_at=None, strict=False, wrong_base=False):
     import json
     import sys
     from datetime import datetime, timezone
@@ -67,6 +67,8 @@ def _run_provenance_cli(tmp_path, monkeypatch, *, capabilities=None, built_at=No
     manifest = {"repository": "https://example.invalid/native", "patch": "native/source.patch",
                 "patch_sha256": hashlib.sha256(patch.read_bytes()).hexdigest(), "native_protocol": 5}
     manifest.update(capabilities or {})
+    if strict:
+        manifest["base_commit"] = "c" * 40
     (root / "native/manifest.json").write_text(json.dumps(manifest))
     dll = tmp_path / "produced.dll"
     dll.write_bytes(b"exact produced DLL")
@@ -85,10 +87,11 @@ def _run_provenance_cli(tmp_path, monkeypatch, *, capabilities=None, built_at=No
     def checked_command(argv, **kwargs):
         if argv == ["git", "rev-parse", "HEAD"]:
             assert kwargs["cwd"] == source
-            return "original-source-commit\n"
-        assert argv == ["docker", "image", "inspect", "ghcr.io/ftl-hyperspace/hs-devcontainer:v2",
+            return ("c" * 40 if strict and not wrong_base else "original-source-commit") + "\n"
+        assert not wrong_base, "base mismatch must stop before Docker inspection"
+        assert argv == ["docker", "image", "inspect", image,
                         "--format", "{{.Id}}"]
-        return "sha256:original-toolchain-image\n"
+        return "sha256:" + ("d" * 64 if strict else "original-toolchain-image") + "\n"
 
     monkeypatch.setattr(helper.subprocess, "check_output", checked_command)
 
@@ -100,6 +103,9 @@ def _run_provenance_cli(tmp_path, monkeypatch, *, capabilities=None, built_at=No
     monkeypatch.setattr(helper, "datetime", FixedDatetime)
     argv = ["write_native_provenance.py", "--source", str(source), "--dll", str(dll),
             "--output", str(output), "--build-command", "original tested build command"]
+    image = "ghcr.io/example/toolchain@sha256:" + "a" * 64 if strict else "ghcr.io/ftl-hyperspace/hs-devcontainer:v2"
+    if strict:
+        argv += ["--require-base", "--require-immutable-image", "--image", image]
     if built_at is not None:
         argv += ["--built-at", built_at]
     monkeypatch.setattr(sys, "argv", argv)
@@ -131,6 +137,28 @@ def test_default_cli_records_build_now_and_does_not_invent_seed_capability(tmp_p
     assert result["built_at"] == result["provenance_generated_at"] == "2026-10-11T12:00:00+00:00"
     assert result["visual_clock_version"] == 2
     assert not any(key in result for key in ("fresh_start_seed", "fresh_seed_contract_version", "fresh_seed_contract"))
+    assert "compiler" not in result["toolchain"]
+
+
+def test_strict_bootstrap_provenance_records_registry_digest_and_actual_image_id(tmp_path, monkeypatch):
+    result = _run_provenance_cli(tmp_path, monkeypatch, strict=True)
+    assert result["source_commit"] == "c" * 40
+    assert result["toolchain"]["image"] == "ghcr.io/example/toolchain@sha256:" + "a" * 64
+    assert result["toolchain"]["image_id"] == "sha256:" + "d" * 64
+
+
+def test_strict_base_mismatch_refuses_provenance_output(tmp_path, monkeypatch):
+    with pytest.raises(SystemExit) as error:
+        _run_provenance_cli(tmp_path, monkeypatch, strict=True, wrong_base=True)
+    assert error.value.code == 2 and not (tmp_path / "provenance.json").exists()
+
+
+@pytest.mark.parametrize("image", ["", "ghcr.io/example/toolchain:v2", "sha256:" + "a" * 64,
+                                   "repo@sha256:short", "repo@sha256:" + "A" * 64])
+def test_immutable_image_rejects_tags_and_machine_local_cache_ids(image):
+    import argparse
+    with pytest.raises(argparse.ArgumentTypeError, match="registry reference"):
+        _helper().immutable_image_ref(image)
 
 
 def test_original_build_offset_is_normalized_without_changing_the_instant():

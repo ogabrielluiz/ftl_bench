@@ -46,26 +46,45 @@ def original_build_timestamp(value: str) -> str:
     return parsed.astimezone(timezone.utc).isoformat()
 
 
+def immutable_image_ref(value: str) -> str:
+    """Require a pullable registry digest, not a mutable tag or local image ID."""
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]*@sha256:[0-9a-f]{64}", value):
+        raise argparse.ArgumentTypeError("build image must be a registry reference ending @sha256:<64 lowercase hex digits>")
+    return value
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--dll", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--image", default="ghcr.io/ftl-hyperspace/hs-devcontainer:v2")
+    parser.add_argument("--require-base", action="store_true", help="require the exact manifest base commit")
+    parser.add_argument("--require-immutable-image", action="store_true", help="require a pullable registry digest")
+    parser.add_argument("--compiler", help="Actual observed compiler identity; omitted when unavailable")
     parser.add_argument("--build-command", default="buildscripts/windows/build-releaseonly-from-docker.sh",
                         help="Exact build command used to produce this DLL")
     parser.add_argument("--built-at", type=original_build_timestamp,
                         help="Original artifact build timestamp with timezone; omit when recording a build now")
     args = parser.parse_args()
+    if args.require_immutable_image:
+        try:
+            immutable_image_ref(args.image)
+        except argparse.ArgumentTypeError as error:
+            parser.error(str(error))
     root = Path(__file__).resolve().parents[1]
     manifest = json.loads((root / "native/manifest.json").read_text())
     patch = root / manifest["patch"]
     if hashlib.sha256(patch.read_bytes()).hexdigest() != manifest["patch_sha256"]:
         parser.error("native patch does not match its recorded SHA-256")
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=args.source, text=True).strip()
+    if args.require_base and commit != manifest.get("base_commit"):
+        parser.error("native checkout HEAD differs from native/manifest.json base_commit")
     diff, source_hashes = source_snapshot(args.source, patch)
     image_id = subprocess.check_output(["docker", "image", "inspect", args.image,
                                        "--format", "{{.Id}}"], text=True).strip()
+    if args.require_immutable_image and not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
+        parser.error("Docker did not return a valid resolved image ID")
     generated_at = datetime.now(timezone.utc).isoformat()
     output = {
         "built_at": args.built_at or generated_at,
@@ -76,11 +95,12 @@ def main():
         "patch_sha256": manifest["patch_sha256"], "native_protocol": manifest["native_protocol"],
         "platform": "windows-x86", "game_version": "1.6.9",
         "toolchain": {"image": args.image, "image_id": image_id,
-                      "compiler": "clang 12 / MinGW i686-w64-mingw32 9.4-posix",
                       "build_command": args.build_command},
         "dll_sha256": hashlib.sha256(args.dll.read_bytes()).hexdigest(),
         "dll_size": args.dll.stat().st_size,
     }
+    if args.compiler:
+        output["toolchain"]["compiler"] = args.compiler
     for capability in ("visual_io_version", "visual_clock_version", "fixed_step_numerator", "fixed_step_denominator",
                        "fresh_start_seed", "fresh_seed_contract_version", "fresh_seed_contract"):
         if capability in manifest:

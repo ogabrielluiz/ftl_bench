@@ -14,6 +14,9 @@
   preserving strict completed-result and cleanup checks.
 - Validate each installation's original save inventory instead of requiring
   the development machine's seven saves.
+- Pin bootstrap builds to the declared native source base and an explicit
+  registry image digest. Stage verified visual DLL/provenance pairs together,
+  preserving prior artifacts; live acceptance remains a separate requirement.
 - Document partial live results, paused experiments, acceptance boundaries and
   contributor workflow. Existing frozen cohorts remain tied to their original
   sources; merged-source experiments need new acceptance and a new cohort.
