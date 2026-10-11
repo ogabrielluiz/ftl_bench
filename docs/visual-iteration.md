@@ -4,6 +4,14 @@ The visual track lets an agent play through FTL's rendered interface. Each decis
 
 This is an additional track. Existing structured trajectories remain readable, and historical diagnostic runs remain excluded from model-comparison totals. A recorded native score is not evidence that a run is eligible for comparison.
 
+**WIP:** the current challenge comparison is partial and fixture-free full-game
+completion remains unproven. Experiments are paused at the latest documented
+snapshot. Read [current validation and remaining work](NEXT.md) before treating
+any historical result below as current acceptance. Native binaries, raw runs
+and local acceptance evidence are not included in Git; a fresh checkout still
+needs the matching runtime and evidence described in the
+[experiment protocol](visual-experiment-protocol.md#freezing-and-resumption).
+
 ## Running a local visual attempt
 
 Close FTL first. From the harness environment, start a protected run in a new output directory:
@@ -205,12 +213,29 @@ The read-only API has two additive endpoints:
 
 Image serving is restricted to the selected trajectory's own directory inside the configured run root. Absolute paths, traversal, Windows drive/UNC/alternate-stream paths, and resolved symlink escapes are rejected. The server checks image content, a 20 MiB maximum, and the recorded SHA-256 when present. Changed or missing artifacts produce an explicit unavailable-image state.
 
-## Acceptance sequence
+## Acceptance sequence and remaining work
 
-1. Verify capture readability, coordinate mapping, paused inference, bounded game-time advancement, queued/mid-jump freezing, and outside-input refusal on the installed Windows build. The native fixtures above establish their scoped checks. Queued sector travel and the fuel-wait event boundary have passing evidence on `607776a6`; tooltip rendering and ordinary controls pass on current `75c71eb6`.
-2. Record a disposable store encounter: see the store, purchase fuel, close the window, charge the drive, open the map, and jump. Native telemetry checks actual purchase, closure, full charge, fuel consumption, and destination. Sol completed this fixture on `8cd1573b`; repeatability remains to be measured without manual intervention.
-3. Complete coverage for combat targeting, fires, upgrades, recovery choices, and native terminal screens. Crew movement, stores, sector travel, and waiting have scoped fixture evidence; they do not yet establish model reliability across a full game. The fuel-wait fixture stops before accepting the recovery offer.
-4. Attempt a longer uninterrupted full game after the completed current-build pilot. Preserve defeat, model concession, human cancellation, operator diagnostic stops, budget exhaustion, and harness errors as separate outcomes. The 53-decision `sol-fullgame-20261009T0429` diagnostic was stopped for a display repair; the final 24-decision pilot ended normally at its budget. No completed full-game result is available yet.
-5. Validate a meaningful resource summary before comparing image and hybrid modes. Then use the same controls, model settings, seeds, and budgets; do not mix historical structured-control diagnostics into that comparison.
+1. Admit the exact runtime and source identities before running a cohort. The
+   current clock-2/fresh-start-v3 acceptance covers scoped controls, transitions,
+   interference and nine repeatability probes. Older clock-1 DLL hashes in the
+   historical sections above are not current runtime requirements.
+2. Finish the frozen 36-cell challenge matrix. All nine Sol/image cells are
+   complete at the latest snapshot; Sol/hybrid and both Luna modes remain.
+   Preserve setup, model, budget and native-loss outcomes with their exact images.
+3. Run the separately declared fixture-free sector pilot and four full-game
+   conditions when experiments resume. Require audited native victory or defeat
+   for complete games. Neither earlier budget-limited pilots nor the challenge
+   crew-loss screen establishes this requirement.
+4. Compare image and hybrid only under matched conditions. The conservative
+   same-PNG reader is implemented; a performance benefit is not established.
+   Report every exclusion, available usage and latency without inferring cost
+   or resolved backend weights from a requested model name.
+5. Complete portable native acceptance/evidence setup, validate integration with
+   the separate headless work, and rebuild/test release packages. Passing unit
+   tests and an installed-wheel smoke do not replace live gameplay evidence.
 
-The store demonstration and fixture captures are diagnostic evidence, not benchmark victories or comparison results. Save backup and restoration remain mandatory around live validation.
+The [experiment protocol](visual-experiment-protocol.md) defines the commands,
+budgets and acceptance rules; [NEXT.md](NEXT.md) records current progress.
+Store demonstrations and historical fixture captures remain diagnostic evidence.
+Save backup, cooperative stopping and verified restoration remain mandatory
+around live validation.

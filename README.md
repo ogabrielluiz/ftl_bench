@@ -4,6 +4,28 @@ An agent benchmark that drives the real **FTL: Faster Than Light** engine throug
 
 [Documentation](https://ogabrielluiz.github.io/ftl_bench/) · [Protocol](https://ogabrielluiz.github.io/ftl_bench/introduction/protocol/)
 
+## Status: work in progress
+
+The visual benchmark is an **alpha implementation with partial live validation**.
+At the 2026-10-11 02:32 UTC snapshot, nine of the 36 planned challenge trials were
+finished, all with Sol in image mode: combat 1/3, fire/crew recovery 3/3 and
+repair/charge/escape 2/3 task successes. The remaining 27 trials, sector pilot
+and four full-game conditions are unstarted. Experiments are paused.
+
+Screenshot play, conservative image-derived HUD summaries, protected saves,
+frozen experiment controllers and dashboard replays are implemented. A complete
+model/observation comparison and fixture-free native-ending full games remain
+unproven. The accepted package snapshot passed 1,849 tests with ten skips;
+that is software validation, not completion of the benchmark plan.
+
+Read [current results, evidence and remaining work](docs/NEXT.md), the
+[experiment protocol](docs/visual-experiment-protocol.md), and
+[agent/contributor guidance](AGENTS.md). The detailed
+[validation history](docs/validation-history-2026-10-11.md) preserves superseded
+attempts. Raw runs, native binaries and local acceptance artifacts are not shipped
+in Git; the frozen controllers need those artifacts and a matching runtime.
+Fresh-checkout setup of that complete evidence chain remains WIP.
+
 ## Visual iteration
 
 The new `visual-v1` track gives Codex CLI a screenshot at each paused decision and
@@ -80,6 +102,9 @@ The visual artifact is `dist/Hyperspace.visual-v1.dll` with
 protocol 5 alone is insufficient for visual startup. The retained structured
 pair is `dist/Hyperspace.protocol5.dll` with `dist/native-build.protocol5.json`.
 Protocol-4 artifacts remain archived and do not satisfy the current runner.
+These `dist/` paths name locally retained artifacts; `setup_pc.sh` does not
+produce the complete accepted visual evidence bundle under those names. See the
+[remaining setup work](docs/NEXT.md#validation-evidence-and-distribution-limits).
 
 To install a locally built DLL into an existing native environment, close FTL and run:
 
@@ -175,12 +200,20 @@ Read a saved run without starting the game: `ftlbench report <run-dir> [--json] 
 
 ## Dashboard and development
 
-The dashboard at `http://127.0.0.1:8765` follows runs and attempts, including errors and active trajectories. It is read-only and sends no game actions. Use `ftlbench dashboard --runs <directory> --suite <path> --port 8765` to select inputs.
+The dashboard uses `http://127.0.0.1:8765` by default and follows runs and attempts,
+including errors and active trajectories. It is read-only and sends no game
+actions. Use `ftlbench dashboard --runs <directory> --suite <path> --port 8765`
+to select inputs; choose an unused port when another server is already running.
+Saved experiment overviews show planned cells, exact replays and outcome reasons.
+Saved cleanup receipts describe their recorded time, not a current live-save audit.
 
 ```powershell
 uv run --directory harness --extra dev --extra dashboard pytest -q
-# From dashboard/: npm ci; npm run build
-# From site/: npm ci; npm run build
+npm --prefix dashboard ci
+npm --prefix dashboard test
+npm --prefix dashboard run build
+npm --prefix site ci
+npm --prefix site run build
 uv build --directory harness
 ```
 

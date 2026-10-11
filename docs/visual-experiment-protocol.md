@@ -1,8 +1,10 @@
 # Visual benchmark acceptance and comparison protocol
 
-Status: implementation and prerequisite validation in progress. No new comparison
-result is established by this document. Historical visual-v1 evidence remains in
-`docs/visual-iteration.md` and its original run directories.
+Status: WIP; experiments paused. At 2026-10-11 02:32 UTC, nine of 36 challenge
+cells were complete and all five full-game cells were unstarted. No complete
+model/observation comparison or fixture-free full-game ending is established.
+See [current results and remaining work](NEXT.md) for the dated status and
+[validation history](validation-history-2026-10-11.md) for superseded evidence.
 
 ## Preserved cohort and prospective repairs (2026-10-11)
 
@@ -38,8 +40,9 @@ cancellation and task-v2 alignment are now implemented and packaged. The accepte
 cooperative-stop package receipt is
 `dist/fresh-start-v3-production/package-validation-cooperative-stop/receipt.json`
 (`7ad330cb...`): 1,849 extracted-source tests pass with ten explicit skips, and
-102 wheel/176 source-release source files match the frozen revision. Prior
-package receipts and artifacts remain preserved.
+102 wheel/176 source-release source files matched that frozen package revision.
+Later documentation edits are not covered by that package byte-identity claim.
+Prior package receipts and artifacts remain preserved.
 
 The replacement challenge cohort is `matrix-task-v2-stop-v1-20261011`, protocol
 `9cab4b1629ebefef5f6686d3865ea19966793a2d6013801d471e51a14f062087`,
@@ -65,22 +68,24 @@ remaining crew health 0; its precise death mechanism is unproven. Its final
 advance stopped after 589 of 600 requested updates. The prior saved gates
 (`7542a634...afea64b` trajectory for repeat one; `3d04a6d9...` gate for repeat two)
 retain their cleanup scope. All three gate receipts are under
-`gated-audits/gpt-6.1-sol__image__combat__repeat-0N.json`. No current cleanup or
-additional 15-baseline check is claimed during the active trial; supporting
-usage and failure details remain in `docs/NEXT.md` and the raw reports.
+`gated-audits/gpt-6.1-sol__image__combat__repeat-0N.json`. These are historical
+point-in-time cleanup checks; supporting usage and failure details remain in the
+[validation history](validation-history-2026-10-11.md) and raw reports.
 
-At 2026-10-11 02:04:54 UTC, the ledger had four finished cells (three combat and
-fire repetition one), fire repetition two running and 31 planned. Root's
-supervisor 17511 remains the guarded eight-cell Sol image batch; of the six
-fire/repair cells following combat, one is finished and five remain at this
-snapshot. Source pins are unchanged and the cohort retains its contract.
+At 2026-10-11 02:32 UTC, all nine Sol/image cells were finished and the other
+27 cells were planned, with no benchmark process live. Combat had 1/3 task
+successes, fire/crew recovery 3/3 and repair/charge/escape 2/3. The nine outcomes
+comprise six task successes, two idle-budget stops and one native crew loss.
+All nine individual audits passed with no exclusions, but the overall comparison
+remains unqualified until the missing conditions are evaluated. The last saved
+cleanup gate is dated 02:17:36 UTC. Source pins are unchanged.
 The separately frozen `fullgame-stop-v1-20261011` protocol
 `da498515a486baf0eff09564f880342106ce2e156d3a65a24df1b468f844c1fc`
 has 78 verified archived pins and all five cells planned at that snapshot.
-The remaining challenge matrix and separate native-ending full-game sequence
-are still pending; no completed replacement comparison or full-game completion
-is established yet. Usage and latency for the first trial are recorded in
-`docs/NEXT.md` and its saved report; unavailable cost is not estimated.
+The remaining matrix and native-ending full-game sequence are paused. A native
+loss inside a challenge fixture does not complete a fixture-free full game.
+Unavailable cost and resolved backend identity are not estimated. Current counts
+are a dated snapshot, not a live monitor; preserve all failures when work resumes.
 
 ### Cooperative stopping and task identity
 
@@ -226,6 +231,19 @@ their intended gameplay consequences.
 
 ## Freezing and resumption
 
+These commands assume the configured harness environment and accepted local
+native runtime/evidence are already present. A clean Git checkout does not
+contain `dist/native-validation.visual-v1.json`, its referenced acceptance
+artifacts or the native DLL. Portable setup of that evidence is still WIP; never
+fabricate acceptance receipts or bypass admission to make `freeze` succeed.
+For a new challenge cohort, from the repository root:
+
+```powershell
+harness/.venv/Scripts/python.exe scripts/run_visual_experiment.py freeze --output harness/runs/visual/challenges-sol-luna-001
+harness/.venv/Scripts/python.exe scripts/run_visual_experiment.py run --output harness/runs/visual/challenges-sol-luna-001 --limit 1
+harness/.venv/Scripts/python.exe scripts/run_visual_experiment.py report --output harness/runs/visual/challenges-sol-luna-001
+```
+
 `scripts/run_visual_experiment.py freeze --output <new-directory>` records the
 matrix, budgets, native DLL/build, CLI identity, actor/runner/fixture sources,
 prompt and HUD-reader assets. `run --output <directory> --limit <N>` executes at
@@ -251,7 +269,9 @@ guard was correct. This incomplete cohort and its exact `frozen-sources` remain
 historical; do not resume it with repaired sources or rewrite its outcomes.
 
 The optional local supervisor `dist/run_guarded_matrix.py` performs that same
-one-cell sequence automatically, without changing frozen experiment sources:
+one-cell sequence automatically, without changing frozen experiment sources.
+It is an ignored development helper, not a shipped checkout command; use the
+tracked controller above unless that separately reviewed helper is available:
 
 ```powershell
 harness/.venv/Scripts/python.exe -u dist/run_guarded_matrix.py --output <new-frozen-matrix-directory>

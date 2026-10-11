@@ -1,0 +1,104 @@
+# Contributor and agent guidance
+
+## Read first
+
+Read `README.md` for setup, `docs/NEXT.md` for current WIP status, and
+`docs/visual-experiment-protocol.md` before changing experiment behavior.
+`docs/visual-iteration.md` describes the visual observation and replay contract.
+Historical diagnostics are evidence with their original scope, not current acceptance.
+
+## Repository map
+
+- `harness/src/ftl_bench/`: CLI, sessions, protected game lifecycle, setup, installation and reporting.
+- `adapter/run_visual.py`: visual runner and Codex CLI wiring; `adapter/run_benchmark.py`: separate structured runner.
+- `scripts/run_visual_experiment.py`: frozen challenge matrix; `scripts/run_fullgame_experiment.py`: sector pilot and four full-game conditions.
+- `mod/ftl_bench_bridge/dev/ftl_bench_dev.lua`: production external Lua bridge.
+- `native/manifest.json`, `native/patches/`, `native/include/`: native contract, cumulative source patch and included implementations.
+- `dashboard/`: React replay/experiment UI; `adapter/ftl_live.py`: read-only dashboard backend.
+- `harness/tests/`, `dashboard/tests/`, `native/tests/`: regression checks; `scenarios/` and `prompts/`: declared task and actor contracts.
+
+## Offline validation
+
+Run these from the repository root; select focused checks appropriate to the change.
+
+```sh
+uv run --directory harness --extra dev --extra dashboard pytest -q
+npm --prefix dashboard ci
+npm --prefix dashboard test
+npm --prefix dashboard run build
+```
+
+Build the dashboard before building Python distributions: the Hatch hook ships
+its compiled assets and vendors sibling sources into `_bundled/`.
+
+```sh
+uv build --directory harness
+uv run --directory harness python ../scripts/smoke_package.py
+uv run --directory harness python ../scripts/smoke_sdist.py
+```
+
+For the standalone native test targets, use a C++ toolchain, such as WSL, from
+the repository root:
+
+```sh
+cmake -S native/tests -B build/native-tests
+cmake --build build/native-tests
+ctest --test-dir build/native-tests --output-on-failure
+```
+
+These targets cover a subset of native checks. Other native tests use actual
+Hyperspace includes and toolchain prerequisites; report skips and separately
+executed checks honestly. Offline tests and package smokes do not establish live
+game acceptance or model performance.
+
+## Native and packaged artifacts
+
+Use the cumulative patch selected and hashed by `native/manifest.json`;
+do not replace it with an older partial patch and lose existing controls.
+Keep the include implementations, patch and manifest consistent.
+`scripts/apply_native_patch.py` checks the source boundary;
+`scripts/write_native_provenance.py` records the actual build inputs and DLL.
+Never relabel diagnostic provenance as accepted production evidence.
+
+Visual startup requires native protocol 5, clock 2 with fixed step 1/60, and
+`fresh-start-seed-v3`; protocol 5 alone is insufficient. Preserve the structured
+runner's separate contracts. Native DLLs, local acceptance receipts, `dist/`,
+run outputs, compiled UI and `_bundled/` are generated/local artifacts, not
+editable sources of truth. A fresh clone does not contain the locally accepted
+runtime/evidence chain required by frozen controllers.
+
+## Benchmark evidence and lifecycle
+
+Image actors receive the exact archived PNG and permitted history. Hybrid adds
+only conservative values extracted from that same PNG, omitting uncertainty.
+Never expose hidden native state or evaluator assessments to the actor. Archive
+the canonical first image before startup validation.
+
+Full-game completion requires audited native victory or defeat. A pilot,
+budget stop, concession or interruption is not a completed full game. Preserve
+native score provenance; enemy lifecycle flags and raw kill counters alone do
+not prove a combat kill. Task success must retain its declared evaluator proof.
+Finite setup/trajectory equality does not prove general full-game determinism.
+
+Check a cohort's `protocol.json` source pins before editing experiment inputs.
+Do not mutate frozen sources or saved runs to make an existing cohort pass.
+Changed sources, tasks or budgets require a new freeze/output directory.
+Preserve failures, responses, images, terminal reasons and cleanup receipts;
+do not silently retry or overwrite started cells.
+
+Use one game/controller at a time. Paused experiments resume only on request;
+static documentation work does not authorize a launch or imply live acceptance.
+Use the controller's official cooperative `stop` operation from a second
+terminal and let the original runner finish protected cleanup. Do not terminate
+the runner or replace runtime files during a trial. Verify save restoration
+from the protected lifecycle receipts, and distinguish their recorded time
+from a current live audit. Credentials must remain outside Git and logs;
+environment files are selected explicitly, never discovered automatically.
+
+## Git scope
+
+Branch names must not include `codex` (the user's explicit preference).
+Stage explicit task paths and inspect the staged diff. Exclude unrelated
+`.claude/worktrees/` checkouts, credentials, local runs and generated artifacts;
+avoid blanket staging of the workspace. State WIP and unproven scopes plainly
+in documentation and commit descriptions.
