@@ -7,22 +7,28 @@ An agent benchmark that drives the real **FTL: Faster Than Light** engine throug
 ## Status: work in progress
 
 The visual benchmark is an **alpha implementation with partial live validation**.
-At 2026-10-11 07:22 UTC (04:22 in São Paulo), the preserved `078a5e2` cohort has
-nine completed Sol/image cells: six task successes, two idle-budget failures and
-one technical exclusion; eight trials have eligible evidence. All recorded cleanup
-checks passed, including the last current check of seven saves and the bridge.
-The next model batch is held for a prospective CLI failure-evidence fix. Actor
-source changes require fresh admission and new cohorts; failures are not retried
-or relabelled. Fixture-free native-ending full games remain **0/4**, with no
-qualified model/observation comparison. Older cohorts are not pooled.
+At 2026-10-11 07:44 UTC (04:44 in São Paulo), fresh source-bound admission at
+`2174cc9` passed scoped startup, nine timing probes and eight independent rejection
+checks. New challenge and full-game cohorts are frozen; all 36 challenge cells
+and five full-game/pilot entries are planned, with Sol first prospectively.
+The separate preserved `078a5e2` cohort has nine completed Sol/image cells:
+six task successes, two idle-budget failures and one technical exclusion, with
+eight eligible trials. Its failed call's usage remains unknown. Failures are not
+silently retried or relabelled, and cohorts are not pooled. Fixture-free
+native-ending full games remain **0/4**, with no qualified model/observation
+comparison. See the exact cohort identities and remaining [WIP](docs/NEXT.md).
 
 Screenshot play, conservative image-derived HUD summaries, protected saves,
 frozen challenge/full-game controllers and exact dashboard replays are
 implemented. CI passes on Windows and Linux with Python 3.11 and 3.13. The
 repaired native runtime passed the protected natural store-arrival regression,
-fixture-free startup and all nine timing probes. Both saved-report admission
-fixes passed fresh source-bound validation at `078a5e2`; new challenge and
-full-game cohorts are frozen. These checks establish their documented scopes,
+fixture-free startup and all nine timing probes. The current collection reuses
+the original native build unchanged and discloses
+that reuse; all ten cleanup inventories and the current seven original saves
+were independently verified. Both saved-report admission fixes and the CLI
+failure-evidence change are included in the newly admitted sources. All five
+[CI jobs at `2174cc9`](https://github.com/ogabrielluiz/ftl_bench/actions/runs/38121156672)
+passed. These checks establish their documented scopes,
 not completion of the benchmark plan or general determinism.
 
 The optional [portable v2 workflow](docs/native-acceptance.md) archives local

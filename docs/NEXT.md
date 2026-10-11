@@ -1,28 +1,18 @@
 # Current validation and next work
 
-**WIP / alpha. Snapshot: 2026-10-11 07:22 UTC (04:22 in São Paulo).**
-Nine of 36 challenge cells finished in the preserved original cohort. The
-sector pilot ended in native defeat;
-Sol/image full-game was cooperatively stopped at 276 decisions after a confirmed
-native store-arrival blocker froze warp. Three full-game cells remain unstarted.
-The original failed run restored all seven saves and its 15 baseline paths. No
-fixture-free full-game ending or complete model comparison has been established.
-The original checkout and failed cohort remain frozen; development continues on
-`main`.
+**WIP / alpha. Snapshot: 2026-10-11 07:44 UTC (04:44 in São Paulo).**
+Fresh `2174cc9` scoped admission and freeze are complete. The new matrix has all
+36 cells planned; the new full-game cohort has its pilot and four native-ending
+conditions planned. Sol runs first prospectively. No model result is claimed for
+these new cohorts, and fixture-free native-ending completion remains **0/4**.
 
-The replacement DLL passed the protected natural store-arrival regression at
-05:28 UTC: 243 frames to arrival, one frame to resolve Continue, zero simulation
-updates at the visible store, and a successful native CLOSE click. Independent
-review checked 110 archived artifacts, all input packets, the new six-file runtime
-and exact restoration of all seven saves, with no game left running. This covers
-the reproduced defect only. Fresh startup, nine timing probes, independent
-rejection checks and local admission have now passed. Replacement cohorts are
-frozen as described below. Their first completed challenge exposed a reporting
-false exclusion, now repaired prospectively. Both reporting fixes passed fresh
-source-bound admission at `078a5e2`. All nine current Sol/image cells are finished
-and independently reviewed: six successes, two idle-budget failures and one
-technical exclusion. The next model batch is held as described below. See the
-[store-arrival diagnosis](native-store-arrival.md).
+The preserved `078a5e2` cohort remains separate: nine Sol/image cells finished,
+with six task successes, two idle-budget failures and one technical exclusion;
+eight have eligible evidence. Failed-call usage remains unknown. All saved
+cleanup checks passed, including the last live check for that batch. Its pause
+led to the prospective CLI evidence fix and fresh admission below, without
+silent retries, relabelling or pooling. Older stopped full-game and diagnostic
+runs remain historical; see the [store-arrival diagnosis](native-store-arrival.md).
 
 ## Implemented and verified scope
 
@@ -40,7 +30,35 @@ The visual track is `visual-v1`; historical structured runs retain runner/rulese
 v7 and their own contracts. Do not pool their scores or treat a diagnostic fixture
 ending as a fixture-free full game.
 
-## Current admitted cohorts
+## Current admitted cohorts (`2174cc9`)
+
+Commit `2174cc9704343f91e7d527a6a9f6961eb741be81` passed all five jobs in
+[CI run 38121156672](https://github.com/ogabrielluiz/ftl_bench/actions/runs/38121156672).
+Fresh collection `main-admission-cli-evidence-20261011T072857Z` passed scoped
+fixture-free startup, all nine timing probes, eight independent negative review
+cases and controller admission joining 78 executable sources and 565 evidence
+files. Independent review verified both source archives, all ten cleanup
+inventories, current seven original saves, restored bridge and six-file runtime,
+with no FTL process remaining at the check. The original native build and source
+proof were reused unchanged, with their original identities and reuse disclosed;
+this is not a new native build or compiler proof. `production_accepted` remains
+false. Local cleanup receipt:
+`dist/store-warp-diagnosis-20261011/CLI-evidence-admission-cleanup-review.json`.
+Admission-spec SHA-256:
+`1cf47ca6c7bc6de2bf8cfcb122b117219dc3f67c4e9c7df08f3f50d212124192`.
+
+Both frozen cohorts are under `harness/runs/validation/visual-v1/`. Embedded
+protocol identities and hashes of the complete `protocol.json` bytes differ:
+
+| Cohort | Embedded protocol SHA-256 | Protocol file SHA-256 | Snapshot |
+| --- | --- | --- | --- |
+| `matrix-main-2174cc9-20261011` | `14b187e91c25d675f3f9e1c532f4dfa6ec75d137334dc62e122f9a254118b613` | `b04b9dab9e7f85b24c092f9b53117238506dd5cc5a75f66e4b8368a94ac2910e` | 36 planned, zero finished |
+| `fullgame-main-2174cc9-20261011` | `0714ba2975bc1b1fa37ff09a0be85087fda35037e237cc3a15ca4631b590935d` | `53b5b6cac94aef5b9177381b1a103abc14b6b991e656bebe296a71ceeb4288ac` | Pilot plus four conditions planned, zero finished |
+
+Frozen executable files must remain unchanged. Later actor source changes require
+another fresh diagnostic collection, independent review and new admission/cohorts.
+
+## Preserved `078a5e2` cohorts and results
 
 Executable sources at `078a5e2` passed all five CI jobs and fresh local
 validation in `main-admission-dashboard-20261011T061245Z`: fixture-free startup,
@@ -52,7 +70,7 @@ The local admission joins 565 evidence files and preserves
 `production_accepted: false`. Admission-spec SHA-256:
 `95f34f49d804852ac33f552f937319e5865dadd11576cea7f3019dfb033e6495`.
 
-Both new cohorts are under `harness/runs/validation/visual-v1/`:
+These preserved cohorts are under `harness/runs/validation/visual-v1/`:
 
 | Cohort | Embedded protocol SHA-256 | Scope |
 | --- | --- | --- |
@@ -81,7 +99,7 @@ directory. Repeat three completed successfully after 12 decisions with 14 PNGs,
 current cleanup audit passed: seven original saves, bridge, six-file runtime,
 frozen sources and evidence verified, with no FTL process remaining. Player hull
 was 28/30 and all three crew survived. The receipt is
-`main-combat-03-final-review.json` in the same diagnosis directory. The current
+`main-combat-03-final-review.json` in the same diagnosis directory. This preserved
 combat result is **1/3 task successes, 3/3 eligible trials**. These results are
 not pooled with earlier cohorts, and fixture-free native-ending full games
 remain **0/4**. All nine Sol/image cells are now finished:
@@ -100,7 +118,7 @@ All recorded cleanup receipts passed; the final repair batch audit at 07:10 UTC
 also checked current seven-save inventory, restored bridge, runtime and source
 pins, and no remaining FTL process. This is a dated check, not a continuing claim.
 
-### Held next batch and prospective CLI failure evidence
+### Preserved pause and prospective CLI failure evidence
 
 Repair repeat three retained `visual_model_error` / `protocol_failure` after five
 completed decisions. The sixth CLI call exited zero but was rejected as
@@ -114,7 +132,7 @@ image hashes are retained in `main-repair-03-task-attribution.json` in the diagn
 directory. This trial establishes neither task success nor eligible gameplay evidence.
 Keep its exclusion and original attempt intact. There is no silent retry.
 
-A failure-only evidence change is implemented in the isolated development checkout:
+The failure-only evidence change admitted at `2174cc9` retains:
 bounded stdout (2 MiB) and stderr (64 KiB), raw-byte hashes, redacted retained
 content with hashes and byte counts, truncation flags, and timeout partial-output
 metadata. Successful decisions are unchanged. Unsupported/error/tool events still
@@ -124,17 +142,12 @@ lists `error` and `turn.failed` in `--json` output and says `--ephemeral` does n
 persist session rollouts, making retained failure output necessary for attribution.
 Those documented events do not identify this particular unretained failure.
 
-The next model batch is held. Any actor diagnostic source change requires fresh
-startup/timing collection, independent review and new source-bound admission and
-cohorts. Preserve `matrix-main-078a5e2-20261011` and
-`fullgame-main-078a5e2-20261011` unchanged; do not reuse their admission for changed
-actor sources or rewrite their results. The prospective fix passes 249 focused
-checks and independent review, including a separate 67-test visual-agent suite.
-Its full CI/package checks are pending at this snapshot. The preceding dashboard
-commit `eb513d5` passed all five jobs in
-[CI run 38119672406](https://github.com/ogabrielluiz/ftl_bench/actions/runs/38119672406),
-and actual rendered dashboard inspection passed. That published validation does
-not establish CI acceptance of the new failure-evidence change.
+The old batch remains held and its frozen cohorts are preserved unchanged; the
+new `2174cc9` cohorts above start prospectively rather than retrying its failed
+cell. The CLI evidence fix passed 249 focused checks and independent review,
+including a separate 67-test visual-agent suite, followed by all five green CI
+jobs in run 38121156672. This acceptance does not recover the missing raw output
+or unknown usage from the original failed call.
 
 ### Separate dashboard repair and rendered check (2026-10-11 06:55 UTC)
 
