@@ -76,7 +76,7 @@ def test_patcher_preflight_rejects_before_any_patch(tmp_path, case):
     digest = hashlib.sha256(tool.read_bytes()).hexdigest()
     env = dict(os.environ, FTLMAN=tool.as_posix() if case != "missing" else "",
                FTLMAN_SHA256="" if case == "missing_hash" else "0" * 64 if case == "mismatch" else digest,
-               TEST_CASE=case)
+               TEST_CASE=case, SAVE=tmp_path.as_posix())
     program = '''set -uo pipefail
 die() { echo "$*" >&2; exit 1; }
 test_tasklist() {
@@ -191,3 +191,42 @@ git() {
                             env=dict(os.environ, FTLB=str(checkout), PROJ=str(tmp_path)))
     assert result.returncode == 0, result.stderr
     assert dirty.read_bytes() == b"preserve these exact local edits"
+
+
+@pytest.mark.parametrize("stage", ["durability", "repos", "build", "datamod", "deploy", "unknown"])
+def test_file_only_rejects_all_non_rehearsal_stages(tmp_path, stage):
+    source = SCRIPT.read_text()
+    gate = source.split('if [ "${FTLB_FILE_ONLY:-0}" = 1 ]; then', 1)[1].split("\nfi", 1)[0]
+    program = 'die() { echo "$*" >&2; exit 1; };\n' + gate
+    result = subprocess.run([bash(), "-c", program], capture_output=True, text=True,
+        env={**os.environ, "FTL_GAME_DIR": str(tmp_path / "game"), "FTL_SAVE_DIR": str(tmp_path / "profile"),
+             "RUN": stage, "FTLB_INSTALL_ELEVATE": "0"})
+    assert result.returncode != 0
+    assert "permits only" in result.stderr
+
+
+@pytest.mark.parametrize("pending", [False, True])
+def test_patch_pending_marker_gate_precedes_data_mutation(tmp_path, pending):
+    source = SCRIPT.read_text()
+    gate = source.split('  [ -n "$SAVE" ] || locate_game || die "cannot resolve save directory for pending-launch check"', 1)[1].split('  HSFTL=', 1)[0]
+    if pending:
+        (tmp_path / "ftl_bench_pending_launch.json").write_text("unresolved")
+    program = 'die() { echo "$*" >&2; exit 1; };\n' + gate + '\necho ready\n'
+    result = subprocess.run([bash(), "-c", program], capture_output=True, text=True,
+        env={**os.environ, "SAVE": tmp_path.as_posix()})
+    assert result.returncode == (1 if pending else 0)
+    assert ("ready" in result.stdout) != pending
+
+
+def test_verify_does_not_require_legacy_original_executable_sentinel():
+    verify = SCRIPT.read_text().split("if want verify; then", 1)[1]
+    assert "FTLGame_orig.exe" not in verify
+
+
+def test_explicit_game_stages_still_resolve_explicit_save_guard():
+    source = SCRIPT.read_text()
+    install = source.split("if want install; then", 1)[1].split("# STAGE patch", 1)[0]
+    patch = source.split("if want patch; then", 1)[1].split("# STAGE deploy", 1)[0]
+    assert 'locate_game || die' in install and 'locate_game || die' in patch
+    assert 'SAVE="${FTL_SAVE_DIR:-}"' in source
+    assert 'SAVE="$FTL_SAVE_DIR"' in source

@@ -24,7 +24,8 @@
 #   - downgrade FTL to 1.6.9  (downgrade.bat)
 #   - drop the loader proxy (xinput1_4.dll + lua-5.3.dll + patch/) and our
 #     Hyperspace.dll next to FTLGame.exe
-#   These are emitted as install_into_game.bat and run elevated at the end.
+#   A native Windows Python helper verifies BPS identities and loader backups.
+#   Normal installation can elevate; explicit file-only rehearsal never elevates.
 #
 # Idempotent: safe to re-run. Each stage checks before doing work.
 #
@@ -80,6 +81,14 @@ else
   RUN="$ALL_STAGES"
 fi
 want() { case " $RUN " in *" $1 "*) return 0;; *) return 1;; esac; }
+if [ "${FTLB_FILE_ONLY:-0}" = 1 ]; then
+  [ -n "${FTL_GAME_DIR:-}" ] && [ -n "${FTL_SAVE_DIR:-}" ] || die "file-only rehearsal requires explicit FTL_GAME_DIR and FTL_SAVE_DIR"
+  for selected in $RUN; do
+    case "$selected" in locate|install|patch|verify) ;; *) die "file-only rehearsal permits only locate/install/patch/verify";; esac
+  done
+  [ "${FTLB_INSTALL_ELEVATE:-0}" = 0 ] || die "file-only rehearsal requires FTLB_INSTALL_ELEVATE=0"
+  FTLB_INSTALL_ELEVATE=0
+fi
 
 # detect Windows user (for /mnt/c paths) ------------------------------------
 detect_win_user() {
@@ -251,7 +260,7 @@ fi
 # ===========================================================================
 # STAGE locate — find the Windows FTL game dir + data file
 # ===========================================================================
-GAME="${FTL_GAME_DIR:-${GAME:-}}"; FTLDAT=""; SAVE=""
+GAME="${FTL_GAME_DIR:-${GAME:-}}"; FTLDAT=""; SAVE="${FTL_SAVE_DIR:-}"
 locate_game() {
   local cands=(
     "/mnt/c/Program Files (x86)/Steam/steamapps/common/FTL Faster Than Light"
@@ -269,8 +278,12 @@ locate_game() {
   for c in "$GAME/ftl.dat" "$GAME/resources/ftl.dat" "$GAME/data/ftl.dat"; do
     [ -f "$c" ] && { FTLDAT="$c"; break; }
   done
-  local wu; wu="$(detect_win_user)"
-  SAVE="/mnt/c/Users/$wu/Documents/My Games/FasterThanLight"
+  if [ -n "${FTL_SAVE_DIR:-}" ]; then
+    SAVE="$FTL_SAVE_DIR"
+  else
+    local wu; wu="$(detect_win_user)"
+    SAVE="/mnt/c/Users/$wu/Documents/My Games/FasterThanLight"
+  fi
 }
 if want locate; then
   log "locate: Windows FTL install + data + save dir"
@@ -282,12 +295,14 @@ if want locate; then
 fi
 
 # ===========================================================================
-# STAGE install — generate + run the elevated Windows installer
+# STAGE install — verified Windows loader helper plus native artifact installer
 #   (downgrade to 1.6.9 + drop loader proxy + our Hyperspace.dll)
 # ===========================================================================
 if want install; then
-  log "install: loader + DLL into the game dir (needs Windows admin)"
-  [ -n "$GAME" ] || locate_game || die "run 'locate' first"
+  log "install: verified loader + DLL into explicit game directory"
+  locate_game || die "run 'locate' first"
+  PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$FTLB/harness/src" python3 -B -c 'import ftl_bench.installation, ftl_bench.cli' \
+    || die "WSL harness CLI import preflight failed; no loader changes made."
   REL="$HS/Release Files/Windows"
   DLL="$FTLB/dist/Hyperspace.visual-v1.dll"
   PROVENANCE="$FTLB/dist/native-build.visual-v1.json"
@@ -298,37 +313,22 @@ if want install; then
   live_processes="$(/mnt/c/Windows/System32/tasklist.exe /fi 'imagename eq FTLGame.exe' 2>/dev/null)" \
     || die "cannot verify FTL is closed; no installation changes made"
   case "$live_processes" in *FTLGame.exe*) die "close FTL before installing native files";; esac
-  # stage the files to copy into a temp dir on C: that the .bat will read
-  STAGEDIR="/mnt/c/ftl_bench_install"
-  mkdir -p "$STAGEDIR"
-  cp "$REL/xinput1_4.dll" "$REL/lua-5.3.dll" "$REL/downgrade.bat" "$STAGEDIR/" 2>/dev/null
-  cp -r "$REL/patch" "$STAGEDIR/" 2>/dev/null
-  # convert the WSL game path to a Windows path for the .bat
-  GAME_WIN="$(wslpath -w "$GAME")"
-  BAT="$STAGEDIR/install_into_game.bat"
-  cat > "$BAT" <<EOF
-@echo off
-REM ftl_bench — Windows-side install (run as Administrator)
-set GAME=$GAME_WIN
-echo Installing into "%GAME%"
-cd /d "%GAME%"
-echo --- downgrading FTL to 1.6.9 (if not already) ---
-if not exist FTLGame_orig.exe ( copy /Y "C:\\ftl_bench_install\\downgrade.bat" downgrade.bat >nul & call downgrade.bat ) else ( echo already downgraded )
-echo --- copying Hyperspace loader ---
-copy /Y "C:\\ftl_bench_install\\xinput1_4.dll" . >nul
-copy /Y "C:\\ftl_bench_install\\lua-5.3.dll" . >nul
-xcopy /E /I /Y "C:\\ftl_bench_install\\patch" patch >nul
-echo --- done ---
-exit /b %errorlevel%
-EOF
-  ok "generated $BAT"
-  warn "running it elevated (accept the UAC prompt on the PC)..."
-  # try to launch elevated; user must click 'Yes' on the UAC dialog
-  powershell.exe -NoProfile -Command '$nativeLoader = Start-Process -WindowStyle Hidden -Wait -PassThru -Verb RunAs -FilePath cmd.exe -ArgumentList "/c","C:\ftl_bench_install\install_into_game.bat"; exit $nativeLoader.ExitCode' 2>/dev/null \
-    || die "loader installation failed or elevation was declined; native DLL was not replaced"
+  # Native Windows helper uses an exclusive evidence root, never a shared staging folder.
+  WINDOWS_PYTHON="${FTLB_WINDOWS_PYTHON:-python.exe}"
+  STAGEDIR="$(mktemp -d /mnt/c/Users/Public/ftl-bench-loader.XXXXXXXX)" || die "cannot reserve loader evidence"
+  python3 -B "$FTLB/scripts/pin_native_loader.py" --source "$HS" --manifest "$FTLB/native/manifest.json" \
+    --output "$STAGEDIR/expected-inputs.json" || die "loader inputs do not match declared native Git base"
+  WSLENV="${WSLENV:+$WSLENV:}FTLB_LOADER_PYTHON:FTLB_LOADER_SCRIPT:FTLB_LOADER_GAME:FTLB_LOADER_RELEASE:FTLB_LOADER_SAVE:FTLB_LOADER_OUTPUT:FTLB_LOADER_ELEVATE:FTLB_LOADER_EXPECTED" \
+  FTLB_LOADER_PYTHON="$WINDOWS_PYTHON" FTLB_LOADER_SCRIPT="$(wslpath -w "$FTLB/scripts/install_native_loader.py")" \
+  FTLB_LOADER_GAME="$(wslpath -w "$GAME")" FTLB_LOADER_RELEASE="$(wslpath -w "$REL")" \
+  FTLB_LOADER_SAVE="$(wslpath -w "$SAVE")" FTLB_LOADER_OUTPUT="$(wslpath -w "$STAGEDIR/evidence")" \
+  FTLB_LOADER_EXPECTED="$(wslpath -w "$STAGEDIR/expected-inputs.json")" \
+  FTLB_LOADER_ELEVATE="${FTLB_INSTALL_ELEVATE:-1}" \
+  powershell.exe -NoProfile -NonInteractive -Command '$ErrorActionPreference="Stop"; try { $python=(Get-Command $env:FTLB_LOADER_PYTHON -CommandType Application -ErrorAction Stop).Source; $arguments=@("-B",$env:FTLB_LOADER_SCRIPT,"--game",$env:FTLB_LOADER_GAME,"--release",$env:FTLB_LOADER_RELEASE,"--save",$env:FTLB_LOADER_SAVE,"--output",$env:FTLB_LOADER_OUTPUT,"--expected-inputs",$env:FTLB_LOADER_EXPECTED); if ($env:FTLB_LOADER_ELEVATE -eq "0") { & $python @arguments; if ($null -eq $LASTEXITCODE) { throw "No Python exit status" }; exit $LASTEXITCODE }; if ($env:FTLB_LOADER_ELEVATE -ne "1") { throw "FTLB_INSTALL_ELEVATE must be 0 or 1" }; $quoted=@($arguments | ForEach-Object { ([char]34)+$_+([char]34) }); $loader=Start-Process -WindowStyle Hidden -Wait -PassThru -Verb RunAs -FilePath $python -ArgumentList $quoted; if ($null -eq $loader -or $null -eq $loader.ExitCode) { throw "No elevated Python exit status" }; exit $loader.ExitCode } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }' \
+    || die "loader installation failed; inspect exclusive evidence at $STAGEDIR"
   # Install the verified DLL and matching provenance through the same backed-up
   # code path used by native Windows. FTL_SAVE_DIR activates Windows process checks.
-  FTL_SAVE_DIR="$SAVE" PYTHONPATH="$FTLB/harness/src" python3 -m ftl_bench.cli install-native \
+  FTL_SAVE_DIR="$SAVE" PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$FTLB/harness/src" python3 -B -m ftl_bench.cli install-native \
     --dll "$DLL" --manifest "$PROVENANCE" --game-dir "$GAME" \
     || die "verified native installation failed; inspect the reported error"
   ok "native DLL and matching provenance installed with retained backups"
@@ -340,7 +340,7 @@ fi
 # ===========================================================================
 if want patch; then
   log "patch: ftl.dat <- Hyperspace.ftl + ftl_bench_bridge.ftl (FTLMan, from WSL)"
-  [ -n "$GAME" ] || locate_game || true
+  locate_game || die "cannot locate explicit game/save paths"
   # re-find ftl.dat (it appears/relocates after the downgrade)
   for c in "$GAME/ftl.dat" "$GAME/resources/ftl.dat" "$GAME/data/ftl.dat"; do
     [ -f "$c" ] && { FTLDAT="$c"; break; }
@@ -358,6 +358,9 @@ if want patch; then
   live_processes="$(/mnt/c/Windows/System32/tasklist.exe /fi 'imagename eq FTLGame.exe' 2>/dev/null)" \
     || die "cannot verify FTL is closed; no patch performed"
   case "${live_processes,,}" in *ftlgame.exe*) die "close FTL before patching data";; esac
+  [ -n "$SAVE" ] || locate_game || die "cannot resolve save directory for pending-launch check"
+  [ ! -e "$SAVE/ftl_bench_pending_launch.json" ] && [ ! -L "$SAVE/ftl_bench_pending_launch.json" ] \
+    || die "unresolved protected launch; no data patch performed"
   HSFTL="$FTLB/dist/Hyperspace.ftl"
   BRIDGE="$FTLB/dist/ftl_bench_bridge.ftl"
   [ -f "$HSFTL" ] && [ -f "$BRIDGE" ] || die "missing data mods ($HSFTL / $BRIDGE) — run 'datamod'."
@@ -406,17 +409,21 @@ fi
 if want verify; then
   log "verify: install sanity"
   [ -n "$GAME" ] || locate_game || true
-  for f in FTLGame.exe FTLGame_orig.exe xinput1_4.dll lua-5.3.dll Hyperspace.dll; do
+  for f in FTLGame.exe xinput1_4.dll lua-5.3.dll Hyperspace.dll; do
     [ -e "$GAME/$f" ] && ok "game/$f" || warn "game/$f MISSING"
   done
   [ -f "$GAME/ftl.dat.vanilla" ] && ok "ftl.dat.vanilla (patched, revertible)" || warn "ftl.dat not patched yet"
   echo
+  if [ "${FTLB_FILE_ONLY:-0}" = 1 ]; then
+    ok "file-only rehearsal complete; no game launch, save deployment or runtime acceptance"
+  else
   echo "NEXT (on the PC):"
   echo "  1. Launch FTL from Steam (or run FTLGame.exe). The xinput1_4.dll proxy injects Hyperspace."
   echo "     (GUI needs WSLg or a Windows-side launch; from WSL: cmd.exe /c start \"\" \"\$(wslpath -w \"$GAME\")\\FTLGame.exe\")"
   echo "  2. From WSL:  source $FTLB/.env.pc && bash $FTLB/scripts/verify_observation.sh \"$SAVE/ftl_agent_observation.json\""
   echo "  3. Run a scripted game and compare crash rate to macOS:"
   echo "     source $FTLB/.env.pc && python3 $FTLB/adapter/run_benchmark.py --agent scripted ..."
+  fi
 fi
 
 log "bootstrap stages complete: $RUN"

@@ -67,12 +67,17 @@ def install_native(dll, manifest, game_dir=None) -> dict:
     game = game_directory(game_dir)
     if game is None or not game.is_dir():
         raise ValueError("Specify an existing patched FTL folder with --game-dir or FTL_GAME_DIR.")
+    # Same durable marker as protected_game; avoid importing its lifecycle here.
+    pending = ftl_user_folder() / "ftl_bench_pending_launch.json"
+    if pending.exists() or pending.is_symlink():
+        raise ValueError("Resolve the pending protected FTL launch before native installation.")
     if ftl_process_alive():
         raise ValueError("Close FTL before replacing its native DLL.")
     for filename in ("FTLGame.exe", "xinput1_4.dll", "lua-5.3.dll"):
         if not (game / filename).is_file():
             raise ValueError(f"Missing {filename}; complete the Hyperspace setup first.")
-    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    payloads = {"Hyperspace.dll": source.read_bytes(), "ftlbench-native.json": provenance_path.read_bytes()}
+    provenance = json.loads(payloads["ftlbench-native.json"].decode("utf-8"))
     if not isinstance(provenance, dict):
         raise ValueError("The build manifest must be a JSON object.")
     if provenance.get("platform") != "windows-x86" or provenance.get("game_version") != "1.6.9":
@@ -80,8 +85,8 @@ def install_native(dll, manifest, game_dir=None) -> dict:
     protocol = provenance.get("native_protocol")
     if type(protocol) is not int or protocol < 5:
         raise ValueError("The DLL must implement benchmark protocol 5 or later.")
-    digest = sha256(source)
-    if digest != provenance.get("dll_sha256") or source.stat().st_size != provenance.get("dll_size"):
+    digest = hashlib.sha256(payloads["Hyperspace.dll"]).hexdigest()
+    if digest != provenance.get("dll_sha256") or len(payloads["Hyperspace.dll"]) != provenance.get("dll_size"):
         raise ValueError("DLL hash or size does not match the build manifest; no files were changed.")
     if source == game / "Hyperspace.dll":
         raise ValueError("Use the built DLL as --dll, not the installed destination.")
@@ -89,28 +94,55 @@ def install_native(dll, manifest, game_dir=None) -> dict:
     backup = game / "ftlbench-backups" / f"{stamp}-{uuid4().hex[:8]}"
     backup.mkdir(parents=True)
     destinations = {"Hyperspace.dll": source, "ftlbench-native.json": provenance_path}
-    existed = {}
+    originals = {}
     for filename in destinations:
         dest = game / filename
-        existed[filename] = dest.exists()
-        if existed[filename]:
+        if dest.is_symlink() or (dest.exists() and not dest.is_file()):
+            raise ValueError("Unsafe native installation destination: " + filename)
+        originals[filename] = dest.read_bytes() if dest.exists() else None
+        if originals[filename] is not None:
             shutil.copy2(dest, backup / filename)
+            if (backup / filename).read_bytes() != originals[filename]:
+                raise RuntimeError("Native installation backup verification failed: " + filename)
     replaced = []
     try:
         for filename, incoming in destinations.items():
             temporary = game / f".{filename}.{uuid4().hex}.tmp"
             try:
                 shutil.copyfile(incoming, temporary)
+                if temporary.read_bytes() != payloads[filename]:
+                    raise RuntimeError("Native installation staged payload differs from validated bytes: " + filename)
                 temporary.replace(game / filename)
                 replaced.append(filename)
+                if (game / filename).read_bytes() != payloads[filename]:
+                    raise RuntimeError("Native installation final payload verification failed: " + filename)
             finally:
                 temporary.unlink(missing_ok=True)
-    except BaseException:
+        if any((game / name).read_bytes() != data for name, data in payloads.items()):
+            raise RuntimeError("Native installation payload pair changed before completion")
+    except BaseException as failure:
+        rollback_errors = []
         for filename in replaced:
-            if existed[filename]:
-                shutil.copy2(backup / filename, game / filename)
-            else:
-                (game / filename).unlink(missing_ok=True)
+            try:
+                if originals[filename] is not None:
+                    if (backup / filename).read_bytes() != originals[filename]:
+                        raise RuntimeError("Original backup bytes changed")
+                    shutil.copy2(backup / filename, game / filename)
+                else:
+                    (game / filename).unlink(missing_ok=True)
+            except BaseException as error:
+                rollback_errors.append(filename + ": " + str(error))
+        for filename, original in originals.items():
+            try:
+                dest = game / filename
+                if (dest.is_symlink() or (original is None and dest.exists())
+                        or (original is not None and dest.read_bytes() != original)):
+                    raise RuntimeError("Original destination bytes/inventory not restored")
+            except BaseException as error:
+                rollback_errors.append(filename + ": " + str(error))
+        if rollback_errors:
+            raise RuntimeError("Native installation failed and rollback failed; retained backup at "
+                               + str(backup) + ": " + "; ".join(rollback_errors)) from failure
         raise
     return {"game_dir": str(game), "backup": str(backup), "dll_sha256": digest,
             "native_protocol": provenance["native_protocol"]}

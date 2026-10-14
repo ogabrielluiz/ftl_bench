@@ -154,13 +154,14 @@ def test_user_folder_returns_path(monkeypatch):
 # ---------------------------------------------------------------------------
 
 class _FakeProc:
-    """Stand-in for subprocess.CompletedProcess (only .stdout is consulted)."""
+    """Stand-in for subprocess.CompletedProcess with explicit query status."""
 
-    def __init__(self, stdout: str = ""):
+    def __init__(self, stdout: str = "", returncode: int = 0):
         self.stdout = stdout
+        self.returncode = returncode
 
 
-def _patch_run(monkeypatch, *, expect_cmd_contains=None, stdout="", raises=None):
+def _patch_run(monkeypatch, *, expect_cmd_contains=None, stdout="", raises=None, returncode=0):
     """Install a fake subprocess.run on the session module.
 
     If expect_cmd_contains is given, assert the launched argv[0] contains it,
@@ -174,7 +175,7 @@ def _patch_run(monkeypatch, *, expect_cmd_contains=None, stdout="", raises=None)
             raise raises
         if expect_cmd_contains is not None:
             assert expect_cmd_contains in cmd[0], f"unexpected probe command: {cmd!r}"
-        return _FakeProc(stdout)
+        return _FakeProc(stdout, returncode)
 
     monkeypatch.setattr("ftl_bench.session.subprocess.run", fake_run)
     return calls
@@ -364,3 +365,32 @@ def test_write_action_atomic_writes_tmp_first(tmp_path, monkeypatch):
     assert json.loads(seen["tmp_content"]) == payload
     assert seen["tmp_name"] == "ftl_agent_action.json.tmp"
     assert seen["target_name"] == "ftl_agent_action.json"
+
+
+
+@pytest.mark.parametrize("os_name,platform,returncode,expected", [
+    ("nt", "win32", 1, True), ("nt", "win32", 5, True),
+    ("posix", "linux", 1, False), ("posix", "linux", 2, True),
+    ("posix", "linux", -9, True),
+])
+def test_process_query_exit_status_is_fail_closed(monkeypatch, os_name, platform, returncode, expected):
+    _fake_platform(monkeypatch, os_name=os_name, platform=platform)
+    monkeypatch.delenv("FTL_SAVE_DIR", raising=False)
+    monkeypatch.delenv("FTL_BENCH_ASSUME_ALIVE", raising=False)
+    _patch_run(monkeypatch, stdout="", returncode=returncode)
+    assert ftl_process_alive() is expected
+
+
+@pytest.mark.parametrize("os_name,platform", [("nt", "win32"), ("posix", "linux")])
+def test_process_query_has_bounded_timeout_and_timeout_is_not_absence(monkeypatch, os_name, platform):
+    import subprocess
+    _fake_platform(monkeypatch, os_name=os_name, platform=platform)
+    monkeypatch.delenv("FTL_SAVE_DIR", raising=False)
+    monkeypatch.delenv("FTL_BENCH_ASSUME_ALIVE", raising=False)
+    observed_timeouts = []
+    def stalled(cmd, **kwargs):
+        observed_timeouts.append(kwargs.get("timeout"))
+        raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout"))
+    monkeypatch.setattr("ftl_bench.session.subprocess.run", stalled)
+    assert ftl_process_alive() is True
+    assert observed_timeouts == [10]

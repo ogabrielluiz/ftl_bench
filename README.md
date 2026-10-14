@@ -91,7 +91,8 @@ from runtime files, requires a caller-supplied hash-pinned patcher, retains
 exclusive original native build/source archives, and preserves the selected
 checkout. Offline setup checks passed (67 passed; five Windows symlink skips),
 shell syntax and two identical bridge archives. The official FTLMan v0.7.3 archive
-and executable are locally verified, without execution. Docker recovered after
+and executable are locally verified and have now patched an isolated game copy.
+Docker recovered after
 its inaccessible runtime sockets were preserved and recreated. An actual fresh
 source build reached compilation but exhausted its 3 GiB container limit, with
 five recorded compiler kills. A second fresh build completed compilation using
@@ -105,8 +106,12 @@ toolchain image was reused; bit-identical DLL reproduction is not established.
 Optional `FTLB_BUILD_JOBS` now controls direct
 Ninja jobs and dependency concurrency separately from memory/CPU quotas. Setup
 also preserves existing WSL settings when configuring idle behavior, fixing a
-missing-newline corruption. Installation and acceptance
-of a newly built runtime remain unproven; see the [WIP evidence](docs/NEXT.md).
+missing-newline corruption. A file-only installation rehearsal completed the
+executable downgrade, authenticated loader, new DLL/provenance and data patch.
+Its installed files are retained; the rehearsal baseline was restored exactly,
+and the real game and saves were unchanged. This used retained local originals,
+not a fresh Steam download. Live acceptance of the new runtime remains required;
+see the [WIP evidence](docs/NEXT.md).
 
 A separate corrected viewer fixes an HTTP 500 caused by mixed ISO and numeric
 run timestamps. Its rendered current-cohort outcome and replay check passed
@@ -227,7 +232,7 @@ uv run --directory harness ftlbench install-native --dll ../dist/Hyperspace.visu
 uv run --directory harness ftlbench install-native --dll ../dist/Hyperspace.protocol5.dll --manifest ../dist/native-build.protocol5.json
 ```
 
-The installer verifies the artifact hash/protocol and retains replaced files. The loader and data mods must already be installed.
+The installer verifies artifact, backup and installed bytes, retains replaced files, and verifies rollback on caught replacement errors. A pending launch or failed process inspection blocks installation. The loader and data mods must already be installed.
 
 After the data mod and native DLL are installed, deploy the current external Lua bridge and launch FTL through Steam:
 

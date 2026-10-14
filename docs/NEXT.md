@@ -1,6 +1,68 @@
 # Current validation and next work
 
-**WIP / alpha. Current status: 2026-10-14 12:20 UTC; historical challenge and full-game snapshots below remain dated 2026-10-11.**
+**WIP / alpha. Current status: 2026-10-14 13:00 UTC; historical challenge and full-game snapshots below remain dated 2026-10-11.**
+
+## Isolated installation rehearsal (2026-10-14)
+
+The new attempt-three native build has passed a file-only installation rehearsal.
+The actual setup wrapper ran `locate install patch verify`, including Windows
+FLIPS downgrade, loader installation, verified DLL/provenance installation and
+Linux FTLMan v0.7.3 data patching, with exit 0 at 12:54:12 UTC. The isolated game
+layout was reconstructed from the retained original 1.6.14 executable and vanilla
+data; this is not a fresh Steam download or live acceptance. No model or game
+was launched and the dummy profile remained empty. The real six runtime files,
+seven saves and prior Lua remained byte-identical.
+
+The successful rehearsal is retained under
+`dist/installation-rehearsal-20261014T125317Z-8608b467/`. Its `operator-source.json`
+pins the exact source snapshot over base commit `7960321`; native Git objects
+were reused locally solely to authenticate the complete release inventory.
+`installed-game/` retains the installed result, while `game/` was restored to
+its exact seven-file baseline. `restoration.json` records this explicit operator
+restoration, not automatic rollback of the entire setup. Loader backups and
+receipts are copied under `loader-evidence/`; all original receipts are preserved.
+Independent review at 12:59:37 UTC rederived the file, payload and restoration
+checks. `independent-installation-review.json` has SHA-256
+`1b8179b328ddc54f1a0a4913a387b0662474cd5a9f2311d430f9672fc845c236`.
+
+The installed executable matches the known 1.6.9 target SHA-256
+`32f1459c22d5f268d323c5cc6ede0a8a704bc13b3a20d0c08b6da097a29c2daf`.
+DLL/provenance match attempt three, and the patched data SHA-256 is
+`b83610ab6440f8a2adc234c58a327d8e4f5daacaec770e68d7b43d1340432d13`.
+The patched archive was extracted: 305 direct mod payloads matched exact bytes,
+one XML file matched after canonicalization, the Hyperspace version remained,
+and all three bridge scripts were registered in order. FTLMan reported a locale
+warning and an ignored Korean-text append with no base file. This validates
+these file contents, not every append's gameplay behavior. The initial local
+verifier expected byte equality for an XML file whose declaration FTLMan removes;
+its original driver is retained alongside the corrected XML comparison.
+
+The first rehearsal at `dist/installation-rehearsal-20261014T123105Z-580d6f7c/`
+stopped before installation: the operator's prepared release copy omitted
+`patch/patch.bps`, and the exact inventory gate rejected it. Its source, logs and
+unchanged baseline remain separate. The second rehearsal used all three native
+BPS files. No started experiment cell was retried or changed.
+
+Confirmed setup defects fixed in this change include unchecked copy/backup
+bytes, incomplete rollback after one restore fails, failed process queries
+treated as absence, missing Python reported as PowerShell success, and explicit
+game paths bypassing save-path resolution. The loader now requires expected
+input hashes derived from the declared native Git base, including an exact BPS
+inventory. Both native installation and data patching reject pending launches.
+File-only mode requires explicit paths, disables elevation and permits only the
+four rehearsal stages. Stage backups are separate; a later patch failure does
+not undo an earlier successful installation, and process-crash atomicity is not
+claimed. Independent review found no remaining blockers in this scope.
+
+The local harness run passed **2,686 tests with 19 explicit skips**; the newly
+added Git-input pinning suite separately passed all 15 checks. The unpacked source
+release passed **2,648 tests with 72 explicit skips**, including the new helper
+tests. Installed-wheel CLI/dashboard checks and the documentation build passed.
+These changes include `installation.py` and `session.py`, so they invalidate
+the executable pins used by the earlier admission. Fresh startup/timing
+collection, independent admission and new cohorts are required before further
+model calls. The external-input investigation, new-runtime live acceptance,
+matched model comparison and native-ending full games remain unfinished.
 
 ## Resumed validation and build attempt (2026-10-14)
 

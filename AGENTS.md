@@ -81,6 +81,15 @@ invocation. Runtime equality across diagnostics and build-source reconstruction
 are separate checks. Keep historical evidence pinned to its original verifier
 and source bytes when either implementation changes.
 
+The Windows loader installer authenticates its executable, DLLs and exact BPS
+inventory through `pin_native_loader.py` against the declared native Git base.
+Retain the expected-input manifest and per-stage backups. File-only setup needs
+explicit game/profile copies, `FTLB_FILE_ONLY=1`, no elevation, and only
+`locate install patch verify` stages. Never claim a file-layout rehearsal as a
+fresh Steam installation, automatic whole-setup rollback or live acceptance.
+Changes to `installation.py` or `session.py` invalidate admitted executable
+source pins: collect fresh admission and freeze new cohorts before model calls.
+
 Portable v2 controllers additionally require original build-source evidence and
 an independent review bound to the exact candidate, verifier and eight retained
 negative probes. See `docs/native-acceptance.md` for the schemas. A review is an

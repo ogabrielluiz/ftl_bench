@@ -163,6 +163,40 @@ probes, retain their producer descriptors and obtain independent review with
 eight rejected mutations. Staging/setup never manufactures review or production
 acceptance, and local evidence is not included in a fresh clone.
 
+## Install the loader and native files
+
+The WSL `install` stage also needs Windows Python 3.11+ and Windows/WSL interop.
+Set `FTLB_WINDOWS_PYTHON` to its Windows executable path when `python.exe` is not
+on the Windows path. The selected native Git checkout supplies the loader,
+patcher and BPS files. Setup authenticates their exact inventory and bytes
+against the base commit declared in `native/manifest.json` before execution.
+Keep the game closed and resolve any protected pending-launch marker first.
+
+```bash
+export FTLB_WINDOWS_PYTHON='C:\path\to\python.exe'
+export FTL_GAME_DIR='/mnt/c/path/to/FTL Faster Than Light'
+export FTL_SAVE_DIR='/mnt/c/Users/your-user/Documents/My Games/FasterThanLight'
+STAGES="locate install" bash scripts/setup_pc.sh
+```
+
+The Windows helper selects a BPS patch from the executable's actual size and
+checksum; an old `FTLGame_orig.exe` filename does not establish compatibility.
+It verifies backups, patched output and copied loader bytes and retains an
+exclusive receipt/backup directory under `C:\Users\Public\ftl-bench-loader.*`.
+The following DLL/provenance installation has its own backups. Observed errors
+trigger verified restoration within the affected stage; rollback errors retain
+their evidence and are reported explicitly. These stages are not one atomic
+transaction across process crashes. A later data-patch failure does not undo a
+successful loader or DLL installation.
+
+For an isolated file-layout rehearsal, provide an independently prepared game
+copy and an empty dummy profile. Use `FTLB_FILE_ONLY=1`,
+`FTLB_INSTALL_ELEVATE=0`, and an explicit stage list containing only `locate`,
+`install`, `patch` and/or `verify`. File-only mode requires both explicit paths,
+excludes deployment and host configuration, and never establishes live runtime
+acceptance. It does not create the game copy or restore it afterward. Keep the
+baseline and installation receipts so those steps can be checked separately.
+
 ## Install a locally built DLL
 
 With FTL closed, install a built DLL and its matching provenance using the local native installer:
@@ -171,7 +205,7 @@ With FTL closed, install a built DLL and its matching provenance using the local
 ftlbench install-native --dll dist/Hyperspace.visual-v1.dll --manifest dist/native-build.visual-v1.json --game-dir "<FTL-install-directory>"
 ```
 
-It verifies the DLL hash/protocol, refuses a running game and retains replaced artifacts. This installs the DLL and provenance; the loader and data mods must already be installed. The Python wheel does not contain FTL or Hyperspace.dll. `install-mod --url` only downloads a supplied asset and does not replace this setup.
+It verifies the DLL hash/protocol, backup bytes and installed pair, refuses a running game or pending protected launch, and retains replaced artifacts. Failed process inspection blocks installation. A caught replacement error restores the prior pair and verifies its bytes and original absence; incomplete restoration reports the retained backup. This installs the DLL and provenance; the loader and data mods must already be installed. The Python wheel does not contain FTL or Hyperspace.dll. `install-mod --url` only downloads a supplied asset and does not replace this setup.
 
 ## Deploy and verify
 
