@@ -21,7 +21,12 @@ for the durable guard and the limits of operator acknowledgement.
 
 The new `fullgame-main-d430d0e-20261014` cohort freezes matched budgets of
 1,500 decisions / 86,400 seconds / 8 idle decisions. Its Sol/image sector pilot
-started at 11:24 UTC; this is an in-progress attempt, not a completed full game.
+ran from 11:24 to 11:57 UTC and stopped on external input after 85 delivered
+decisions. The 86th response was rejected before dispatch. Independent evidence
+and exact cleanup checks passed; this is an interrupted pilot, not a game result.
+The operator reports using the computer but not FTL. A passive minute did not
+reproduce the trigger; the other-app input boundary still needs a controlled check.
+All four full games remain unstarted; this failed cohort is preserved.
 All new Sol conditions precede Luna. Existing failures, budgets and cohorts stay
 separate; the earlier 300-decision hybrid stop is not silently resumed.
 

@@ -1,6 +1,6 @@
 # Current validation and next work
 
-**WIP / alpha. Current status: 2026-10-14 11:49 UTC; historical challenge and full-game snapshots below remain dated 2026-10-11.**
+**WIP / alpha. Current status: 2026-10-14 12:20 UTC; historical challenge and full-game snapshots below remain dated 2026-10-11.**
 
 ## Resumed validation and build attempt (2026-10-14)
 
@@ -18,9 +18,49 @@ remains false. No new native build is claimed by this admission.
 New full-game cohort `fullgame-main-d430d0e-20261014` freezes seed 1, medium
 reasoning and matched 1,500 / 86,400 / 8 budgets. Embedded protocol SHA-256:
 `fe8ae4d78bdf079352d4dd9eb5579899635696aa43d085f7c233d5bea2d94065`.
-The Sol/image sector pilot began at 11:24 UTC; at this snapshot it is running.
-All four full-game conditions are planned, with Sol before Luna. The old
+The Sol/image sector pilot ran from 11:24:35 to 11:57:50 UTC and stopped on
+external input: 85 decisions were delivered, while the 86th completed model
+response was rejected before dispatch. The guard changed from generation 0 to
+13; no final action packet or simulation advance was sent. Evidence integrity
+passed with 86 completed calls and 86 PNGs, but the attempt remains interrupted,
+not a native ending. All four full-game conditions remain planned, with Sol
+before Luna. This cohort cannot continue past its technical pilot outcome. The old
 300-decision hybrid attempt and all historical results remain unchanged.
+
+Independent cleanup at 12:01:20 UTC matched all seven original saves, prior Lua,
+six runtime files and 78 executable sources, with no FTL process or pending
+launch marker. The last delivered state had hull 16/30, oxygen 94%, three living
+crew, sector index 0 and native score 142; the game had not ended. Recorded usage
+is 1,627,197 input tokens (446,592 cached), 25,189 output tokens (9,101 reasoning),
+1,750.667 seconds total model latency and zero reconnects. Review receipt
+`dist/resume-20261014/d430d0e-sol-image-pilot-final-review.json` has SHA-256
+`540cba1fd766dfdc47b4c9c92c902de235f595b96656259bc96e77e98600f53d`.
+
+The operator reports using the computer but not FTL. The native guard counts
+changed mouse positions and other delivered input events without a foreground
+check; saved evidence does not record event types or foreground identity.
+Background movement is a hypothesis, not an established cause. A separate
+no-model passive diagnostic ran from 12:14:56 to 12:15:56 UTC. All 299 samples
+retained generation 0, the same gameplay signature, action sequence 4 and zero
+world updates. FTL was the foreground process while the pointer was outside
+its window in every sample. This is a quiet baseline, not a test of active
+other-app use; PID snapshots do not attribute individual events or establish
+continuous focus. The bridge publishes changed generations even while idle,
+so an unchanged observation tick alone is not evidence of a stalled monitor.
+The protected receipt records exact restoration, with no model calls or
+sampling-phase inputs. Artifacts are under
+`dist/resume-20261014/passive-input-20261014T121444Z-d3775b21/`.
+
+The rendered dashboard shows the interrupted pilot, verified save restoration,
+the final archived screenshot and four planned inputs explicitly marked unsent.
+The remaining diagnostic is controlled movement/typing in another app and
+focus transitions. Do not merely stop counting events that still reach FTL:
+the current guard forwards them, and the native chain has scroll callbacks
+before downstream dispatch plus a separate physical-key polling path. Any
+input-isolation change needs native cursor/UI/world invariance and synthetic
+control checks, fresh admission and new cohorts. No guard behavior or frozen
+sources changed. Preserve the interrupted run and do not treat its technical
+exclusion as a model loss or silently retry it.
 
 Docker startup reproduced its inaccessible inference-socket error. With Docker
 closed, the two stale runtime sockets were preserved by renaming their parent
@@ -94,8 +134,8 @@ container settings and retained CMake records identify Clang 12.0.0 at
 The source build and data packaging are now exercised end to end. The pinned
 image and its toolchain dependencies were reused. DLL bytes differ from attempt
 two, so byte-identical reproduction is not established. No new runtime was
-installed: installation and live acceptance remain required, and the running
-pilot and frozen model cohorts continue using their original admitted runtime.
+installed: installation and live acceptance remain required. The preserved
+pilot and frozen model cohorts use their original admitted runtime.
 
 The packaged-release CI check exposed a separate test-client defect with newer
 Starlette dependencies: three synthetic ASGI clients returned an immediately
@@ -105,8 +145,12 @@ test-only fix sends one complete request and awaits disconnect after the final
 response body, preserving all routing, image, outcome and read-only assertions.
 The targeted reproducer passed, followed by 2,581 tests with 71 explicit skips
 in the counterfactually patched Windows source release. This diagnoses the fix;
-fresh CI on the committed package remains the merge gate. Runtime source pins
-are unchanged.
+fresh CI on commit `8bc2b66` subsequently passed all five jobs. That exact commit
+was fast-forwarded to remote `main`; main CI and documentation deployment also
+passed. The two superseded stalled runs were cancelled and their logs retained.
+Runtime source pins are unchanged. Local CI metadata receipt
+`dist/ci-sdist-asgi-diagnosis-20261014/ci-results.json` has SHA-256
+`c50ec7d8766746575bf21b63f2d1a4c9c9f83cd762cbdbd82ad7b8118a667b7c`.
 
 Local receipts under `dist/resume-20261014/` include:
 
