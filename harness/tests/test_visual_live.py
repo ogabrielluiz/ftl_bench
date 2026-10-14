@@ -180,11 +180,21 @@ def test_artifact_http_response_uses_image_type_and_missing_images_are_404(visua
     async def request(path, **params):
         messages = []
 
+        request_received = False
+        disconnected = asyncio.Event()
+
         async def receive():
-            return {"type": "http.request", "body": b"", "more_body": False}
+            nonlocal request_received
+            if not request_received:
+                request_received = True
+                return {"type": "http.request", "body": b"", "more_body": False}
+            await disconnected.wait()
+            return {"type": "http.disconnect"}
 
         async def send(message):
             messages.append(message)
+            if message["type"] == "http.response.body" and not message.get("more_body", False):
+                disconnected.set()
 
         await app({"type": "http", "http_version": "1.1", "method": "GET", "scheme": "http",
                    "path": path, "raw_path": path.encode(), "query_string": urlencode(params).encode(),

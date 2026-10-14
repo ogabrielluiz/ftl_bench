@@ -558,12 +558,23 @@ def test_actual_dashboard_http_is_read_only_and_serves_completed_result(tmp_path
     def request(path, method="GET", query=b""):
         async def invoke():
             messages = []
+            request_received = False
+            disconnected = asyncio.Event()
 
             async def receive():
-                return {"type": "http.request", "body": b"", "more_body": False}
+                nonlocal request_received
+                if not request_received:
+                    request_received = True
+                    return {"type": "http.request", "body": b"", "more_body": False}
+                # An ASGI connection waits after its one complete request;
+                # repeated immediate requests would starve FileResponse's task.
+                await disconnected.wait()
+                return {"type": "http.disconnect"}
 
             async def send(message):
                 messages.append(message)
+                if message["type"] == "http.response.body" and not message.get("more_body", False):
+                    disconnected.set()
 
             await app({"type": "http", "asgi": {"version": "3.0", "spec_version": "2.3"},
                        "http_version": "1.1", "method": method, "scheme": "http", "path": path,

@@ -67,7 +67,8 @@ no results are pooled or failed cells silently retried. See the dated evidence,
 exact protocol identities and remaining [WIP](docs/NEXT.md).
 
 The complete 36-cell fair comparison, four native-ending full-game conditions
-and actual clean-build/setup reproduction remain unfinished. The scoped live
+and clean installation/runtime acceptance remain unfinished. A fresh native
+build and both data packages completed on 2026-10-14. The scoped live
 cooperative-interruption check passed. Scoped diagnostics,
 passing tests and a challenge outcome do not establish those requirements or
 general determinism.
@@ -92,11 +93,14 @@ five recorded compiler kills. A second fresh build completed compilation using
 one job, one CPU and 3 GiB, with independently reconstructed source identities
 and a verified staged DLL/provenance pair. Its wrapper then failed to package
 the data mod into Docker's root-owned build directory. The corrected packaging
-path uses caller-owned `dist/`; a complete clean rerun remains required.
+path uses caller-owned `dist/`. A third fresh build at `90eeec8` then completed
+all selected stages, with independent verification of the native source chain,
+all 324 Hyperspace data files and the deterministic bridge archive. The pinned
+toolchain image was reused; bit-identical DLL reproduction is not established.
 Optional `FTLB_BUILD_JOBS` now controls direct
 Ninja jobs and dependency concurrency separately from memory/CPU quotas. Setup
 also preserves existing WSL settings when configuring idle behavior, fixing a
-missing-newline corruption. Complete setup, installation and acceptance
+missing-newline corruption. Installation and acceptance
 of a newly built runtime remain unproven; see the [WIP evidence](docs/NEXT.md).
 
 A separate corrected viewer fixes an HTTP 500 caused by mixed ISO and numeric

@@ -1,6 +1,6 @@
 # Current validation and next work
 
-**WIP / alpha. Current status: 2026-10-14 11:41 UTC; historical challenge and full-game snapshots below remain dated 2026-10-11.**
+**WIP / alpha. Current status: 2026-10-14 11:49 UTC; historical challenge and full-game snapshots below remain dated 2026-10-11.**
 
 ## Resumed validation and build attempt (2026-10-14)
 
@@ -69,8 +69,44 @@ root is
 The prospective fix packages `Hyperspace.ftl` atomically into caller-owned
 benchmark `dist/` and makes the patch stage consume that path. It preserves
 native outputs and any prior packaged mod on failure. Focused setup-input tests
-passed (42 passed, one Windows symlink skip); a complete fresh wrapper rerun,
-installation and new-runtime live acceptance remain required.
+passed (42 passed, one Windows symlink skip); independent review passed 64 focused
+tests and a partial-ZIP failure probe with spaces in the paths.
+
+The third fresh build at `90eeec8` completed `repos build datamod` with exit 0,
+from 11:43:23 to 11:47:34 UTC, using the same one-job / one-CPU / 3 GiB recipe.
+Its retained root is
+`/home/ogabrielluiz/projects/ftl_bench-clean-builds/20261014T114250Z-attempt3-04e4cc04`.
+Independent review joined all twelve native source identities and successful
+link evidence, checked all 324 Hyperspace ZIP payload files against `Mod Files/`,
+and matched the bridge archive to a fresh deterministic repackage. Actual
+container settings and retained CMake records identify Clang 12.0.0 at
+`/usr/local/bin/clang++`; tool observations also record CMake 3.26.4 and Ninja
+1.10.0. The independent receipt there is `independent-build-review.json`, SHA-256
+`576638ec6f90253c0ac025ee23ba3f6c87bd22dd4aca1fcc97a56c4fd2dc4f65`.
+
+| Attempt-three output | SHA-256 |
+| --- | --- |
+| Native DLL | `7921bea2d589ee39b4dc9fb0528e98a7c3218ce296d14d0cd6a30d67f3c32e06` |
+| Native provenance | `0dde1b46381c2025258cae5a25f0bb58dd22ad5c036c2575e44def03eed44be2` |
+| Hyperspace data package | `f4bd9ecd4efeecabc0a46c588326fb938579ee68dbd9690171791c02af14d6c1` |
+| Bridge data package | `a5336111a32d7392a1b983316330bdc8bb19a7e5aa6c9e37a71e583fd7155b8a` |
+
+The source build and data packaging are now exercised end to end. The pinned
+image and its toolchain dependencies were reused. DLL bytes differ from attempt
+two, so byte-identical reproduction is not established. No new runtime was
+installed: installation and live acceptance remain required, and the running
+pilot and frozen model cohorts continue using their original admitted runtime.
+
+The packaged-release CI check exposed a separate test-client defect with newer
+Starlette dependencies: three synthetic ASGI clients returned an immediately
+ready request forever, starving the file-response task while it waited for
+disconnect. A retained isolated source release reproduced the hang. The
+test-only fix sends one complete request and awaits disconnect after the final
+response body, preserving all routing, image, outcome and read-only assertions.
+The targeted reproducer passed, followed by 2,581 tests with 71 explicit skips
+in the counterfactually patched Windows source release. This diagnoses the fix;
+fresh CI on the committed package remains the merge gate. Runtime source pins
+are unchanged.
 
 Local receipts under `dist/resume-20261014/` include:
 
@@ -84,6 +120,8 @@ Local receipts under `dist/resume-20261014/` include:
 | `native-build-attempt-01-oom.json` | `3d98fe69e0caa3f3bed7c291d39313c7a8bf23b72228f8d20446cb18625d0201` |
 | `native-build-attempt-02-container.json` | `9df3ff23415bde3bbf222cd3dce9ce215cef14357a65173c4408e46816494888` |
 | `native-build-attempt-02-packaging-failure.json` | `df16d5d69c65d455a27d4d6f3df0b6a5c04b22eaefa658d2bf5666d0f066c3c8` |
+| `native-build-attempt-03-container.json` | `f29ccce6c31d0f0a4cc02c19d981042a55f065e893848d3afe44f19353722001` |
+| `native-build-attempt-03-completed.json` | `12d389db7d01b95b6df3d0a515634f884bfbdff7db59d0af3ea20f05b0c6abb7` |
 
 Controller-spec SHA-256 is
 `7248180d61a072b0dc0514580d565e13d90a960286413532f04879cfa057967e`;

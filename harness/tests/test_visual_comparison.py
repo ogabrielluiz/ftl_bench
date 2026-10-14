@@ -150,10 +150,20 @@ def asgi_request(app, path, query="", method="GET", json_response=True):
     """Exercise real routing/serialization without TestClient/httpx or a server."""
     async def request():
         messages = []
+        request_received = False
+        disconnected = asyncio.Event()
+
         async def receive():
-            return {"type": "http.request", "body": b"", "more_body": False}
+            nonlocal request_received
+            if not request_received:
+                request_received = True
+                return {"type": "http.request", "body": b"", "more_body": False}
+            await disconnected.wait()
+            return {"type": "http.disconnect"}
         async def send(message):
             messages.append(message)
+            if message["type"] == "http.response.body" and not message.get("more_body", False):
+                disconnected.set()
         scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
             "method": method, "scheme": "http", "path": path, "raw_path": path.encode(),
             "root_path": "", "query_string": query.encode(), "headers": [],

@@ -31,8 +31,10 @@ through the upstream Bash build scripts and sets `VCPKG_MAX_CONCURRENCY` for
 dependency builds. Unset jobs preserve the upstream command. Memory/CPU limits
 apply to the build container, not the whole WSL/Docker VM. An actual fresh build
 with 3 GiB / one CPU and no job limit exhausted container memory on 2026-10-14;
-five compiler processes were killed. The single-job recipe still requires an
-actual successful-build check before its resource requirements are established.
+five compiler processes were killed. The single-job recipe completed a fresh
+native build and both data packages at commit `90eeec8` on 2026-10-14. This is
+one measured configuration using the cached pinned toolchain, not a universal
+memory guarantee. Installation and new-runtime acceptance remain separate.
 Resource caps do not change the pinned image or declared native base.
 
 Python 3, Git, Docker and `zip` must be available for this build/package window
@@ -60,7 +62,7 @@ On 2026-10-11, a remote metadata query verified that the immutable manifest abov
 
 The local evidence is `dist/native-toolchain-mapping-20261011T034047Z/mapping-receipt.json` (SHA-256 `3f5c98ba7b4f6468fdb51271d1bf1f8e11f98cf7cca89fbda98e246af43a0ac4`), with the cached image inspection, remote manifest and historical build-manifest snapshot beside it. This generated receipt is not included in a fresh clone. It adds a verified registry-to-image mapping; the old provenance still records its original mutable tag and image ID and remains unchanged.
 
-The 2026-10-11 query established **metadata identity** only. On 2026-10-14 Docker recovered after its inaccessible runtime sockets were preserved and recreated. The pinned image layers downloaded, dependencies built, and the fresh native compilation then failed at its container memory limit. The failed source tree, build command, log and kernel OOM evidence remain retained. No successful DLL, installation or acceptance resulted from that attempt. See [current build evidence](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/NEXT.md#resumed-validation-and-build-attempt-2026-10-14).
+The 2026-10-11 query established **metadata identity** only. On 2026-10-14 Docker recovered after its inaccessible runtime sockets were preserved and recreated. The first fresh native build exhausted its container memory limit. A second build succeeded with one compiler job but failed to package into Docker's root-owned build directory. After correcting the package output path, the third fresh build and both data packages succeeded. Independent review joined twelve source identities and all 324 Hyperspace data files; actual toolchain evidence identifies Clang 12.0.0. All attempts remain retained. Installation and live acceptance of the new DLL are still required. See [current build evidence](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/NEXT.md#resumed-validation-and-build-attempt-2026-10-14).
 
 The optional durability stage uses `configure_wsl_idle.py` to insert a missing
 `vmIdleTimeout=-1` into a unique `[wsl2]` section while preserving other settings,
