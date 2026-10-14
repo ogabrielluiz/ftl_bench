@@ -10,27 +10,20 @@ The visual benchmark is an **alpha implementation with partial live validation**
 Future full-game cohorts can declare matched decision, wall-time and idle budgets
 at freeze time; defaults remain 300 / 14,400 seconds / 8. See the
 [full-game protocol](docs/visual-experiment-protocol.md#full-game-progression).
-Main `bb6014b` passed all five CI jobs in run `38151646134`, but has no fresh
-live admission yet; measured cohorts keep their original executable and limits.
-At the 2026-10-11 16:18 UTC snapshot, its new diagnostic collection passed eight
-startup checks and four of nine timing probes, then fire repeat 02 failed with
-`protected_launch_error` before game launch. It made zero model calls; seven
-saves were restored and independent current cleanup passed. Steam reported
-cloud-sync failure and `login=false` at 16:07:33 UTC (13:07:33 local). Sign-in
-refresh and cancellation of the queued launch are awaiting the operator. Further
-game runs are stopped: no running FTL process does not prove queue cancellation.
-The new pending-launch guard now blocks restoration-success and new protected
-runs until explicit operator recovery; 240 focused offline checks passed. The
-broader harness suite passed 2,583 tests with 17 skips before the final recovery
-edge-case fixes. All five [CI jobs for implementation `552377c`](https://github.com/ogabrielluiz/ftl_bench/actions/runs/38156148686)
-passed, including Windows/Linux suites and package checks. Live validation remains pending. It cannot cancel Steam requests and
-does not retrofit this historical unguarded failure. Do not apply the recovery
-command to it without a marker created by the new code. See
-[pending-launch recovery](docs/visual-iteration.md#pending-launch-recovery).
-No new controller admission or cohort exists. After Steam is resolved, a new
-exclusive startup/all-nine-timing collection and independent review must precede
-admission and a matched 1,500 / 86,400 / 8 full-game freeze. All new Sol conditions
-will run before Luna; original failures and cohorts remain separate.
+On 2026-10-14 the operator confirmed Steam sign-in and cancellation of the old
+queued launch. A fresh `d430d0e` collection passed eight startup checks, all nine
+timing probes, exact save restoration and eight independent rejection probes.
+Its scoped controller admission binds 78 executable sources and 565 evidence
+files; the original 31 native build/source inputs are explicitly reused, and
+`production_accepted` remains false. The historical failed `bb6014b` collection
+is preserved separately. See [pending-launch recovery](docs/visual-iteration.md#pending-launch-recovery)
+for the durable guard and the limits of operator acknowledgement.
+
+The new `fullgame-main-d430d0e-20261014` cohort freezes matched budgets of
+1,500 decisions / 86,400 seconds / 8 idle decisions. Its Sol/image sector pilot
+started at 11:24 UTC; this is an in-progress attempt, not a completed full game.
+All new Sol conditions precede Luna. Existing failures, budgets and cohorts stay
+separate; the earlier 300-decision hybrid stop is not silently resumed.
 
 At the 2026-10-11 13:07:21 UTC snapshot, executable commit `d1c18b8` has
 completed all 18 Sol challenges in `matrix-main-d1c18b8-20261011`: image 5/9 and
@@ -91,14 +84,15 @@ evidence chain and matching runtime. Fresh-checkout setup remains WIP. The teste
 from runtime files, requires a caller-supplied hash-pinned patcher, retains
 exclusive original native build/source archives, and preserves the selected
 checkout. Offline setup checks passed (67 passed; five Windows symlink skips),
-shell syntax and two identical bridge archives. The official FTLMan v0.7.3 archive and extracted executable are now locally
-verified for future setup, without execution. No fresh Docker build, native
-installation or complete clean-install validation has run; acquisition is not
-clean-build/install proof. Setup now accepts optional container memory and CPU
-limits, retaining their exact command in build provenance; 54 focused offline
-checks passed. Docker Desktop crashed during the isolated-build preflight, before
-compilation. The setup recipe and [WIP notes](docs/NEXT.md) record the blocker
-and the unverified resource requirements.
+shell syntax and two identical bridge archives. The official FTLMan v0.7.3 archive
+and executable are locally verified, without execution. Docker recovered after
+its inaccessible runtime sockets were preserved and recreated. An actual fresh
+source build reached compilation but exhausted its 3 GiB container limit, with
+five recorded compiler kills. Optional `FTLB_BUILD_JOBS` now controls direct
+Ninja jobs and dependency concurrency separately from memory/CPU quotas. Setup
+also preserves existing WSL settings when configuring idle behavior, fixing a
+missing-newline corruption. A successful clean build, installation and acceptance
+of a newly built runtime remain unproven; see the [WIP evidence](docs/NEXT.md).
 
 A separate corrected viewer fixes an HTTP 500 caused by mixed ISO and numeric
 run timestamps. Its rendered current-cohort outcome and replay check passed

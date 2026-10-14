@@ -17,7 +17,8 @@ docker pull --platform linux/amd64 "$DEVCONTAINER"
 docker image inspect "$DEVCONTAINER" --format '{{.Id}} {{json .RepoDigests}}'
 
 # Clone the declared native base, build/stage and package mods without installing.
-FTLB_BUILD_MEMORY=3g FTLB_BUILD_CPUS=1 STAGES="repos build datamod" bash scripts/setup_pc.sh
+FTLB_BUILD_MEMORY=3g FTLB_BUILD_CPUS=1 FTLB_BUILD_JOBS=1 \
+  STAGES="repos build datamod" bash scripts/setup_pc.sh
 ```
 
 The build wrapper defaults to no explicit container resource caps. Optional
@@ -25,9 +26,13 @@ The build wrapper defaults to no explicit container resource caps. Optional
 allowing no additional container swap; optional `FTLB_BUILD_CPUS=1` sets a numeric
 CPU quota, not a single compiler job. Memory must be a positive integer with an
 explicit lowercase `m` or `g` suffix; CPU quota must be a positive integer.
-These limits apply to the build container, not the whole WSL/Docker VM. The
-3 GiB / one-CPU example has not established sufficient resources. The current
-local attempt stopped during Docker startup, before compilation began.
+`FTLB_BUILD_JOBS` is a separate positive integer: it forwards `-j` to Ninja
+through the upstream Bash build scripts and sets `VCPKG_MAX_CONCURRENCY` for
+dependency builds. Unset jobs preserve the upstream command. Memory/CPU limits
+apply to the build container, not the whole WSL/Docker VM. An actual fresh build
+with 3 GiB / one CPU and no job limit exhausted container memory on 2026-10-14;
+five compiler processes were killed. The single-job recipe still requires an
+actual successful-build check before its resource requirements are established.
 Resource caps do not change the pinned image or declared native base.
 
 Python 3, Git, Docker and `zip` must be available for this build/package window
@@ -55,7 +60,14 @@ On 2026-10-11, a remote metadata query verified that the immutable manifest abov
 
 The local evidence is `dist/native-toolchain-mapping-20261011T034047Z/mapping-receipt.json` (SHA-256 `3f5c98ba7b4f6468fdb51271d1bf1f8e11f98cf7cca89fbda98e246af43a0ac4`), with the cached image inspection, remote manifest and historical build-manifest snapshot beside it. This generated receipt is not included in a fresh clone. It adds a verified registry-to-image mapping; the old provenance still records its original mutable tag and image ID and remains unchanged.
 
-This is **metadata verification**, not a fresh build or bit-for-bit DLL reproduction. No image layers were downloaded, and their remote availability was not checked. On 2026-10-11, preparation for an isolated build stopped when Docker Desktop crashed while initializing its inference service, before any native compilation. A local Ubuntu `zip` package was acquired and hash-verified; that does not establish complete dependency availability, successful compilation, resulting DLL bytes or acceptance of a newly built runtime. See [current build blockers](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/NEXT.md#native-build-preflight-and-resource-limits) for the retained evidence. Cached toolchain inputs do not establish an independently acquired clean environment.
+The 2026-10-11 query established **metadata identity** only. On 2026-10-14 Docker recovered after its inaccessible runtime sockets were preserved and recreated. The pinned image layers downloaded, dependencies built, and the fresh native compilation then failed at its container memory limit. The failed source tree, build command, log and kernel OOM evidence remain retained. No successful DLL, installation or acceptance resulted from that attempt. See [current build evidence](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/NEXT.md#resumed-validation-and-build-attempt-2026-10-14).
+
+The optional durability stage uses `configure_wsl_idle.py` to insert a missing
+`vmIdleTimeout=-1` into a unique `[wsl2]` section while preserving other settings,
+comments and line endings. Explicit timeout values are preserved. Malformed or
+ambiguous files are refused, and a standalone bootstrap without the helper or
+Python warns without modifying the file. Applying configuration to a running VM
+requires a separately scheduled WSL restart; setup does not restart it.
 
 For an existing Hyperspace source checkout:
 

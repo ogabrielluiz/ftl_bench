@@ -114,6 +114,7 @@ def test_build_stage_uses_pinned_commands_and_stages_visual_pair_only(tmp_path, 
                TEST_TRACE=str(trace), TEST_FAILURE=failure)
     env.pop("FTLB_BUILD_MEMORY", None)
     env.pop("FTLB_BUILD_CPUS", None)
+    env.pop("FTLB_BUILD_JOBS", None)
     env.update(caps or {})
     script = r'''
 docker() { printf 'docker'; printf ' [%s]' "$@"; printf '\n';
@@ -153,6 +154,12 @@ source "$1"
             assert f"[--memory-swap] [{caps['FTLB_BUILD_MEMORY']}]" in calls
         else:
             assert "[--memory-swap]" not in calls
+        if "FTLB_BUILD_JOBS" in (caps or {}):
+            assert f"[-e] [FTLB_BUILD_JOBS={caps['FTLB_BUILD_JOBS']}]" in calls
+            assert f"[-e] [VCPKG_MAX_CONCURRENCY={caps['FTLB_BUILD_JOBS']}]" in calls
+            assert 'export -f ninja' in calls
+        else:
+            assert 'FTLB_BUILD_JOBS=' not in calls and 'export -f ninja' not in calls
         assert "native-build.protocol5.json" not in calls and "build-releaseonly-from-docker.sh" not in calls
     else:
         assert "] [stage]" not in calls and "write_native_provenance.py" not in calls
@@ -160,8 +167,8 @@ source "$1"
 
 
 @pytest.mark.parametrize("caps", [
-    {"FTLB_BUILD_MEMORY": "3g"}, {"FTLB_BUILD_CPUS": "1"},
-    {"FTLB_BUILD_MEMORY": "3072m", "FTLB_BUILD_CPUS": "2"},
+    {"FTLB_BUILD_MEMORY": "3g"}, {"FTLB_BUILD_CPUS": "1"}, {"FTLB_BUILD_JOBS": "1"},
+    {"FTLB_BUILD_MEMORY": "3072m", "FTLB_BUILD_CPUS": "2", "FTLB_BUILD_JOBS": "2"},
 ])
 def test_optional_build_caps_are_exact_docker_arguments(tmp_path, caps):
     test_build_stage_uses_pinned_commands_and_stages_visual_pair_only(tmp_path, IMAGE, "", 0, caps)
@@ -169,7 +176,7 @@ def test_optional_build_caps_are_exact_docker_arguments(tmp_path, caps):
 
 @pytest.mark.parametrize("key,value", [
     ("FTLB_BUILD_MEMORY", value) for value in ("", "0g", "-1g", "3", "3.5g", "3g --privileged", " 3g")
-] + [("FTLB_BUILD_CPUS", value) for value in ("", "0", "-1", "1.5", "1;true", " 1")])
+] + [("FTLB_BUILD_CPUS", value) for value in ("", "0", "-1", "1.5", "1;true", " 1")] + [("FTLB_BUILD_JOBS", value) for value in ("", "0", "-1", "1.5", "1;true", " 1")])
 def test_invalid_build_caps_reject_before_mutation(tmp_path, key, value):
     test_build_stage_uses_pinned_commands_and_stages_visual_pair_only(tmp_path, IMAGE, "", 1, {key: value})
     calls = (tmp_path / "calls.txt").read_text() if (tmp_path / "calls.txt").exists() else ""
@@ -219,3 +226,25 @@ source "$1"
         assert "[checkout] [--detach] [1111111111111111111111111111111111111111]" in calls
     else:
         assert "[checkout]" not in calls and "[reset]" not in calls and "[clone]" not in calls
+
+
+def test_build_jobs_reaches_nested_bash_direct_ninja(tmp_path):
+    source = (ROOT / "scripts/setup_pc.sh").read_text()
+    inner = next(line.split("BUILD_INNER='", 1)[1].rsplit("'", 1)[0]
+                 for line in source.splitlines() if "BUILD_INNER='ninja()" in line)
+    (tmp_path / ".devcontainer").mkdir()
+    (tmp_path / ".devcontainer/devcontainer-fixes.sh").write_text("")
+    scripts = tmp_path / "buildscripts/windows"
+    scripts.mkdir(parents=True)
+    (scripts / "build-releaseonly.sh").write_text("#!/usr/bin/env bash\nbash buildscripts/windows/build-one-variant.sh\n")
+    (scripts / "build-one-variant.sh").write_text("#!/usr/bin/env bash\nninja -C build-windows-release\n")
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    (binary / "ninja").write_text("#!/usr/bin/env bash\nprintf '[%s]' \"$@\"\nprintf '\\n'\nprintf 'dependency_jobs=%s\\n' \"$VCPKG_MAX_CONCURRENCY\"\n")
+    # Git Bash understands /c/...; bash itself sets executable permissions.
+    env = dict(os.environ, FTLB_BUILD_JOBS="1", VCPKG_MAX_CONCURRENCY="1")
+    setup = 'chmod +x bin/ninja buildscripts/windows/*.sh; export PATH="$PWD/bin:$PATH"; ' + inner
+    result = subprocess.run([bash(), "-c", setup], cwd=tmp_path, env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert "[-j][1][-C][build-windows-release]" in result.stdout
+    assert "dependency_jobs=1" in result.stdout

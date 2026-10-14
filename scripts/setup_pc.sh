@@ -114,12 +114,19 @@ if want durability; then
   wu="$(detect_win_user)"; [ -n "$wu" ] && WIN_USER="$wu"
   WSLCONF="/mnt/c/Users/$WIN_USER/.wslconfig"
   if [ -n "$WIN_USER" ] && [ -d "/mnt/c/Users/$WIN_USER" ]; then
-    if ! grep -q 'vmIdleTimeout' "$WSLCONF" 2>/dev/null; then
-      printf '[wsl2]\nvmIdleTimeout=-1\n' >> "$WSLCONF" 2>/dev/null \
-        && ok ".wslconfig vmIdleTimeout=-1 (no idle shutdown) — effective after 'wsl --shutdown')" \
-        || warn "could not write $WSLCONF (do it by hand)"
+    # Durability precedes repos for standalone bootstrap copies. Never append
+    # blindly when the checkout/helper or Python is not available yet.
+    IDLE_HELPER="$FTLB/scripts/configure_wsl_idle.py"
+    if [ ! -f "$IDLE_HELPER" ] || ! command -v python3 >/dev/null 2>&1; then
+      warn "WSL idle helper/Python unavailable; preserving $WSLCONF (review after repos)"
+    elif IDLE_RESULT="$(python3 -B "$IDLE_HELPER" --path "$WSLCONF")"; then
+      if [[ "$IDLE_RESULT" == *'"status": "preserved_explicit_value"'* ]]; then
+        warn ".wslconfig explicit vmIdleTimeout preserved; idle shutdown was not disabled"
+      else
+        ok ".wslconfig vmIdleTimeout=-1 (effective after an operator-scheduled WSL restart)"
+      fi
     else
-      ok ".wslconfig already disables idle shutdown"
+      warn "WSL idle configuration refused; preserving $WSLCONF for manual review"
     fi
   else
     warn "could not detect Windows user dir; set WIN_USER=... and re-run durability"
@@ -170,6 +177,13 @@ if want build; then
       || die "FTLB_BUILD_CPUS must be a positive integer"
     BUILD_RESOURCES+=(--cpus "$FTLB_BUILD_CPUS")
   fi
+  BUILD_INNER='source .devcontainer/devcontainer-fixes.sh && buildscripts/windows/build-releaseonly.sh'
+  if [ "${FTLB_BUILD_JOBS+x}" = x ]; then
+    [[ "$FTLB_BUILD_JOBS" =~ ^[1-9][0-9]*$ ]] \
+      || die "FTLB_BUILD_JOBS must be a positive integer"
+    BUILD_RESOURCES+=(-e "FTLB_BUILD_JOBS=$FTLB_BUILD_JOBS" -e "VCPKG_MAX_CONCURRENCY=$FTLB_BUILD_JOBS")
+    BUILD_INNER='ninja() { command ninja -j "$FTLB_BUILD_JOBS" "$@"; }; export -f ninja; source .devcontainer/devcontainer-fixes.sh && buildscripts/windows/build-releaseonly.sh'
+  fi
   [[ "$DEVCONTAINER" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*@sha256:[0-9a-f]{64}$ ]] \
     || die "set DEVCONTAINER to an immutable registry/repository@sha256:<digest>; a tag or local image ID is insufficient"
   command -v docker >/dev/null 2>&1 || die "docker not found in WSL. Install Docker Desktop (enable WSL integration) or 'sudo apt-get install -y docker.io && sudo usermod -aG docker $USER' then re-login."
@@ -188,7 +202,7 @@ if want build; then
     "${BUILD_RESOURCES[@]}"
     -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/workspaces/FTL-Hyperspace \
     -v "$HS:/workspaces/FTL-Hyperspace" -w /workspaces/FTL-Hyperspace
-    "$DEVCONTAINER" bash -c 'source .devcontainer/devcontainer-fixes.sh && buildscripts/windows/build-releaseonly.sh')
+    "$DEVCONTAINER" bash -c "$BUILD_INNER")
   "${BUILD_CMD[@]}" || die "Hyperspace.dll build failed"
   printf -v BUILD_COMMAND '%q ' "${BUILD_CMD[@]}"
   DLL="$HS/build-windows-release/Hyperspace.dll"

@@ -1,8 +1,73 @@
 # Current validation and next work
 
-**WIP / alpha. Current status: 2026-10-11 16:58 UTC; challenge snapshot: 13:07:21 UTC; saved Sol full-game checkpoint: 16:02:58 UTC.**
+**WIP / alpha. Current status: 2026-10-14 11:25 UTC; historical challenge and full-game snapshots below remain dated 2026-10-11.**
+
+## Resumed validation and build attempt (2026-10-14)
+
+The operator confirmed the pending launch was cancelled, Steam signed in and
+FTL closed. Current inventory matched seven original saves, the prior bridge
+and six runtime files, with no pending guard. Fresh collection
+`main-admission-d430d0e-20261014T111200Z` passed eight startup checks and all nine
+timing probes, including exact native-step equality across the declared delays
+and protected restoration. Independent review executed all eight negative probes;
+78 source and 565 consumed evidence identities passed. The original 31 native
+build/source inputs were copied with unchanged hashes and timestamps, explicitly
+disclosed as reuse. Local controller admission is true; `production_accepted`
+remains false. No new native build is claimed by this admission.
+
+New full-game cohort `fullgame-main-d430d0e-20261014` freezes seed 1, medium
+reasoning and matched 1,500 / 86,400 / 8 budgets. Embedded protocol SHA-256:
+`fe8ae4d78bdf079352d4dd9eb5579899635696aa43d085f7c233d5bea2d94065`.
+The Sol/image sector pilot began at 11:24 UTC; at this snapshot it is running.
+All four full-game conditions are planned, with Sol before Luna. The old
+300-decision hybrid attempt and all historical results remain unchanged.
+
+Docker startup reproduced its inaccessible inference-socket error. With Docker
+closed, the two stale runtime sockets were preserved by renaming their parent
+`run` directory; a fresh directory allowed Docker 28.3.2 to respond. Storage was
+not reset. The host WSL configuration also contained `processors=32[wsl2]`,
+exactly reproduced by the old bootstrap's append to a file lacking a final
+newline. A byte-preserving backup precedes the narrow host repair. The source
+fix now inserts into a unique section atomically, preserves explicit settings,
+and refuses malformed/linked targets. No WSL shutdown was performed.
+
+A fresh detached benchmark/native source build actually ran from 11:15:19 to
+11:19:29 UTC under the pinned image, 3 GiB memory and one CPU. The image pulled
+and dependencies built, but five compiler commands were killed by the container
+memory limit; Docker OOM events and retained kernel lines identify that exact
+container. Exit was 1, with no new staged DLL or installation. The entire failed
+attempt remains at
+`/home/ogabrielluiz/projects/ftl_bench-clean-builds/20261014T111013Z-prepare-4eec1485`.
+Optional `FTLB_BUILD_JOBS` now caps direct Ninja jobs and vcpkg concurrency;
+numeric validation and a real nested-Bash forwarding probe passed. An actual
+successful build with that change remains required. Memory caps alone do not
+limit parallel compiler jobs or the whole WSL VM.
+The combined focused setup suite passed 86 tests with one Windows symlink
+permission skip. Independent review also checked the wrapper's provenance
+quoting and the pinned upstream chain's bare `ninja -C` invocation. All 78
+admitted executable sources remain byte-identical after these setup-only edits.
+
+Local receipts under `dist/resume-20261014/` include:
+
+| Receipt | SHA-256 |
+| --- | --- |
+| `initial-inventory.json` | `b2cdb4a0c0643c1d658cc0e0f034634762f6b2f5510813d3c515cbf3da7058cf` |
+| `d430d0e-static-native-input-reuse.json` | `510350479919a916f1632c091cf49c906a1624fa0d5ec0c076946712b10e33e5` |
+| `d430d0e-independent-admission-cleanup-review.json` | `f18810963f0ffbd0d24fab8137a98ab8d5ba40a8073d88bee44b45aa18bca9aa` |
+| `docker-recovery.json` | `25b3c0323773a85eaead0d92b7922ec8d43aa74a12af734b600b9b5f92f447da` |
+| `wslconfig-repair.json` | `4ca93c47d4b524e0d8c2190715ac3a34de355e9ab9f2c9863fdf5e2b876c5ae7` |
+| `native-build-attempt-01-oom.json` | `3d98fe69e0caa3f3bed7c291d39313c7a8bf23b72228f8d20446cb18625d0201` |
+
+Controller-spec SHA-256 is
+`7248180d61a072b0dc0514580d565e13d90a960286413532f04879cfa057967e`;
+independent-review SHA-256 is
+`a028522e67ee9b3535199872e95200e921f986935f90fbb3645996373d834469`.
+These local artifacts are not shipped in Git. Fresh full-game outcomes, the
+remaining Luna challenges, clean installation and runtime acceptance remain WIP.
 
 ## Native-build preflight and resource limits
+
+Historical snapshot from 2026-10-11; the resumed state is recorded above.
 
 The Windows/WSL build wrapper now accepts optional `FTLB_BUILD_MEMORY` (a
 positive integer with lowercase `m`/`g`) and `FTLB_BUILD_CPUS` (a positive
@@ -58,8 +123,8 @@ FTL; receipt `bb6014b-failed-timing-current-cleanup-review.json` SHA-256
 `1a63b78270656a68b4183fb4b173bb7652b2cb059207dd2a75aa44f1c59d5462`.
 
 Steam reported cloud-sync failure and `login=false` at 16:07:33 UTC (13:07:33
-local). The operator has been asked to refresh sign-in, cancel the pending FTL
-launch and leave FTL closed; confirmation is still pending. New code implements
+local). The operator was asked to refresh sign-in, cancel the pending FTL
+launch and leave FTL closed; confirmation arrived on 2026-10-14 as recorded above. New code implements
 a durable pending-launch guard and explicit recovery: 240 focused offline checks
 pass after the final recovery fixes. The broader harness suite passed 2,583 tests
 with 17 skips before those final fixes. All five
@@ -70,17 +135,17 @@ An unresolved guarded timeout blocks restoration-success and new protected runs.
 The harness still cannot cancel Steam's queued request, and the fix does not
 retrofit this historical bb failure, which has no guard. Do not run recovery for
 that attempt without a marker created by the new code. Verified historical save
-restoration and no process do not prove cancellation; further game runs remain
-stopped. See [recovery instructions](visual-iteration.md#pending-launch-recovery).
+restoration and no process do not prove cancellation; further game runs stayed
+stopped until that confirmation. See [recovery instructions](visual-iteration.md#pending-launch-recovery).
 Bounded, redacted Steam
 log excerpts are retained at
 `dist/store-warp-diagnosis-20261011/steam-launch-failure-20261011T160733Z/`;
 receipt SHA-256
 `cac012d57dd2bb6b0122530d0f4b3326ff6b6e86c6b32183fe1ae65062b738de`.
-This partial collection has no controller admission or new cohort. After Steam is resolved, collect new exclusive startup
-and all nine timing probes, obtain independent review, then admit and freeze a
-new complete four-condition cohort at 1,500 / 86,400 / 8. This prospective budget
-does not guarantee native endings. Preserve the failed collection and all old
+This partial collection has no controller admission or new cohort. The separate
+2026-10-14 collection above supplies fresh startup/timing evidence and review for
+the new 1,500 / 86,400 / 8 cohort. That budget does not guarantee native endings.
+Preserve the failed collection and all old
 attempts without retries or pooling; all new Sol conditions precede Luna. The
 original d1 challenge checkout remains pinned for its 18 unstarted Luna cells.
 

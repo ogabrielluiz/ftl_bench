@@ -64,9 +64,14 @@ For build-only preparation, select `STAGES="repos build datamod"` explicitly;
 the positional `build` command continues through installation and deployment.
 Optional `FTLB_BUILD_MEMORY` and `FTLB_BUILD_CPUS` limit the build container and
 are retained in its actual provenance command. They do not bound the whole
-Docker/WSL VM or select Ninja's job count. Distinguish preflight failures from
-compiler failures and successful builds; the documented 3 GiB / one-CPU example
-has no successful-build evidence. Retain failure evidence before recovery, and
+Docker/WSL VM or select Ninja's job count. Set optional `FTLB_BUILD_JOBS` to a
+positive integer to cap direct Ninja jobs and vcpkg dependency concurrency;
+the wrapper retains the explicit environment and forwarding command in provenance.
+The original 3 GiB / one-CPU build exhausted container memory with parallel jobs.
+Distinguish preflight failures, compiler failures and successful builds. Preserve
+existing WSL settings through `configure_wsl_idle.py`; never append a second
+`[wsl2]` section or join a header to an unterminated setting. Explicit idle values
+remain the operator's choice. Retain failure evidence before recovery, and
 do not reset Docker storage or alter frozen execution checkouts to unblock setup.
 
 For portable source evidence, use `scripts/collect_native_source_evidence.py`
@@ -171,10 +176,11 @@ Use optional `--save-dir` for backup interrupted before its manifest was complet
 The acknowledgement is a human trust input; an empty process list is not proof
 of cancellation. Recovery writes separate `recovery-restoration.json` and never
 rewrites the failed attempt. Do not fabricate a marker for historical unguarded
-failures or run this command on the old bb failure, whose cancellation remains
-pending. Never approve a delayed launch outside protection; preserve failed
-collections and use new outputs for fresh diagnostics. The fix is offline-tested,
-not fresh live admission.
+failures or run this command on the old bb failure. The operator confirmed its
+cancellation on 2026-10-14; fresh d430 startup and nine timing probes then passed.
+Never approve a delayed launch outside protection; preserve failed collections
+and use new outputs for fresh diagnostics. Happy-path live validation does not
+establish every delayed-launch recovery path.
 
 ## Git scope
 
