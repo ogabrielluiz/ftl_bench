@@ -97,8 +97,13 @@ A fresh clone has no generated bridge `.ftl`. The `datamod` stage now invokes
 `scripts/package_bridge.py` to produce `dist/ftl_bench_bridge.ftl` deterministically
 from tracked bridge data and metadata. The external development Lua remains a
 separate deployment input. Python 3, Git, `zip`, `sha256sum`, `realpath`, `mktemp`
-and Windows/WSL interop are required for these stages; the native source checkout
-and its `build-windows-release` directory must already exist.
+and Windows/WSL interop are required for these stages. The native source checkout
+must already exist; `datamod` reads its `Mod Files/` and packages `Hyperspace.ftl`
+into caller-owned benchmark `dist/`, alongside `ftl_bench_bridge.ftl`. The patch
+stage consumes those two files. It does not write into Docker's potentially
+root-owned `build-windows-release` directory, alter native DLL/build outputs or
+require recursive ownership changes. A failed packaging step preserves an
+existing `dist/Hyperspace.ftl` until its replacement archive is complete.
 
 Supply a Linux FTLMan executable obtained and reviewed separately, plus its exact
 SHA-256. Setup does not acquire FTLMan from the network or select a latest release.

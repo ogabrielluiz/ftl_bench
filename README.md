@@ -41,7 +41,7 @@ completion remains **1/4** and both Luna full games remain planned. The native
 pilot defeat after 62 calls stays excluded. Independent saved, cleanup and UI
 reviews passed; this dated checkpoint is not a current live-cleanup claim.
 
-Fresh admission passed eight startup checks, nine timing equality probes,
+For that 2026-10-11 cohort, admission passed eight startup checks, nine timing equality probes,
 protected cleanup and eight executed independent negative probes, binding
 78 executable sources and 565 evidence files. The original 31 native build/source
 inputs were reused unchanged with their identities and reuse disclosed;
@@ -88,10 +88,15 @@ shell syntax and two identical bridge archives. The official FTLMan v0.7.3 archi
 and executable are locally verified, without execution. Docker recovered after
 its inaccessible runtime sockets were preserved and recreated. An actual fresh
 source build reached compilation but exhausted its 3 GiB container limit, with
-five recorded compiler kills. Optional `FTLB_BUILD_JOBS` now controls direct
+five recorded compiler kills. A second fresh build completed compilation using
+one job, one CPU and 3 GiB, with independently reconstructed source identities
+and a verified staged DLL/provenance pair. Its wrapper then failed to package
+the data mod into Docker's root-owned build directory. The corrected packaging
+path uses caller-owned `dist/`; a complete clean rerun remains required.
+Optional `FTLB_BUILD_JOBS` now controls direct
 Ninja jobs and dependency concurrency separately from memory/CPU quotas. Setup
 also preserves existing WSL settings when configuring idle behavior, fixing a
-missing-newline corruption. A successful clean build, installation and acceptance
+missing-newline corruption. Complete setup, installation and acceptance
 of a newly built runtime remain unproven; see the [WIP evidence](docs/NEXT.md).
 
 A separate corrected viewer fixes an HTTP 500 caused by mixed ISO and numeric

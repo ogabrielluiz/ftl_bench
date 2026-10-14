@@ -12,6 +12,50 @@ ROOT = _bench_root()
 SCRIPT = ROOT / "scripts/setup_pc.sh"
 
 
+@pytest.mark.parametrize("zip_failure", [False, True])
+def test_datamod_never_writes_container_owned_build_output(tmp_path, zip_failure):
+    import sys
+    import zipfile
+    native = tmp_path / "native"
+    mods = native / "Mod Files"
+    mods.mkdir(parents=True)
+    (mods / "payload.xml").write_bytes(b"native mod payload")
+    (mods / "Hyperspace.ftl").write_bytes(b"preserved upstream archive")
+    # A regular-file obstacle faithfully makes every old build-dir output fail,
+    # without depending on administrator privileges or Windows chmod semantics.
+    (native / "build-windows-release").write_bytes(b"container-owned sentinel")
+    checkout = tmp_path / "benchmark"
+    (checkout / "dist").mkdir(parents=True)
+    target = checkout / "dist/Hyperspace.ftl"
+    target.write_bytes(b"prior packaged mod")
+    source = SCRIPT.read_text(encoding="utf-8")
+    block = source.split("if want datamod; then", 1)[1].split("\nfi", 1)[0]
+    # Synthetic zip uses the real filesystem and archive format, but never
+    # builds or installs anything. The bridge packager is outside this regression.
+    program = '''set -uo pipefail
+log() { :; }; ok() { :; }; die() { echo "$*" >&2; exit 1; }
+python3() { return 0; }
+zip() {
+  [ "$ZIP_FAILURE" = 0 ] || return 9
+  "$TEST_PYTHON" -B -c 'import pathlib,sys,zipfile; p=pathlib.Path(sys.argv[1]); z=zipfile.ZipFile(p,"w"); z.write("payload.xml","payload.xml"); z.close()' "$2"
+}
+''' + block
+    result = subprocess.run([bash(), "-c", program], capture_output=True, text=True,
+        env={**os.environ, "HS": native.as_posix(), "FTLB": checkout.as_posix(),
+             "TEST_PYTHON": Path(sys.executable).as_posix(), "ZIP_FAILURE": "1" if zip_failure else "0"}, timeout=15)
+    assert (native / "build-windows-release").read_bytes() == b"container-owned sentinel"
+    assert (mods / "Hyperspace.ftl").read_bytes() == b"preserved upstream archive"
+    assert not list((checkout / "dist").glob(".hyperspace-package.*"))
+    if zip_failure:
+        assert result.returncode != 0 and target.read_bytes() == b"prior packaged mod"
+    else:
+        assert result.returncode == 0, result.stderr
+        with zipfile.ZipFile(target) as archive:
+            assert archive.namelist() == ["payload.xml"]
+            assert archive.read("payload.xml") == b"native mod payload"
+    assert '  HSFTL="$FTLB/dist/Hyperspace.ftl"' in source.split("if want patch; then", 1)[1]
+
+
 def bash():
     windows = Path("C:/Program Files/Git/bin/bash.exe")
     result = str(windows) if os.name == "nt" and windows.exists() else shutil.which("bash")

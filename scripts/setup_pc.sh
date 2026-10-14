@@ -229,8 +229,19 @@ fi
 if want datamod; then
   log "datamod: package Hyperspace.ftl from Mod Files/ (matches the built DLL)"
   command -v zip >/dev/null 2>&1 || { sudo apt-get install -y zip; }
-  ( cd "$HS/Mod Files" && rm -f Hyperspace.ftl && zip -rq ../build-windows-release/Hyperspace.ftl . -x Hyperspace.ftl ) \
-    && ok "Hyperspace.ftl packaged ($(du -h "$HS/build-windows-release/Hyperspace.ftl" | cut -f1))" \
+  # Docker may own the native build directory. Package only into caller-owned
+  # benchmark dist, leaving native output and Mod Files untouched.
+  mkdir -p "$FTLB/dist" || die "could not create benchmark dist"
+  HSFTL="$FTLB/dist/Hyperspace.ftl"
+  [ ! -L "$FTLB/dist" ] && [ ! -L "$HSFTL" ] \
+    && { [ ! -e "$HSFTL" ] || [ -f "$HSFTL" ]; } || die "unsafe Hyperspace data-mod output"
+  (
+    package_dir="$(mktemp -d "$FTLB/dist/.hyperspace-package.XXXXXX")" || exit 1
+    trap 'rm -f -- "$package_dir/Hyperspace.ftl"; rmdir -- "$package_dir"' EXIT
+    cd "$HS/Mod Files" || exit 1
+    zip -rq "$package_dir/Hyperspace.ftl" . -x Hyperspace.ftl || exit 1
+    mv -f -- "$package_dir/Hyperspace.ftl" "$HSFTL"
+  ) && ok "Hyperspace.ftl packaged ($(du -h "$HSFTL" | cut -f1))" \
     || die "Hyperspace data-mod packaging failed"
   python3 -B "$FTLB/scripts/package_bridge.py" --source-root "$FTLB" \
     --output "$FTLB/dist/ftl_bench_bridge.ftl" || die "bridge data-mod packaging failed"
@@ -347,7 +358,7 @@ if want patch; then
   live_processes="$(/mnt/c/Windows/System32/tasklist.exe /fi 'imagename eq FTLGame.exe' 2>/dev/null)" \
     || die "cannot verify FTL is closed; no patch performed"
   case "${live_processes,,}" in *ftlgame.exe*) die "close FTL before patching data";; esac
-  HSFTL="$HS/build-windows-release/Hyperspace.ftl"
+  HSFTL="$FTLB/dist/Hyperspace.ftl"
   BRIDGE="$FTLB/dist/ftl_bench_bridge.ftl"
   [ -f "$HSFTL" ] && [ -f "$BRIDGE" ] || die "missing data mods ($HSFTL / $BRIDGE) — run 'datamod'."
   mkdir -p "$FTLB/dist" || die "cannot create patch-input receipt directory"

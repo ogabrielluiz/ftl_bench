@@ -1,6 +1,6 @@
 # Current validation and next work
 
-**WIP / alpha. Current status: 2026-10-14 11:25 UTC; historical challenge and full-game snapshots below remain dated 2026-10-11.**
+**WIP / alpha. Current status: 2026-10-14 11:41 UTC; historical challenge and full-game snapshots below remain dated 2026-10-11.**
 
 ## Resumed validation and build attempt (2026-10-14)
 
@@ -39,13 +39,38 @@ container. Exit was 1, with no new staged DLL or installation. The entire failed
 attempt remains at
 `/home/ogabrielluiz/projects/ftl_bench-clean-builds/20261014T111013Z-prepare-4eec1485`.
 Optional `FTLB_BUILD_JOBS` now caps direct Ninja jobs and vcpkg concurrency;
-numeric validation and a real nested-Bash forwarding probe passed. An actual
-successful build with that change remains required. Memory caps alone do not
-limit parallel compiler jobs or the whole WSL VM.
+numeric validation and a real nested-Bash forwarding probe passed. Memory caps
+alone do not limit parallel compiler jobs or the whole WSL VM.
 The combined focused setup suite passed 86 tests with one Windows symlink
 permission skip. Independent review also checked the wrapper's provenance
 quoting and the pinned upstream chain's bare `ninja -C` invocation. All 78
 admitted executable sources remain byte-identical after these setup-only edits.
+
+The second fresh source build, benchmark commit `7b8462e`, ran from 11:34:04 to
+11:38:08 UTC with one compiler job, one CPU and 3 GiB. Actual container settings
+confirmed those limits. All 136 native compilation/link steps finished, and
+the wrapper archived original build evidence and staged a verified DLL/provenance
+pair. Independent review matched all twelve native source files across the
+preparation archive, current tree, provenance and authenticated reconstruction.
+The DLL SHA-256 is
+`86c3af96b0c4cf80cb9ebae85a54e9bc8a1ebecff7c4655b1fe50eaa2e91e898`;
+provenance SHA-256 is
+`8d9e7ce980550c8c9e388894ae32aa4b5461c33159f306c66636847e2dc74795`.
+This establishes a native build, not byte-for-byte reproduction of the installed
+historical DLL or acceptance of the new runtime. The pinned Docker image/layers
+were reused, while native source/output trees were fresh.
+
+The overall second wrapper attempt exited 1: its subsequent `datamod` stage
+could not write into Docker's root-owned native build directory. Its retained
+root is
+`/home/ogabrielluiz/projects/ftl_bench-clean-builds/20261014T113329Z-attempt2-624f7856`.
+`independent-build-review.json` there has SHA-256
+`bb934c2d7ff43a4aa74c82103f82f914795f793583a1eacb2025be053ff25589`.
+The prospective fix packages `Hyperspace.ftl` atomically into caller-owned
+benchmark `dist/` and makes the patch stage consume that path. It preserves
+native outputs and any prior packaged mod on failure. Focused setup-input tests
+passed (42 passed, one Windows symlink skip); a complete fresh wrapper rerun,
+installation and new-runtime live acceptance remain required.
 
 Local receipts under `dist/resume-20261014/` include:
 
@@ -57,6 +82,8 @@ Local receipts under `dist/resume-20261014/` include:
 | `docker-recovery.json` | `25b3c0323773a85eaead0d92b7922ec8d43aa74a12af734b600b9b5f92f447da` |
 | `wslconfig-repair.json` | `4ca93c47d4b524e0d8c2190715ac3a34de355e9ab9f2c9863fdf5e2b876c5ae7` |
 | `native-build-attempt-01-oom.json` | `3d98fe69e0caa3f3bed7c291d39313c7a8bf23b72228f8d20446cb18625d0201` |
+| `native-build-attempt-02-container.json` | `9df3ff23415bde3bbf222cd3dce9ce215cef14357a65173c4408e46816494888` |
+| `native-build-attempt-02-packaging-failure.json` | `df16d5d69c65d455a27d4d6f3df0b6a5c04b22eaefa658d2bf5666d0f066c3c8` |
 
 Controller-spec SHA-256 is
 `7248180d61a072b0dc0514580d565e13d90a960286413532f04879cfa057967e`;
