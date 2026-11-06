@@ -16,8 +16,10 @@ Separate November 6 game diagnostics reproduced a focus-related native clock
 defect. The rebuilt fix passed protected startup, all nine timing probes and
 independent admission checks. Focus loss now stops an owned advance, and a
 pre-capture probe recorded no timer growth after refocus with the GUI unpaused.
-Fresh Sol/Luna cohorts are frozen; their model runs remain pending. See
-[native focus and simulation clock](docs/native-focus-clock.md).
+Fresh Sol/Luna cohorts are frozen. Sol's first three image combat trials produced
+two task successes and one failure after the scout escaped, all with verified cleanup.
+The remaining 33 challenge cells and new full-game attempts are pending. See
+[current results and remaining work](docs/NEXT.md).
 
 Future full-game cohorts can declare matched decision, wall-time and idle budgets
 at freeze time; defaults remain 300 / 14,400 seconds / 8. See the

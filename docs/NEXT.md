@@ -2,6 +2,62 @@
 
 **WIP / alpha. Current status as of 2026-11-06. Historical snapshots retain their original dates.**
 
+## New Sol image combat results (2026-11-06, 21:08 UTC)
+
+The first three cells of `matrix-focus-5155dab-20261106` completed through the
+authenticated Codex CLI with `gpt-6.1-sol` requested. All three are eligible:
+two task successes and one gameplay budget failure, with zero technical
+exclusions. Initial gameplay states matched. These are three repetitions of
+one model/mode/challenge condition, not a matched Sol/Luna or image/hybrid
+comparison.
+
+| Repeat | Outcome | Decisions | Final hull | Crew alive | Native score | Median call latency |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | Enemy destroyed, 18 scrap collected | 13 | 24 | 3 | 58 | 13.093 s |
+| 2 | Enemy destroyed, 18 scrap collected | 9 | 30 | 3 | 58 | 9.117 s |
+| 3 | Scout escaped; idle decision budget exhausted | 21 | 27 | 3 | 40 | 9.214 s |
+
+The third run's archived screenshot explicitly records the scout jumping away.
+Its raw native destroyed flag and destruction counter still changed, but it
+received no reward. The declared evaluator correctly withheld task success.
+This reproduces the documented escape-counter caveat; those raw fields and the
+native score do not independently prove a kill. All attempted outcomes remain.
+
+Independent audit verified 43 tool-free decisions with one harness attempt each,
+exact actor PNG/dispatch joins, saved child admission and cleanup. Completed
+turn usage totals were 814,188 input tokens (131,328 cached, a subset of input)
+and 11,264 output tokens (4,492 reasoning, a subset of output). No reconnect
+was recorded. Codex reported the requested model but not a resolved backend
+model identity. All seven original saves and the prior Lua were restored.
+A separate live audit at 21:09:35 UTC verified all six runtime files, the
+profile and 84 source pins, with no FTL process or pending launch marker.
+
+Local evidence under `dist/resume-20261106/`:
+
+- `matrix-combat-repeats-independent-review-20261106.json`, SHA-256
+  `8bc434bfd47f129fbed6a1ab43be19d9df5cc5936ed83ce4e68b51ae5b4dbe9d`.
+- `matrix-combat-live-cleanup-20261106T210935Z.json`, SHA-256
+  `a02e83971b87927bf3da986587300c2994c0e20e051e060e04a0f1b54dd1e135`.
+
+A separate detached viewer checkout at `6665357`, `ftl_bench-qa-20261106`,
+serves the existing absolute runs directory read-only on `127.0.0.1:8766`.
+Its 25 frontend tests and build passed. Actual HTTP checks matched the served
+HTML/JS/CSS to built bytes and joined the first completed row and replay PNGs
+to saved evidence. The older frozen viewer checkout remains unchanged; port
+8765 was offline. Browser rendering remains unverified because local browser
+control was disabled in Work settings. The HTTP receipt is
+`focus-matrix-sol-image-dashboard-http-20261106T210132Z.json`, SHA-256
+`17e2e1914376ba6fba63f0ae3facbadaff3c6350f5e54cd0eacfaa68a1be89e7`.
+
+Thirty-three matrix cells and all five new full-game cohort attempts remain
+unstarted. Next: Sol image fire/crew recovery, then repair/escape, then Sol
+hybrid. Run one matrix cell per invocation and audit its terminal outcome,
+eligibility and cleanup before the next: the bare matrix controller only
+automatically stops for restoration failure. Preserve any technical failure
+and resolve its cause before continuing. After all Sol matrix cells, run the
+sector pilot and both Sol full games, then Luna's matrix cells and full games.
+The pilot and budget stops do not count toward the four required native endings.
+
 ## Typed decision backends (2026-11-06)
 
 The structured runner exposes `openai-decisions` alongside its Jev and
@@ -88,8 +144,9 @@ New cohorts are frozen under `harness/runs/visual/`:
   native-ending conditions, retaining the matched 1,500 decisions /
   86,400 seconds / eight idle decisions budgets.
 
-No model cells have started in these new cohorts at this checkpoint. Continue
-Sol first through the frozen controllers, preserve failures, then run Luna.
+All model cells were unstarted at the freeze checkpoint; the later combat
+results above update that state. Continue Sol first through the frozen
+controllers, preserve failures, then run Luna.
 Typed Decisions/Jev live provider checks still await an explicitly selected
 credential file and remain separate from these Codex cohorts.
 The independent archive review is
