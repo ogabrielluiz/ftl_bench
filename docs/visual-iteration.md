@@ -81,9 +81,10 @@ five [CI jobs for the final implementation `552377c`](https://github.com/ogabrie
 passed. The operator confirmed cancellation of the historical bb6014b Steam
 request on 2026-10-14; subsequent protected startup and timing probes exercised
 the new lifecycle. That historical failure has no new-code marker and must not
-be passed to recovery without one created by the new code. The later attempt-3
-aggregate fire timing check failed, so fresh runtime admission remains pending.
-See [NEXT.md](NEXT.md) for the separate lifecycle and timing evidence.
+be passed to recovery without one created by the new code. The later attempt-three
+collection failed the aggregate fire timing check. The
+[November 6 focus collection](NEXT.md#native-focus-guard-repair-2026-11-06)
+subsequently passed all nine timing probes and scoped controller admission.
 
 For reproducible settings and durable cooperative stopping, prefer the full-game
 experiment controller. The standalone examples above do not configure a stop
@@ -281,19 +282,18 @@ Image serving is restricted to the selected trajectory's own directory inside th
    current clock-2/fresh-start-v3 acceptance covers scoped controls, transitions,
    interference and nine repeatability probes. Older clock-1 DLL hashes in the
    historical sections above are not current runtime requirements.
-2. Finish the frozen 36-cell challenge matrix. All nine Sol/image cells are
-   complete at the latest snapshot; Sol/hybrid and both Luna modes remain.
-   Preserve setup, model, budget and native-loss outcomes with their exact images.
+2. Continue the frozen 36-cell challenge matrix in its recorded Sol-first
+   order. See [current results](NEXT.md) for the latest checkpoint. Preserve
+   setup, model, budget and native-loss outcomes with their exact images.
 3. Run the separately declared fixture-free sector pilot and four full-game
-   conditions when experiments resume. Require audited native victory or defeat
-   for complete games. Neither earlier budget-limited pilots nor the challenge
-   crew-loss screen establishes this requirement.
+   conditions in their recorded order. Count complete games only after audited
+   native victory or defeat. Report the pilot and budget stops separately.
 4. Compare image and hybrid only under matched conditions. The conservative
    same-PNG reader is implemented; a performance benefit is not established.
    Report every exclusion, available usage and latency without inferring cost
    or resolved backend weights from a requested model name.
-5. Complete portable native acceptance/evidence setup, validate the merged
-   headless runtime, and rebuild/test release packages. Passing unit
+5. Reproduce the admitted setup from a fresh checkout, validate the merged
+   headless runtime, and rebuild and test release packages. Passing unit
    tests and an installed-wheel smoke do not replace live gameplay evidence.
 
 The [experiment protocol](visual-experiment-protocol.md) defines the commands,

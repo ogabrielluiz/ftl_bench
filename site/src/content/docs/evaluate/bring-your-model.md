@@ -42,7 +42,7 @@ Try one explicit screenshot without launching FTL or sending game input:
 ftlbench --env-file "C:\path\to\.env.txt" visual-decide --backend jev --image "C:\path\to\frame.png" --output "C:\path\to\new-probe"
 ```
 
-Visual Jev defaults to `jev-1.14.0` with the provider's experimental image opt-in. OpenAI Decisions defaults to `gpt-6-luna`. Each stage archives request/response evidence, confidence, timing and available usage. Failed or interrupted stages remain visible; missing usage stays unknown. There are no automatic retries or provider fallback. Live provider validation and fresh native admission remain pending. See the [full contract and reproduction guide](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/typed-decision-backends.md).
+Visual Jev defaults to `jev-1.14.0` with the provider's experimental image opt-in. OpenAI Decisions defaults to `gpt-6-luna`. Each stage archives request/response evidence, confidence, timing and available usage. Failed or interrupted stages remain visible; missing usage stays unknown. There are no automatic retries or provider fallback. Live provider validation awaits an explicitly selected credential file. The November 6 native admission applies to the frozen Codex cohorts. See the [full contract and reproduction guide](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/typed-decision-backends.md).
 
 ## Custom completion function
 

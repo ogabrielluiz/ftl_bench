@@ -18,10 +18,12 @@ advance the timer during a frozen hold. The rebuilt fix passed protected
 startup, all nine timing probes and eight independent evidence-rejection
 checks. A pre-capture focus test also verified that native refocus leaves the
 world and timer frozen even when the UI becomes unpaused. New Sol/Luna cohorts
-are frozen with scoped local admission. The first three Sol image combat
-trials are eligible: two task successes and one scout escape ending at the
-idle decision limit, with verified cleanup. This is one condition's three
-repetitions; the remaining 33 matrix cells and new full-game attempts are pending.
+are frozen with scoped local admission. All nine Sol image-only challenge
+trials are eligible: each challenge produced two task successes and one
+idle-budget failure, with verified cleanup. The 82 audited turns reported
+1,548,076 input tokens, 18,439 output tokens and 855.210 seconds of CLI latency.
+The remaining 27 matrix cells and all five new full-game cohort attempts are
+pending. These results do not yet compare models or observation modes.
 Historical failures remain preserved. See
 [current work](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/NEXT.md).
 

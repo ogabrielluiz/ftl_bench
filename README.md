@@ -16,9 +16,10 @@ Separate November 6 game diagnostics reproduced a focus-related native clock
 defect. The rebuilt fix passed protected startup, all nine timing probes and
 independent admission checks. Focus loss now stops an owned advance, and a
 pre-capture probe recorded no timer growth after refocus with the GUI unpaused.
-Fresh Sol/Luna cohorts are frozen. Sol's first three image combat trials produced
-two task successes and one failure after the scout escaped, all with verified cleanup.
-The remaining 33 challenge cells and new full-game attempts are pending. See
+Fresh Sol/Luna cohorts are frozen. Sol's nine image-only challenge trials are
+complete: two successes and one gameplay budget failure per challenge, all
+eligible with verified cleanup. The remaining 27 challenge cells and new
+full-game attempts are pending. See
 [current results and remaining work](docs/NEXT.md).
 
 Future full-game cohorts can declare matched decision, wall-time and idle budgets
@@ -33,14 +34,13 @@ files; the original 31 native build/source inputs are explicitly reused, and
 is preserved separately. See [pending-launch recovery](docs/visual-iteration.md#pending-launch-recovery)
 for the durable guard and the limits of operator acknowledgement.
 
-The new `fullgame-main-d430d0e-20261014` cohort freezes matched budgets of
+The October 14 `fullgame-main-d430d0e-20261014` cohort froze matched budgets of
 1,500 decisions / 86,400 seconds / 8 idle decisions. Its Sol/image sector pilot
 ran from 11:24 to 11:57 UTC and stopped on external input after 85 delivered
 decisions. The 86th response was rejected before dispatch. Independent evidence
 and exact cleanup checks passed; this is an interrupted pilot, not a game result.
-The operator reports using the computer but not FTL. A passive minute did not
-reproduce the trigger; the other-app input boundary still needs a controlled check.
-All four full games remain unstarted; this failed cohort is preserved.
+The operator reported using the computer but not FTL. A passive minute did not
+reproduce that pilot's trigger. The preserved cohort has four unstarted full games.
 All new Sol conditions precede Luna. Existing failures, budgets and cohorts stay
 separate; the earlier 300-decision hybrid stop is not silently resumed.
 
@@ -86,7 +86,7 @@ no results are pooled or failed cells silently retried. See the dated evidence,
 exact protocol identities and remaining [WIP](docs/NEXT.md).
 
 The complete 36-cell fair comparison, four native-ending full-game conditions
-and clean installation/runtime acceptance remain unfinished. A fresh native
+and fresh-checkout installation validation remain unfinished. A fresh native
 build and both data packages completed on 2026-10-14. The scoped live
 cooperative-interruption check passed. Scoped diagnostics,
 passing tests and a challenge outcome do not establish those requirements or
@@ -125,13 +125,14 @@ executable downgrade, authenticated loader, new DLL/provenance and data patch.
 Its installed files are retained; the rehearsal baseline was restored exactly,
 and the real game and saves were untouched during that rehearsal. The rehearsal
 used retained local originals. The verified attempt-three payload was later
-installed in the real game on October 14. Protected startup passed, but the
-aggregate fire timing comparison rejected repeatability, so fresh admission
-remains pending. See the [installation and timing evidence](docs/NEXT.md).
+installed in the real game on October 14. Protected startup passed, and that
+collection stopped when the aggregate fire timing check rejected repeatability.
+The [November 6 focus collection](docs/NEXT.md#native-focus-guard-repair-2026-11-06)
+later passed all nine timing probes and scoped controller admission.
 
-A separate corrected viewer fixes an HTTP 500 caused by mixed ISO and numeric
-run timestamps. Its rendered current-cohort outcome and replay check passed
-without changing frozen execution sources or saved evidence. Read the dated
+An October 11 viewer repair fixed an HTTP 500 caused by mixed ISO and numeric
+run timestamps. A rendered outcome and replay check passed for that day's
+cohort. Read the dated
 [current results, usage, evidence and remaining work](docs/NEXT.md), the
 [experiment protocol](docs/visual-experiment-protocol.md), and
 [agent/contributor guidance](AGENTS.md).

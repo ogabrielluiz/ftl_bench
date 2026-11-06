@@ -2,6 +2,75 @@
 
 **WIP / alpha. Current status as of 2026-11-06. Historical snapshots retain their original dates.**
 
+## Sol image challenge block complete (2026-11-06, 21:31 UTC)
+
+All nine Sol image-only cells in `matrix-focus-5155dab-20261106` are complete
+and eligible. Each challenge produced two task successes and one idle-budget
+failure. There are no technical exclusions or recorded CLI reconnects.
+The canonical starting gameplay state matches across the three repetitions
+of each challenge. This finite fixture evidence does not establish general
+game determinism.
+
+| Challenge | Task successes | Decisions by repeat | Unsuccessful outcome |
+| --- | ---: | --- | --- |
+| Combat | 2/3 | 13, 9, 21 | Scout escaped without a reward; idle limit followed |
+| Fire and crew recovery | 2/3 | 5, 11, 3 | Fire extinguished, but one crew member remained at 76.48% health |
+| Repair, charge and departure | 2/3 | 12, 4, 4 | Reached another beacon with one engine bar still damaged |
+
+The fire failure ended after eight empty zero-frame decisions with no world
+updates or change in observed gameplay state. The repair failure reached full charge and spent one fuel on
+a confirmed arrival, but did not fully repair the engines before departure.
+The two successful repair repeats established full repair, power and charge
+at the origin before their confirmed arrivals. The two missed objectives
+are recorded as gameplay failures. All nine retained the ship and
+three living crew; the combat hull and score details appear in the earlier
+checkpoint below. The fire and repair runs finished at full hull.
+
+Across 82 tool-free, audited Codex turns, reported usage totals are 1,548,076
+input tokens (398,080 cached, a subset of input) and 18,439 output tokens
+(6,892 reasoning, a subset of output). Recorded CLI latency totals 855.210
+seconds. Each delivered decision has one harness attempt and exact image and
+dispatch bindings. `gpt-6.1-sol` was requested; Codex did not report a resolved
+backend model identity. Hybrid and Luna results are still absent, so there
+are no complete matched comparison groups or model/observation rankings.
+
+Independent reviews rederived the saved outcomes, child admission, original
+backups and exact restoration, and reproduced the nine-cell comparison.
+A separate live boundary audit at 21:31:01 UTC verified the seven original
+saves, prior Lua, six runtime files and all 84 executable source pins. FTL
+was absent at both process checks and no pending-launch marker was present.
+These are timestamped checks, not a claim about later runtime state.
+
+Local receipts under `dist/resume-20261106/`:
+
+| Receipt | SHA-256 |
+| --- | --- |
+| `matrix-fire-recovery-repeats-independent-review-20261106.json` | `ff1f5d9aa73227dab64fa93a86bd2a9d9fa279156ff2ed3b8f32a45ba9e5aa50` |
+| `matrix-repair-charge-escape-repeats-independent-review-verified-20261106.json` | `94fa06b0ef46c55f4acba0e21d486d5f48df780fa334869749a02bdba87ef902` |
+| `matrix-live-cleanup-20261106T213101578037Z.json` | `58cc390c8969b5e960f10908862c6b4381862a48c8e97ac8db62728bf2044e98` |
+
+The final repair review retains and supersedes its first derived audit attempt:
+comparing a repair-only subset introduced extra pair annotations. Rebuilding
+the comparison from all nine saved members matched exactly. No trial artifact
+or outcome was changed.
+
+The QA viewer's actual HTTP checks covered running-to-terminal transitions
+for the first fire and repair trials, including their distinct task outcomes,
+eligibility, restoration and byte-matched before/after replay PNGs. Receipts:
+`focus-matrix-sol-image-fire-dashboard-http-20261106T211902Z.json`
+(`7ed30d5dd75aacf93bf2d2c6e62dffd933dd2f88e8538ffe896b41088fd7c174`)
+and `focus-matrix-sol-image-repair-dashboard-http-20261106T212616Z.json`
+(`2d3e2e5e246e18b62dd708cc048ee7c7af1889c71bcce2819d73a18e395e04a0`).
+Rendered-page verification remains pending because local browser control is
+disabled and the operator is away.
+
+Next: the nine Sol hybrid cells, then the Sol sector pilot and both Sol full
+games, followed by Luna's 18 challenge cells and both Luna full games. All 27
+remaining matrix cells and all five full-game cohort attempts are unstarted
+at this checkpoint. Continue one matrix cell per invocation, with terminal
+outcome, eligibility and live cleanup reviewed before the next. Keep every
+attempt and stop on technical failure or ambiguous cleanup.
+
 ## New Sol image combat results (2026-11-06, 21:08 UTC)
 
 The first three cells of `matrix-focus-5155dab-20261106` completed through the
@@ -49,8 +118,9 @@ control was disabled in Work settings. The HTTP receipt is
 `focus-matrix-sol-image-dashboard-http-20261106T210132Z.json`, SHA-256
 `17e2e1914376ba6fba63f0ae3facbadaff3c6350f5e54cd0eacfaa68a1be89e7`.
 
-Thirty-three matrix cells and all five new full-game cohort attempts remain
-unstarted. Next: Sol image fire/crew recovery, then repair/escape, then Sol
+At that snapshot, thirty-three matrix cells and all five new full-game cohort
+attempts were unstarted. The next steps were Sol image fire/crew recovery,
+then repair/escape, then Sol
 hybrid. Run one matrix cell per invocation and audit its terminal outcome,
 eligibility and cleanup before the next: the bare matrix controller only
 automatically stops for restoration failure. Preserve any technical failure
@@ -67,8 +137,8 @@ Responses backends. Standalone visual runs can select `jev` or
 replayable decision without a game launch. Mocked responses exercise the
 request and audit paths. Live provider validation remains pending, and no
 FTL game was launched for this integration. Typed visual runs are diagnostic
-and require their own comparison protocol. Existing frozen Codex cohorts
-remain historical evidence. See [typed decision backends](typed-decision-backends.md).
+and require their own comparison protocol. The frozen Codex cohorts use a
+separate actor contract. See [typed decision backends](typed-decision-backends.md).
 
 Final offline validation passed 2,808 checkout tests (20 skips), 25 headless
 contract tests and 25 dashboard tests, plus dashboard and documentation builds.
@@ -172,8 +242,9 @@ The aggregate timing comparison rejected fire repeatability. Repetition two
 first differed in room oxygen at `fixed-advance-8` despite matching requested
 and actual frames and update counter deltas. The saved differential bounds
 the first sampled change to that interval. Independent cleanup verified the
-original saves and prior bridge. Fresh repeatability evidence, review and
-controller admission remain pending.
+original saves and prior bridge. This collection stopped before admission. The
+[November 6 focus collection](#native-focus-guard-repair-2026-11-06) later passed
+all nine timing probes, independent review and scoped controller admission.
 
 | Local receipt under `dist/resume-20261014/` | SHA-256 |
 | --- | --- |
@@ -1460,24 +1531,22 @@ documentation snapshot, and no new release is published.
 
 ## Remaining work
 
-1. Collect fresh startup/timing diagnostics, independent review and admission for
-   the installed attempt-three runtime and current sources. Freeze new Codex
-   challenge and full-game cohorts;
-   preserve the original failed Sol/image attempt and all old cohort outcomes.
-2. Run the new cohort's Sol challenges, pilot and two full-game conditions first,
-   followed by Luna's challenges and two full-game conditions, sequentially.
+1. Continue the admitted November 6 matrix and full-game cohorts using their
+   frozen source and evidence archives. Audit each terminal outcome, child
+   admission and save restoration before the next cell.
+2. Finish the remaining Sol challenge cells, then run the Sol pilot and two
+   full-game conditions, followed by Luna's challenges and two full-game conditions.
    Retain every attempted outcome; stop for technical failures or ambiguous cleanup.
    Keep pilots and budget outcomes distinct from the four required native endings.
-3. Report matched conditions with denominators, exclusions, outcome reasons,
-   latency and available usage. A fresh 36-cell challenge cohort can supply the
-   declared three repeats per condition; never pool it with the preserved cohorts
-   or silently retry failed cells to fill a comparison gap.
+3. Report matched conditions from the frozen 36-cell matrix with denominators,
+   exclusions, outcome reasons, latency and available usage. Keep previous
+   cohorts and every attempted outcome separate.
 4. Make native acceptance/evidence setup reproducible from a fresh checkout,
    validate the merged headless runtime, and revalidate any
    changed implementation and rebuild packages before release.
-5. Exercise each typed visual provider against an archived PNG and replay its
-   saved stages. Evaluate live visual play under a separate comparison protocol
-   after fresh runtime admission.
+5. Once the operator selects a credential file, exercise each typed visual
+   provider against an archived PNG and replay its saved stages. Use a separate
+   admitted protocol for any live provider comparison.
 
 Use the [experiment controller commands](visual-experiment-protocol.md#freezing-and-resumption)
 and [full-game sequence](visual-experiment-protocol.md#full-game-progression).
