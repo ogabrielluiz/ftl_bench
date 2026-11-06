@@ -92,6 +92,9 @@ No model cells have started in these new cohorts at this checkpoint. Continue
 Sol first through the frozen controllers, preserve failures, then run Luna.
 Typed Decisions/Jev live provider checks still await an explicitly selected
 credential file and remain separate from these Codex cohorts.
+The independent archive review is
+`dist/resume-20261106/focus-cohorts-independent-freeze-review-20261106.json`,
+SHA-256 `35dfd3bfb39b78f39ef1f0072fc549ee565b48cc23dfbdde418242c029a2c9df`.
 
 The joint independent pre-fix review is
 `dist/resume-20261106/focus-clock-v2-independent-comparison-20261106T195520Z.json`,

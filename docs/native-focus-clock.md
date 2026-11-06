@@ -91,8 +91,8 @@ which guard fired first. Its independent comparison is
 To isolate native focus handling, a separate protected driver added one ordinary
 600-frame structured wait after fresh setup and before any visual capture.
 It kept production control logic unchanged and did not clear interference or
-arm the ordinary input guard. Its observer forwarded the native capture writer unchanged and
-recorded zero writer calls, visual packets and capture artifacts. The source's
+arm the ordinary input guard. Its observer forwarded the native capture writer
+unchanged and recorded zero writer calls, visual packets and capture artifacts. The source's
 only ordinary guard-arm call is in that writer.
 
 In the controlled run, focus loss latched generation 1 at world update 112
@@ -107,6 +107,10 @@ These pre-capture diagnostics are retained separately:
 
 - `dist/resume-20261106/focus-clock-prearm-foreground-20261106T2043/`
 - `dist/resume-20261106/focus-clock-prearm-controlled-20261106T2045/`
+
+Their independent comparison is
+`dist/resume-20261106/focus-clock-prearm-independent-comparison-20261106T205003Z.json`,
+SHA-256 `5b7bfcf8d3b178a8e84b6b7a7e5ec3291ce7944d5db9642187947d4aa0a883c5`.
 
 Their trials deliberately terminate before capture and retain failed trial
 classifications. Collection completion means the intended stop and evidence

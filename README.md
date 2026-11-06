@@ -15,7 +15,7 @@ is ready for a provider check with an explicitly selected credential file. See
 Separate November 6 game diagnostics reproduced a focus-related native clock
 defect. The rebuilt fix passed protected startup, all nine timing probes and
 independent admission checks. Focus loss now stops an owned advance, and a
-pre-capture probe verified that refocusing cannot advance the frozen timer.
+pre-capture probe recorded no timer growth after refocus with the GUI unpaused.
 Fresh Sol/Luna cohorts are frozen; their model runs remain pending. See
 [native focus and simulation clock](docs/native-focus-clock.md).
 
