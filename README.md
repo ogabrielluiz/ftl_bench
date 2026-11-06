@@ -12,6 +12,11 @@ Live provider validation and fresh native admission remain pending. No FTL
 game was launched for the November 6 integration. See
 [typed decision backends](docs/typed-decision-backends.md).
 
+Separate November 6 game diagnostics reproduced a focus-related native clock
+defect. The prospective fix passes offline regressions; a new DLL and protected
+live validation are still pending. See
+[native focus and simulation clock](docs/native-focus-clock.md).
+
 Future full-game cohorts can declare matched decision, wall-time and idle budgets
 at freeze time; defaults remain 300 / 14,400 seconds / 8. See the
 [full-game protocol](docs/visual-experiment-protocol.md#full-game-progression).

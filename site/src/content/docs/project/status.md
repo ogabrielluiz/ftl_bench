@@ -3,6 +3,24 @@ title: Validation and baselines
 description: Current protocol, retained diagnostic evidence and comparable reporting.
 ---
 
+## Visual benchmark status — November 6, 2026
+
+The visual benchmark remains an alpha with partial live validation. Codex CLI
+is the default. Decisions and Jev now have separate typed visual adapters and
+an archived-image decision command; offline integration and packaging checks
+passed, while live provider compatibility remains unverified. Typed visual
+runs are diagnostic and do not enter the frozen Codex comparison cohorts.
+See the [backend contracts](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/typed-decision-backends.md).
+
+Separate protected game diagnostics reproduced a focus-related clock defect:
+paused updates could count toward a gameplay advance, and refocusing could
+advance the timer during a frozen hold. The source fix passes offline
+regressions; a rebuilt DLL and fresh protected live acceptance are still
+pending. Historical failures remain preserved. See
+[current work](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/NEXT.md).
+
+## Structured protocol validation history
+
 Current runs use native protocol 5 and runner/ruleset v7, retaining `owned-player-crew-v1` and requiring `native-economy-and-fuel-recovery-v1`, `native-sector-neighbors-v1`, `native-beacon-readiness-v1` and `native-enemy-hostility-v1`. Native protocol 5 remains the API version, while `economy.sector_navigation_version: 1` and Lua `sector_navigation: true` identify verified neighbor-index routing. `economy.beacon_navigation_version: 1` and Lua `beacon_navigation: true` additionally identify strict native travel readiness and pending-defeat guidance. They verify Kestrel A/easy setup, confirmed navigation and explicit native victory. Exact native upgrades, event availability/pending feedback and native fuel recovery replace the incomplete older interface.
 
 The Windows x86 protocol-5 DLL is built from source `d85d6df9626c13343d28b60f43b37d6eadcc7f1d` plus the complete checked patch. Current artifacts are `dist/Hyperspace.protocol5.dll` and `dist/native-build.protocol5.json`; provenance records actual source/diff, every patched file, patch, toolchain/container and DLL hashes. The v7 source suite has 731 passing tests; current release packaging checks are recorded separately.  GCC Release native routing/readiness regressions passed and the DLL compiled with Clang 12/MinGW. Native upgrade/recovery validation remains under `harness/runs/validation/native-protocol5/`. The prior sector-only seven-transition fixture is retained under `harness/runs/validation/native-sector-routing-v5/`, excluded from comparisons; it did not test the subsequently found ordinary-jump charge defect. V7 retains native button/full-timer/system/fuel/context readiness for both jumps and sector exit. Pending defeat is guidance and does not independently forbid a charged legal jump. Release evidence is recorded separately in `dist/package-validation.json`; tests and private fixtures do not establish a full-game win.
@@ -31,7 +49,12 @@ The preceding v4 trial exposed a sector type/index mismatch at sector exit and w
 
 **Pre-v7 rows are noncomparable.** Diagnostic attempts retain score/progress and terminal evidence but do not enter model-ranking metrics. Fresh public baselines and models, held-out full games and human references remain to be established. No retained full-game win is claimed here.
 
-Jev's independent actuator choices are labeled `jev-actuator-choice-v1`. OpenAI Responses is implemented; Decisions preview is unsupported without its schema. Compare the same suite, tier, mode, prompt, control/economy/routing/beacon/hostility contracts, native artifacts, backend/action-selection contract and retries.
+Jev's independent actuator choices are labeled `jev-actuator-choice-v1`.
+OpenAI Responses and the Decisions actuator adapter are implemented. The
+November Decisions integration has offline coverage; current provider
+compatibility still requires live validation. Compare the same suite, tier,
+mode, prompt, control/economy/routing/beacon/hostility contracts, native
+artifacts, backend/action-selection contract and retries.
 
 ## Platform and evidence limits
 

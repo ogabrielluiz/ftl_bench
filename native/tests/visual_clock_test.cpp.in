@@ -1,4 +1,5 @@
 #include "Benchmark_Visual.h"
+#include <cstring>
 #include <functional>
 #include <iostream>
 #include <vector>
@@ -7,7 +8,10 @@
 // The hook bodies below are extracted from the distributed engine source.
 // This double deliberately models the EXE's pause-time travel and render-time
 // jump progress, which a gui.bPaused-only implementation cannot freeze.
-namespace BenchmarkVisualEngine { BenchmarkVisual::FrameClock frame_clock; }
+namespace BenchmarkVisualEngine {
+    BenchmarkVisual::FrameClock frame_clock;
+    BenchmarkVisual::ExternalInputGuard external_input;
+}
 struct State {
     unsigned world_steps=0,pause_steps=0,gui_steps=0,controller_ticks=0,renders=0;
     bool pending=false,jumping=false,choice_queued=false;
@@ -16,8 +20,10 @@ struct State {
     double multiplied_seconds=0,temporarily_scaled_seconds=0;
 } state;
 struct CFPS {
+    float RunningTime=0.f;
     float SpeedFactor=0.1f,wall_factor=0.1f,gameplay_multiplier=2.f;
     void OnLoopHook();
+    void OnLoopUnpaused();
     float GetSpeedFactor() const { return SpeedFactor*gameplay_multiplier; }
 } fps;
 struct AnimationTracker { unsigned progress=0; void UpdateHook(); } ui_animation;
@@ -28,12 +34,21 @@ struct WorldManager {
     std::vector<CompleteShip*> ships={&ship};
     void OnLoopHook(); void PauseLoopHook();
 };
-struct CommandGui { void OnLoopHook(); } gui;
+struct CommandGui {
+    bool bPaused=true,bAutoPaused=false,menu_pause=false;
+    bool IsPaused() const { return bPaused || menu_pause; }
+    void SetPaused(bool paused,bool auto_paused) { bPaused=paused; bAutoPaused=auto_paused; }
+    void OnLoopHook();
+} gui;
 struct CApp {
-    WorldManager* world;
+    WorldManager* world=nullptr;
     CommandGui* gui=&::gui;
-    bool paused=true;
+    char inputFocus=1;
+    bool graphics_focus=true,previous_graphics_focus=true,saved_pause=false;
+    bool alt_pause=true,fullscreen=false;
+    unsigned input_polls=0;
     std::function<void()> controller;
+    void GenInputEventsHook();
     void OnLoopHook();
 };
 WorldManager world;
@@ -47,11 +62,34 @@ namespace BenchmarkVisualEngine {
     unsigned hover_refreshes=0;
     void refresh_pointer_hover(CApp*) { ++hover_refreshes; }
 }
+void CApp::GenInputEventsHook()
+{
+    auto super=[this]() {
+        ++input_polls;
+        if (graphics_focus==previous_graphics_focus) return;
+        previous_graphics_focus=graphics_focus;
+        // FTL 1.6.9 GenInputEvents inlines the default focus callbacks.
+        // No CEvent::OnEvent is dispatched by these focus transitions.
+        if (graphics_focus) {
+            if (!inputFocus && (alt_pause || fullscreen)) gui->SetPaused(saved_pause,false);
+            inputFocus=1;
+        } else {
+            inputFocus=0;
+            saved_pause=gui->bPaused;
+            if (alt_pause || fullscreen) gui->SetPaused(true,false);
+        }
+    };
+    @APP_INPUT@
+}
 void CApp::OnLoopHook()
 {
     auto super=[this]() {
         fps.OnLoopHook(); // real EXE CApp::OnLoop first calls CFPS::OnLoop
-        if (paused) world->PauseLoopHook(); else world->OnLoopHook();
+        if (gui->IsPaused()) world->PauseLoopHook();
+        else {
+            world->OnLoopHook();
+            fps.OnLoopUnpaused(); // separate native call, even if the world hook returned early
+        }
         gui->OnLoopHook();
         ++state.controller_ticks;
         if (controller) controller(); // native ON_TICK remains after its world phase
@@ -62,6 +100,11 @@ void CFPS::OnLoopHook()
 {
     auto super=[this]() { SpeedFactor=wall_factor; };
     @FPS_LOOP@
+}
+void CFPS::OnLoopUnpaused()
+{
+    auto super=[this]() { RunningTime+=SpeedFactor*0.0625f; };
+    @FPS_UNPAUSED@
 }
 void WorldManager::OnLoopHook()
 {
@@ -110,10 +153,95 @@ void render()
     ui_animation.UpdateHook(); // UI timing, including choice enable-delay, is independent
     BenchmarkVisualEngine::frame_clock.finish_render();
 }
-int main()
+int focus_while_advancing()
+{
+    using namespace BenchmarkVisualEngine;
+    gui.bPaused=false;
+    app.graphics_focus=false;
+    app.GenInputEventsHook();
+    CHECK(app.input_polls==1 && !app.inputFocus && gui.bPaused && !app.saved_pause);
+    CHECK(!external_input.detected && external_input.generation==0);
+    app.graphics_focus=true;
+    app.GenInputEventsHook();
+    CHECK(app.input_polls==2 && app.inputFocus && !gui.bPaused);
+    CHECK(!external_input.detected && external_input.generation==0);
+    fps.OnLoopUnpaused();
+    CHECK(fps.RunningTime==fps.SpeedFactor*0.0625f); // unowned timer advances normally
+
+    // Deterministic setup can own an advance before the first visual capture.
+    frame_clock.control(true,true);
+    app.graphics_focus=false;
+    app.GenInputEventsHook();
+    CHECK(app.input_polls==3 && !app.inputFocus && gui.bPaused && !app.saved_pause);
+    app.OnLoopHook(); render();
+    std::cout << "owned advancing blur: world_updates=" << frame_clock.world_updates
+              << " world_steps=" << state.world_steps << " pause_steps=" << state.pause_steps
+              << " guard_generation=" << external_input.generation << '\n';
+    CHECK(external_input.detected && external_input.generation==1);
+    CHECK(frame_clock.world_updates==0 && state.world_steps==0 && state.pause_steps==0 && state.gui_steps==0);
+    external_input.arm(0.25f,0.75f);
+    app.GenInputEventsHook(); // a duplicate poll must still forward without changing generation
+    CHECK(app.input_polls==4 && external_input.detected && external_input.generation==1);
+    return 0;
+}
+int refocus_while_frozen()
+{
+    using namespace BenchmarkVisualEngine;
+    external_input.arm(0.25f,0.75f);
+    gui.bPaused=false;
+    app.graphics_focus=false;
+    app.GenInputEventsHook();
+    app.graphics_focus=true;
+    app.GenInputEventsHook();
+    CHECK(app.input_polls==2 && app.inputFocus && !gui.bPaused);
+    CHECK(!external_input.detected && external_input.generation==0); // armed but unowned
+
+    frame_clock.control(true,true);
+    app.graphics_focus=false;
+    app.GenInputEventsHook();
+    CHECK(app.input_polls==3 && !app.inputFocus && gui.bPaused && !app.saved_pause);
+    const auto blur_generation=external_input.generation;
+    app.OnLoopHook(); render();
+    frame_clock.control(true,false);
+    gui.bPaused=true; // same bridge state when the preceding advance ends
+    const auto prior_updates=frame_clock.world_updates;
+    const auto prior_gui=state.gui_steps;
+    const auto prior_jump=ship_manager.jumpAnimation.progress;
+    const float prior_time=fps.RunningTime;
+    const double prior_ui=state.ui_seconds;
+    fps.wall_factor=0.4f;
+
+    app.graphics_focus=true;
+    app.GenInputEventsHook();
+    CHECK(app.input_polls==4 && app.inputFocus && !gui.bPaused); // native focus restore still runs
+    app.OnLoopHook(); render();
+    CHECK(frame_clock.world_updates==prior_updates && state.gui_steps==prior_gui);
+    CHECK(ship_manager.jumpAnimation.progress==prior_jump);
+    std::cout << "owned frozen refocus: world_updates_delta=" << frame_clock.world_updates-prior_updates
+              << " unpaused_time_delta=" << fps.RunningTime-prior_time
+              << " guard_generation_before=" << blur_generation
+              << " guard_generation_after=" << external_input.generation << '\n';
+    CHECK(external_input.detected && external_input.generation==blur_generation+1);
+    CHECK(blur_generation==1);
+    CHECK(fps.RunningTime==prior_time);
+    CHECK(fps.SpeedFactor==fps.wall_factor && state.ui_seconds>prior_ui);
+    CommandGui other_gui;
+    CApp other_app;
+    other_app.gui=&other_gui;
+    other_app.graphics_focus=false;
+    other_app.GenInputEventsHook();
+    CHECK(other_app.input_polls==1 && !other_app.inputFocus && external_input.generation==blur_generation+1);
+    CFPS other_fps;
+    other_fps.OnLoopUnpaused();
+    CHECK(other_fps.RunningTime==other_fps.SpeedFactor*0.0625f);
+    return 0;
+}
+int main(int argc,char** argv)
 {
     using namespace BenchmarkVisualEngine;
     app.world=&world;
+    if (argc==2 && std::strcmp(argv[1],"focus-advancing")==0) return focus_while_advancing();
+    if (argc==2 && std::strcmp(argv[1],"focus-refocus-frozen")==0) return refocus_while_frozen();
     frame_clock.control(true,false);
     state.pending=true; // normal zero-frame click queued a map departure
     for (unsigned i=0;i<180;++i) { app.OnLoopHook(); render(); }
@@ -125,12 +253,13 @@ int main()
     CHECK(state.world_seconds==0 && state.pause_seconds==0 && state.gui_seconds==0 && state.jump_seconds==0);
     CHECK(std::abs(state.ui_seconds-180.0*0.1f*0.0625f)<0.00001);
     frame_clock.control(true,true);
-    app.paused=false;
+    gui.bPaused=false;
     app.controller=[]() { BenchmarkVisualEngine::frame_clock.control(true,false); };
     app.OnLoopHook(); // one permitted world update; ON_TICK then ends its budget
     CHECK(frame_clock.world_updates==1 && state.world_steps==1 && state.gui_steps==1);
     CHECK(std::abs(fps.SpeedFactor-16.f/60.f)<0.00000001);
     CHECK(std::abs(state.world_seconds-1.0/60)<0.00000001);
+    CHECK(std::abs(fps.RunningTime-1.0/60)<0.00000001);
     CHECK(std::abs(state.multiplied_seconds-2.0/60)<0.00000001);
     CHECK(std::abs(state.temporarily_scaled_seconds-6.0/60)<0.0000001);
     CHECK(state.fuel==15 && state.jumping && !state.pending);
@@ -143,7 +272,7 @@ int main()
     CHECK(state.fuel==15 && state.jumping && state.gui_steps==1);
     // A selected native event requires an explicitly permitted PauseLoop frame.
     state.choice_queued=true;
-    app.paused=true;
+    gui.bPaused=true;
     app.OnLoopHook(); render();
     CHECK(state.choice_commits==0 && frame_clock.world_updates==1);
     frame_clock.control(true,true);
@@ -157,7 +286,7 @@ int main()
     CHECK(state.pause_steps==2 && frame_clock.world_updates==2);
     CHECK(fps.SpeedFactor==fps.wall_factor);
     // Equal admitted action/update streams are independent of wall delta.
-    app.paused=false;
+    gui.bPaused=false;
     frame_clock.control(true,true);
     const double prior_world=state.world_seconds, prior_jump=state.jump_seconds;
     for (int i=0;i<60;++i) { fps.wall_factor=0.5f; app.OnLoopHook(); render(); }

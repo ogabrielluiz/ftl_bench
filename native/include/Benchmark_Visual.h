@@ -49,12 +49,13 @@ struct ExternalInputGuard {
         if (armed) return;
         mouse_x=x; mouse_y=y; armed=true;
     }
+    void invalidate() { ++generation; detected=true; }
     void observe(bool meaningful,bool movement,float x=0.f,float y=0.f) {
         if (synthetic_depth) return;
         const bool changed=movement && (x!=mouse_x || y!=mouse_y);
         if (movement) { mouse_x=x; mouse_y=y; }
         if (!armed || !(meaningful || changed)) return;
-        ++generation; detected=true;
+        invalidate();
     }
 };
 struct SyntheticInputScope {

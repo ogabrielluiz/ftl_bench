@@ -38,6 +38,7 @@ def runtime(overwrite=False, running=False):
     lua.execute('''
       S={frame_budget=0,observation_mode="structured-v7"}
       world_updates=0; owned=false; advancing=false; seed_calls=0; crt_calls=0
+      external_input_detected=false
       clock_events={};forward_events={};native={}
       stage="main_menu";overwrite=false;construction_uncontrolled=false
       H={App={world={bStartedGame=false},gui={bPaused=false,choiceBoxOpen=false}}}
@@ -46,7 +47,8 @@ def runtime(overwrite=False, running=False):
         error("invalid JSON token")
       end}
       capabilities=function() return {visual_clock_version=2,world_updates=tostring(world_updates),
-       simulated_updates=tostring(world_updates),fixed_step_numerator=1,fixed_step_denominator=60} end
+       simulated_updates=tostring(world_updates),fixed_step_numerator=1,fixed_step_denominator=60,
+       external_input_detected=external_input_detected} end
       counter=function(caps)
         if not caps or caps.visual_clock_version~=2 or caps.fixed_step_numerator~=1
          or caps.fixed_step_denominator~=60 or caps.simulated_updates~=caps.world_updates then return nil end
@@ -194,6 +196,25 @@ def test_exact_budget_counts_world_updates_not_callbacks_and_disables_unbudgeted
     lua.execute('''assert(not advancing and owned and H.App.gui.bPaused)
       assert(S.benchmark_setup.intervals[1].actual_updates==3)
       assert(S.benchmark_setup.intervals[1].status=="complete")''')
+
+
+def test_external_input_fails_and_freezes_an_advancing_setup_interval():
+    lua = ready()
+    setup = lua.globals().D
+    assert setup.begin_interval(2, 3, "structured")
+    lua.globals().world_updates = 1
+    assert setup.advance_interval()
+    assert lua.globals().S.frame_budget == 2 and lua.globals().advancing
+
+    # The sticky native guard now blocks updates even though Lua still permits them.
+    lua.globals().external_input_detected = True
+    assert setup.advance_interval() is False
+    assert setup.failed()
+    receipt = setup.observe()
+    assert receipt.phase == "failed"
+    assert receipt.error == "external input detected during deterministic setup"
+    assert receipt.intervals[1].actual_updates == lua.globals().world_updates == 1
+    lua.execute("assert(S.frame_budget==0 and owned and not advancing and H.App.gui.bPaused)")
 
 
 @pytest.mark.parametrize("counter_value", [-1, 4])
@@ -531,8 +552,10 @@ def test_complete_shipped_tick_uses_counter_budget_and_never_legacy_critical_sto
     ''')
 
 
-def test_complete_default_tick_still_applies_legacy_critical_interrupt():
+@pytest.mark.parametrize("external_input_detected", [False, True])
+def test_complete_default_tick_still_applies_legacy_critical_interrupt(external_input_detected):
     lua = complete_bridge_runtime()
+    lua.globals().external_input_detected = external_input_detected
     lua.execute('''stage="in_game";H.App.world.bStartedGame=true
       S.frame_budget=200;S.adv_elapsed=149
       _G.ftl_bench_tick()

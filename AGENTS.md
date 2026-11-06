@@ -152,6 +152,14 @@ native score provenance; enemy lifecycle flags and raw kill counters alone do
 not prove a combat kill. Task success must retain its declared evaluator proof.
 Finite setup/trajectory equality does not prove general full-game determinism.
 
+Native focus transitions bypass the ordinary keyboard/mouse event boundary on
+Windows FTL 1.6.9. Preserve the focus guard and the independent unpaused-timer
+gate together; test advancing blur, frozen refocus and legitimate queued
+`PauseLoop` commits. Native pause flags retain their ordinary behavior. Sticky
+interference must also fail deterministic setup before its first capture.
+See `docs/native-focus-clock.md`; a source-level regression pass does not admit
+a newly built runtime or explain historical repeatability failures.
+
 Modal blockers must follow native visibility during transitions. An open store
 or event may be staged while warp still hides it; blocking that transition can
 deadlock arrival. Check both the hidden transition and the settled visible modal,

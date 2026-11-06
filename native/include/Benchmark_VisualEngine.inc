@@ -9,6 +9,7 @@ namespace BenchmarkVisualEngine {
     void* finish_address = nullptr;
     void* key_state_address = nullptr;
     void* mouse_position_address = nullptr;
+    void* unpaused_loop_address = nullptr;
     const short read_args[] = {0x1ff,0x1ff,0x1ff,0x1ff,0x1ff};
     ZHL::FunctionDefinition read_def("benchmark_graphics_read_pixels", typeid(int (*)(int,int,int,int,void*)),
         "5589e557565383e4f083ec208b45188b55088b4d0c8b5d1085c0", read_args,5,2,&read_pixels_address);
@@ -24,6 +25,10 @@ namespace BenchmarkVisualEngine {
     const short mouse_position_args[] = {0x1ff,0x1ff};
     ZHL::FunctionDefinition mouse_position_def("benchmark_input_mouse_position", typeid(void (*)(float*,float*)),
         "8b5424048b44240885d2740cf30f1005????????f30f110285c0740cf30f1005????????f30f1100f3c3", mouse_position_args,2,6,&mouse_position_address);
+    // FTL 1.6.9 Win32 CFPS::OnLoopUnpaused is a void thiscall with CFPS in ECX.
+    const short unpaused_loop_args[] = {0x101};
+    ZHL::FunctionDefinition unpaused_loop_def("CFPS::OnLoopUnpaused", typeid(void (CFPS::*)()),
+        "f30f1005????????f30f594118f30f5801f30f1101c3", unpaused_loop_args,1,5,&unpaused_loop_address);
     BenchmarkVisual::ExternalInputGuard external_input;
     BenchmarkVisual::FrameClock frame_clock;
     bool in_render = false;
@@ -35,7 +40,7 @@ namespace BenchmarkVisualEngine {
         return (static_cast<unsigned long long>(time.dwHighDateTime) << 32) | time.dwLowDateTime;
     }();
     int injected_modifiers = -1;
-    bool available() { return read_pixels_address && width_address && height_address && finish_address && key_state_address && mouse_position_address; }
+    bool available() { return read_pixels_address && width_address && height_address && finish_address && key_state_address && mouse_position_address && unpaused_loop_address; }
     int width() { return available() ? reinterpret_cast<int (*)()>(width_address)() : 0; }
     int height() { return available() ? reinterpret_cast<int (*)()>(height_address)() : 0; }
     bool point(int x,int y) { return BenchmarkVisual::point_valid(x,y,width(),height()); }
@@ -100,6 +105,13 @@ HOOK_METHOD_PRIORITY(CFPS, OnLoop, 99999, () -> void)
     if (this==Global::GetInstance()->GetCFPS())
         BenchmarkVisual::apply_fixed_frame_speed(*this,BenchmarkVisualEngine::frame_clock);
 }
+HOOK_METHOD_PRIORITY(CFPS, OnLoopUnpaused, 99999, () -> void)
+{
+    // CApp calls this independently of WorldManager::OnLoop. A focus restore
+    // can select that path even when the benchmark has frozen the world.
+    if (this==Global::GetInstance()->GetCFPS() && !BenchmarkVisualEngine::frame_clock.update_permitted()) return;
+    super();
+}
 HOOK_METHOD_PRIORITY(WorldManager, OnLoop, 99999, () -> void)
 {
     auto& clock=BenchmarkVisualEngine::frame_clock;
@@ -143,6 +155,18 @@ HOOK_METHOD_PRIORITY(AnimationTracker, Update, 99999, () -> void)
         }
     }
     super(); // all ordinary UI animation, including ChoiceBox openTime, continues
+}
+
+HOOK_METHOD_PRIORITY(CApp, GenInputEvents, 99999, () -> void)
+{
+    // FTL inlines the default blur/focus callbacks here, outside CEvent.
+    const bool had_focus=inputFocus!=0;
+    super();
+    using namespace BenchmarkVisualEngine;
+    if (had_focus==(inputFocus!=0) || this!=Global::GetInstance()->GetCApp() ||
+        !frame_clock.owned || (!frame_clock.advancing && !external_input.armed)) return;
+    external_input.invalidate();
+    frame_clock.control(true,false); // the following CApp::OnLoop gets no world permit
 }
 
 // Only the normal input-event boundary is observed. Synthetic primitives call

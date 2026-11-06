@@ -80,6 +80,13 @@ def test_renderer_input_signatures_match_exactly_one_real_ftl_function():
     source = (ROOT / "native/include/Benchmark_VisualEngine.inc").read_text()
     signatures = re.findall(r'FunctionDefinition\s+\w+\("(benchmark_\w+)".*?\n\s*"([0-9a-f?]+)"', source)
     assert len(signatures) == 6
+    unpaused = re.search(
+        r'FunctionDefinition\s+\w+\("CFPS::OnLoopUnpaused", typeid\(void \(CFPS::\*\)\(\)\),\n'
+        r'\s*"([0-9a-f?]+)", (\w+),1,5,&(\w+)\);', source)
+    assert unpaused, "the native timer binding must be a void thiscall member"
+    assert re.search(rf'const short {unpaused[2]}\[\]\s*=\s*\{{0x101\}};', source)
+    assert re.search(rf'bool available\(\).*&& {unpaused[3]};', source)
+    signatures.append(("CFPS::OnLoopUnpaused", unpaused[1]))
     # PE section mapping, not hard-coded ASLR addresses.
     pe = struct.unpack_from("<I", image, 0x3c)[0]
     sections = struct.unpack_from("<H", image, pe + 6)[0]
@@ -91,7 +98,8 @@ def test_renderer_input_signatures_match_exactly_one_real_ftl_function():
     code = image[raw_offset:raw_offset + raw_size]
     expected = {"benchmark_graphics_read_pixels": 0x2251d0, "benchmark_graphics_width": 0x224ea0,
                 "benchmark_graphics_height": 0x224eb0, "benchmark_graphics_finish_frame": 0x224f60,
-                "benchmark_input_key_state": 0x22b080, "benchmark_input_mouse_position": 0x22b0e0}
+                "benchmark_input_key_state": 0x22b080, "benchmark_input_mouse_position": 0x22b0e0,
+                "CFPS::OnLoopUnpaused": 0x19a670}
     for name, signature in signatures:
         pattern = b"".join(b"." if part == "??" else re.escape(bytes.fromhex(part))
                            for part in re.findall("..", signature))
@@ -118,12 +126,14 @@ def test_real_ftl_calls_fps_before_world_pause_and_gui_updates():
     start = 0x22c0
     app = at_rva(start, 0x230)
     assert app.startswith(bytes.fromhex("578d7c240883e4f0ff77fc5589e557565389cbb9"))
-    targets = {"fps": 0x19a4e0, "world": 0x1f6520, "pause": 0x1f6070, "gui": 0x1220b0}
+    targets = {"fps": 0x19a4e0, "world": 0x1f6520, "pause": 0x1f6070, "gui": 0x1220b0,
+               "unpaused": 0x19a670}
     offsets = {name: [offset for offset in range(len(app) - 4)
         if app[offset] == 0xe8 and start + offset + 5 + struct.unpack_from("<i", app, offset + 1)[0] == target]
         for name, target in targets.items()}
     assert all(len(matches) == 1 for matches in offsets.values())
     assert all(offsets["fps"][0] < offsets[name][0] for name in ("world", "pause", "gui"))
+    assert offsets["world"][0] < offsets["unpaused"][0] < offsets["gui"][0]
     # Native CFPS converts wall seconds into the field's 16x time units;
     # gameplay subsequently converts back with 0.0625. Do not choose 1.f/60.f
     # as SpeedFactor, which would make the simulation sixteen times too slow.
@@ -168,14 +178,16 @@ def visual_clock_test_source():
     hooks = {"APP_LOOP": ("CApp", "OnLoop"), "FPS_LOOP": ("CFPS", "OnLoop"), "WORLD_LOOP": ("WorldManager", "OnLoop"),
              "PAUSE_LOOP": ("WorldManager", "PauseLoop"), "GUI_LOOP": ("CommandGui", "OnLoop"),
              "JUMP_RENDER": ("AnimationTracker", "Update")}
-    for token, (kind, method) in hooks.items():
+    optional_hooks = {"APP_INPUT": ("CApp", "GenInputEvents"), "FPS_UNPAUSED": ("CFPS", "OnLoopUnpaused")}
+    for token, (kind, method) in (hooks | optional_hooks).items():
         hook = re.search(rf"HOOK_METHOD_PRIORITY\({kind}, {method}, 99999, \(\) -> void\)\n(\{{.*?\n\}})", engine, re.S)
-        assert hook, f"actual shipped clock gate is missing: {kind}.{method}"
-        template = template.replace(f"@{token}@", hook.group(1))
+        assert hook or token in optional_hooks, f"actual shipped clock gate is missing: {kind}.{method}"
+        # Forward undetoured calls so the baseline exercises native behavior.
+        template = template.replace(f"@{token}@", hook.group(1) if hook else "super();")
     return template
 
 
-def test_actual_world_gui_and_jump_render_hooks_freeze_native_pause_commits(tmp_path):
+def compile_visual_clock_test(tmp_path):
     source = tmp_path / "clock.cpp"
     source.write_text(visual_clock_test_source())
     compiler = shutil.which("g++")
@@ -184,7 +196,16 @@ def test_actual_world_gui_and_jump_render_hooks_freeze_native_pause_commits(tmp_
     executable = tmp_path / "clock-test"
     subprocess.run([compiler, "-std=c++11", "-O2", "-Wall", "-Wextra", "-pedantic",
                     "-I", str(ROOT / "native/include"), str(source), "-o", str(executable)], check=True)
-    subprocess.run([str(executable)], check=True)
+    return executable
+
+
+def test_actual_world_gui_and_jump_render_hooks_freeze_native_pause_commits(tmp_path):
+    subprocess.run([str(compile_visual_clock_test(tmp_path))], check=True)
+
+
+@pytest.mark.parametrize("case", ["focus-advancing", "focus-refocus-frozen"])
+def test_actual_visual_clock_rejects_focus_interference(tmp_path, case):
+    subprocess.run([str(compile_visual_clock_test(tmp_path)), case], check=True)
 
 
 def visual_blocker_test_source():

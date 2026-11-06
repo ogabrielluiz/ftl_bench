@@ -29,6 +29,33 @@ the tested source release is
 `c29f0d0b4c1d7cb84b3b4aaa7f90de9f10742b2b37d66e76385d3b91df46f5e2`.
 Both are under `harness/dist/`; generated distributions remain outside Git.
 
+## Native focus guard repair (2026-11-06)
+
+A protected foreground/focus-switch pair reproduced a native accounting defect:
+both runs reported 600 updates, but the focus-switch run executed only 16
+gameplay updates and 584 paused updates without recording interference.
+Refocusing during a frozen hold also advanced the native timer by one frame.
+Both runs restored the exact original saves, deployed Lua and runtime files.
+They made no model calls. The October fire mismatch remains unexplained.
+
+The prospective repair observes native focus transitions, freezes an
+interrupted owned advance, gates the independent unpaused timer, and makes
+deterministic setup fail immediately on sticky interference. All 2,810 harness
+tests pass with 22 explicit skips, including all 108 deterministic setup Lua
+checks. Extracted native hook regressions ran separately under WSL and passed;
+installed-executable binding checks and exact native source reconstruction also
+passed. A fresh DLL build, protected post-fix probes, startup and
+timing acceptance, independent review, admission and new cohorts remain pending.
+The installed attempt-three runtime is unchanged. See
+[native focus and simulation clock](native-focus-clock.md) for the mechanism,
+evidence and validation boundary.
+
+The joint independent pre-fix review is
+`dist/resume-20261106/focus-clock-v2-independent-comparison-20261106T195520Z.json`,
+SHA-256 `47e73362723b5eb658b9460c82db816d9af3fde3eff315485464ff0ce11aca9a`.
+Its current cleanup/source snapshot was recorded at 19:55:20 UTC; it is not a
+claim about a subsequently modified working tree or installed runtime.
+
 ## Attempt-three installation and timing (2026-10-14)
 
 After the isolated rehearsal below, the attempt-three DLL, provenance and

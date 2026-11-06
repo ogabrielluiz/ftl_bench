@@ -2312,7 +2312,9 @@ local function NewDeterministicSetup(S, H, json, freeze, capabilities, counter)
   return false
  end
  local function clock()
-  local caps=capabilities();local n=counter(caps)
+  local caps=capabilities()
+  if caps and caps.external_input_detected==true then fail("external input detected during deterministic setup");return nil end
+  local n=counter(caps)
   if n==nil then fail("clock2 counter unavailable");return nil end
   return n
  end
