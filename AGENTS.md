@@ -160,6 +160,13 @@ interference must also fail deterministic setup before its first capture.
 See `docs/native-focus-clock.md`; a source-level regression pass does not admit
 a newly built runtime or explain historical repeatability failures.
 
+For focus diagnostics, window activation can also move the physical pointer.
+Do not infer the first guard trigger from a combined switch alone. The protected
+pre-capture probe isolates focus while the ordinary input guard is unarmed;
+retain evidence of zero visual writer calls/packets/captures and never clear
+interference. Refocus timer coverage requires observed native unpaused rows,
+not just a final screenshot or a paused hold.
+
 Modal blockers must follow native visibility during transitions. An open store
 or event may be staged while warp still hides it; blocking that transition can
 deadlock arrival. Check both the hidden transition and the settled visible modal,

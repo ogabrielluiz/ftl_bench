@@ -56,6 +56,12 @@ After both producers finish, assemble a candidate from the explicit copies. All
 selected files and their nested references must stay under --evidence-root.
 No directory search substitutes for a recorded reference:
 
+Use absolute artifact paths when selecting files outside the invocation's
+working directory. Assembly deliberately rejects references containing `..`;
+for example, from `harness/`, pass the absolute path to a repository-level
+`dist/` artifact rather than `../dist/...`. The emitted references still stay
+relative to the declared evidence root.
+
     uv run --directory harness python ../scripts/validate_native_acceptance.py --assemble-spec --source-root .. --evidence-root .. --startup-evidence runs/acceptance/startup/startup-evidence.json --timing-evidence runs/acceptance/timing/timing-evidence.json --dll runs/acceptance/native-artifacts/Hyperspace.visual-v1.dll --provenance runs/acceptance/native-artifacts/native-build.visual-v1.json --bridge runs/acceptance/native-artifacts/production-bridge.lua --output runs/acceptance/candidate.json
     uv run --directory harness python ../scripts/validate_native_acceptance.py --source-root .. --evidence-root .. --spec runs/acceptance/candidate.json --output runs/acceptance/verification.json
 

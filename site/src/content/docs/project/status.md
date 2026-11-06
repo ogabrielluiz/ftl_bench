@@ -14,9 +14,12 @@ See the [backend contracts](https://github.com/ogabrielluiz/ftl_bench/blob/main/
 
 Separate protected game diagnostics reproduced a focus-related clock defect:
 paused updates could count toward a gameplay advance, and refocusing could
-advance the timer during a frozen hold. The source fix passes offline
-regressions; a rebuilt DLL and fresh protected live acceptance are still
-pending. Historical failures remain preserved. See
+advance the timer during a frozen hold. The rebuilt fix passed protected
+startup, all nine timing probes and eight independent evidence-rejection
+checks. A pre-capture focus test also verified that native refocus leaves the
+world and timer frozen even when the UI becomes unpaused. New Sol/Luna cohorts
+are frozen with scoped local admission; their model runs remain pending.
+Historical failures remain preserved. See
 [current work](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/NEXT.md).
 
 ## Structured protocol validation history

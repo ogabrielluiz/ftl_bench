@@ -71,3 +71,48 @@ and newly frozen cohorts. Existing admissions and failed runs cannot be reused
 or relabeled. Extracted-hook regressions establish scheduling behavior in a
 native test fixture; only a rebuilt DLL and protected game probes can establish
 the corresponding live behavior.
+
+## Rebuilt runtime evidence (2026-11-06)
+
+The rebuilt DLL `16eba4465270311bc480f9a91c4c3adc36c8ff33d1e6dc79c11ef950173023ec`
+passed protected startup and all nine timing probes. Each challenge's recorded
+states matched exactly under delays of 0, 0.35 and 1.2 seconds. All eight
+independent evidence mutations were rejected before local controller admission.
+The scoped report retains `production_accepted: false`; newly frozen cohorts
+have not yet produced model results. See [current work](NEXT.md).
+
+The repeated post-capture foreground probe consumed 600 gameplay updates and
+about ten seconds of native time. The controlled switch stopped after 27
+updates, then held the counter and timer constant through refocus. However,
+switching windows also moved the physical pointer: that probe cannot identify
+which guard fired first. Its independent comparison is
+`dist/resume-20261106/focus-clock-v2-postfix-independent-comparison-20261106T203657Z.json`.
+
+To isolate native focus handling, a separate protected driver added one ordinary
+600-frame structured wait after fresh setup and before any visual capture.
+It kept production control logic unchanged and did not clear interference or
+arm the ordinary input guard. Its observer forwarded the native capture writer unchanged and
+recorded zero writer calls, visual packets and capture artifacts. The source's
+only ordinary guard-arm call is in that writer.
+
+In the controlled run, focus loss latched generation 1 at world update 112
+after 22 updates, and deterministic setup failed immediately. Returning to FTL
+restored the native unpaused UI state. All 879 subsequent unpaused trace rows
+kept world updates at 112 and `RunningTime` at 1.3499994277954. This exercises
+the independent timer gate while the world is frozen. The foreground control
+consumed 600 updates; its observer begins after the first update, so its timer
+span covers 599 sample-to-sample steps rather than a measured full ten seconds.
+
+These pre-capture diagnostics are retained separately:
+
+- `dist/resume-20261106/focus-clock-prearm-foreground-20261106T2043/`
+- `dist/resume-20261106/focus-clock-prearm-controlled-20261106T2045/`
+
+Their trials deliberately terminate before capture and retain failed trial
+classifications. Collection completion means the intended stop and evidence
+were obtained with protected cleanup; it is not a gameplay pass. A supplemental
+latest-observation copy in the controlled run hit a Windows file-access error;
+the primary interval-end observation, full trace and cleanup evidence remain.
+Original saves and prior Lua were restored. The current-runtime cleanup audit
+at 20:44:55 UTC found no FTL process or pending launch marker. The cause of the
+historical October fire mismatch remains unproven.

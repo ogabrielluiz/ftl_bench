@@ -95,6 +95,8 @@ evidence. A token total is unknown if any attempted stage omits the relevant
 count. The one-screenshot command records its replay result in `probe.json`.
 
 The visual backends have offline contract coverage. Live provider validation
-and fresh native runtime admission remain pending. These diagnostic decisions
+remains pending. The rebuilt native runtime separately passed scoped startup,
+timing and local controller admission on November 6; that does not establish
+provider compatibility. These diagnostic decisions
 are separate from frozen Codex cohorts. Comparing providers requires a
 protocol that accounts for action granularity and HTTP requests per decision.

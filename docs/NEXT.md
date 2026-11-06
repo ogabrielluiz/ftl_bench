@@ -38,17 +38,60 @@ Refocusing during a frozen hold also advanced the native timer by one frame.
 Both runs restored the exact original saves, deployed Lua and runtime files.
 They made no model calls. The October fire mismatch remains unexplained.
 
-The prospective repair observes native focus transitions, freezes an
+The repair observes native focus transitions, freezes an
 interrupted owned advance, gates the independent unpaused timer, and makes
 deterministic setup fail immediately on sticky interference. All 2,810 harness
 tests pass with 22 explicit skips, including all 108 deterministic setup Lua
 checks. Extracted native hook regressions ran separately under WSL and passed;
 installed-executable binding checks and exact native source reconstruction also
-passed. A fresh DLL build, protected post-fix probes, startup and
-timing acceptance, independent review, admission and new cohorts remain pending.
-The installed attempt-three runtime is unchanged. See
+passed. A fresh DLL was built and installed with the previous DLL/provenance
+retained for rollback. The packaged data payload is unchanged. Protected
+startup passed all eight checks, and all nine timing probes matched exactly
+across three wall delays for combat, fire recovery and repair/escape. All
+original saves and the prior deployed Lua were restored after each run. See
 [native focus and simulation clock](native-focus-clock.md) for the mechanism,
 evidence and validation boundary.
+
+The post-capture focus probe stopped after 27 updates and remained frozen,
+but pointer movement prevented isolating its first guard trigger. A separate
+pre-capture probe made no visual requests or captures: focus loss stopped its
+600-frame structured interval after 22 updates and immediately failed setup.
+Refocusing produced 879 unpaused native trace rows with no world-counter or
+timer growth. The foreground controls consumed exactly 600 updates. These
+diagnostics retain their intentional interrupted/failed trial classifications.
+They establish these observed paths, not general full-game determinism or the
+cause of the October mismatch.
+
+The current DLL SHA-256 is
+`16eba4465270311bc480f9a91c4c3adc36c8ff33d1e6dc79c11ef950173023ec`;
+provenance is `c0b40e0d32cdedf8b2f8fa085b883957e25f4f3f160a25bc83af61afb719b539`.
+The original successful build is retained under
+`dist/native-build-evidence/build-cached-20261106T201844280131920Z/`.
+Earlier pull, dependency-download and Ninja-regeneration failures remain
+separate; the successful fresh build does not explain the transient Ninja failure.
+
+The new collection is
+`harness/runs/validation/visual-v1/focus-admission-5155dab-20261106/`.
+Its independent reviewer reran the positive verifier and executed all eight
+meaningful rejection probes. The resulting local controller admission binds
+84 executable sources and 577 evidence files while retaining
+`production_accepted: false`. The admission spec SHA-256 is
+`ce04665a3efa7a5766ae643e614a3fb77605439b027901c41a6732f56fe7528d`;
+the review SHA-256 is
+`b1d83835d710d2168cdc1743dc261da185fe4d032c000148b60fb12a64d56d18`.
+
+New cohorts are frozen under `harness/runs/visual/`:
+
+- `matrix-focus-5155dab-20261106`: 36 Sol/Luna image/hybrid challenge cells,
+  three repetitions, 60 decisions / 1,800 seconds / eight idle decisions.
+- `fullgame-focus-5155dab-20261106`: the Sol/image sector pilot and four
+  native-ending conditions, retaining the matched 1,500 decisions /
+  86,400 seconds / eight idle decisions budgets.
+
+No model cells have started in these new cohorts at this checkpoint. Continue
+Sol first through the frozen controllers, preserve failures, then run Luna.
+Typed Decisions/Jev live provider checks still await an explicitly selected
+credential file and remain separate from these Codex cohorts.
 
 The joint independent pre-fix review is
 `dist/resume-20261106/focus-clock-v2-independent-comparison-20261106T195520Z.json`,

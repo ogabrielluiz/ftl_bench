@@ -8,13 +8,15 @@ An agent benchmark that drives the real **FTL: Faster Than Light** engine throug
 
 The visual benchmark is an **alpha implementation with partial live validation**.
 The November 6 typed Decisions and Jev integrations have offline coverage.
-Live provider validation and fresh native admission remain pending. No FTL
-game was launched for the November 6 integration. See
+Live provider validation remains pending. The archived-image decision command
+is ready for a provider check with an explicitly selected credential file. See
 [typed decision backends](docs/typed-decision-backends.md).
 
 Separate November 6 game diagnostics reproduced a focus-related native clock
-defect. The prospective fix passes offline regressions; a new DLL and protected
-live validation are still pending. See
+defect. The rebuilt fix passed protected startup, all nine timing probes and
+independent admission checks. Focus loss now stops an owned advance, and a
+pre-capture probe verified that refocusing cannot advance the frozen timer.
+Fresh Sol/Luna cohorts are frozen; their model runs remain pending. See
 [native focus and simulation clock](docs/native-focus-clock.md).
 
 Future full-game cohorts can declare matched decision, wall-time and idle budgets
