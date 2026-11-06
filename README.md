@@ -24,7 +24,9 @@ their screenshot-derived HUD values, including omissions under overlays.
 These fixed-situation results do not establish a general ranking. The new
 Sol/image pilot ended in native crew-loss defeat after 89 decisions, with clean
 input and restoration audits. It remains excluded from full-game totals.
-Luna's 18 challenge cells and all four new full-game conditions remain unfinished. See
+Sol/image then reached an audited native defeat after 42 decisions, completing
+the first of four full-game conditions. Sol/hybrid and both Luna full-game
+conditions remain unfinished, along with Luna's 18 challenge cells. See
 [current results and remaining work](docs/NEXT.md).
 
 Future full-game cohorts can declare matched decision, wall-time and idle budgets

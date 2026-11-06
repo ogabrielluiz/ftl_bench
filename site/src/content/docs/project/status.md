@@ -30,8 +30,11 @@ extraction, including omissions under warning, cursor and reward overlays.
 This fixed-situation sample does not establish a general ranking. The new
 Sol/image pilot ended in native crew-loss defeat after 89 decisions, four jumps
 and five visited beacons in sector one. Its input and restoration audits passed;
-the pilot contributes zero full-game completions. Luna's 18 challenge cells and
-all four new full-game conditions remain unfinished.
+the pilot contributes zero full-game completions. Sol/image then reached an
+audited full-game defeat after 42 decisions at the second beacon, with native
+score 59 and all crew dead. Cleanup and the saved dashboard projection passed;
+full-game completion is now 1/4. Sol/hybrid, both Luna full-game conditions and
+Luna's 18 challenge cells remain unfinished.
 Historical failures remain preserved. See
 [current work](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/NEXT.md).
 

@@ -2,6 +2,55 @@
 
 **WIP / alpha. Current status as of 2026-11-06. Historical snapshots retain their original dates.**
 
+## Sol image full game: first native ending (2026-11-06, 23:12 UTC)
+
+The Sol/image full-game cell in `fullgame-focus-5155dab-20261106` ended in
+audited native defeat after 42 decisions and 43 archived screenshots. The final
+native state and screenshot agree that all crew died at the second beacon in
+the starting sector. Final hull was 18, oxygen 85%, scrap 49, fuel 16 and native
+score 59. Twenty fires remained across nine rooms. Before defeat, the ship made
+one connected jump and collected 19 scrap and one fuel after destroying the
+first enemy. These observations do not isolate every crew member's death mechanism.
+
+This is the first verified full-game ending in the current cohort: **1/4**,
+with one defeat and no victories. The earlier pilot remains excluded. Both
+trials retain their original outcomes and artifacts. Sol/hybrid is next, then
+Luna's eighteen challenge cells and both Luna full-game conditions. A native
+defeat completes a declared full-game attempt; it does not establish strong
+gameplay, later-sector coverage or a model ranking.
+The Sol/hybrid full-game cell started at 23:13:43 UTC under the same frozen
+protocol. Its ongoing activity is separate from the settled image result.
+
+The independent saved review reproduced the exact two-trial comparison and
+verified child admission, all 42 tool-free CLI turns, 6,633 acknowledged updates
+within 7,083 requested updates, and no reconnects or input interference. The
+canonical fresh gameplay state matched the pilot's seed-1 start; each run's
+different opening PNG was authenticated separately. All exact image-only
+prompts, attachments, permitted acknowledgements/history and actor memory
+reconstructed, with no native gameplay summaries or evaluator fields.
+
+The CLI reported 795,593 input tokens, including 581,888 cached, and 12,237
+output tokens, including 5,268 reasoning. Total CLI latency was 523.036 seconds,
+median 12.1755 seconds. Cached and reasoning counts are subsets. The requested
+model was `gpt-6.1-sol`; resolved backend identity remained unreported.
+
+The controller exited zero. Saved restoration matched all seven original
+saves and prior Lua. A live boundary check at 23:12:49 UTC matched the exact
+seven-save inventory, all 15 original file roles and 84 executable source pins,
+with no FTL process or pending-launch marker. The dashboard's actual HTTP
+response showed one verified defeat and kept the pilot excluded; its opening
+and final replay images matched saved hashes. Rendered browser inspection
+remains deferred. Earlier cleanup checks remain point-in-time evidence.
+
+Local receipts under `dist/resume-20261106/`:
+
+| Receipt | SHA-256 |
+| --- | --- |
+| `fullgame-focus-sol-image-independent-review-20261106.json` | `4b469fe2582105161fc04121c5cb06e5a5f16df64c8ec7c6d4092b090e1f5ea8` |
+| `fullgame-sol-image-terminal-input-audit-20261106.json` | `912373b656573b0834f96f573c5a6e5b5684c6f896b992016363c3b79b39f0ca` |
+| `fullgame-live-cleanup-20261106T231249426964Z.json` | `6bfe96556ea072317d9528fc539a8495958954f0c8f71096759d1871d091af21` |
+| `focus-fullgame-sol-image-dashboard-http-20261106T231248Z.json` | `516bc3e890f1c10769b8f0e81b5065b9471ca807ea6d9070367a4cee46abe4ec` |
+
 ## Sol image pilot: native defeat (2026-11-06, 22:59 UTC)
 
 The sector-one pilot in `fullgame-focus-5155dab-20261106` finished with
