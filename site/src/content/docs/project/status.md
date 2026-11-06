@@ -18,17 +18,17 @@ advance the timer during a frozen hold. The rebuilt fix passed protected
 startup, all nine timing probes and eight independent evidence-rejection
 checks. A pre-capture focus test also verified that native refocus leaves the
 world and timer frozen even when the UI becomes unpaused. New Sol/Luna cohorts
-are frozen with scoped local admission. All nine Sol image-only challenge
-trials are eligible: each challenge produced two task successes and one
-idle-budget failure, with verified cleanup. The 82 audited turns reported
-1,548,076 input tokens, 18,439 output tokens and 855.210 seconds of CLI latency.
-Sol's three hybrid combat trials subsequently produced one success, one scout
-escape and one crew-loss failure despite collecting the reward. All 12 trials
-remain eligible. Independent audits reproduced the 86 hybrid prompts and
-same-PNG HUD extraction, including omissions under warning and reward overlays.
-For this fixed encounter, image-only combat achieved 2/3 and hybrid 1/3; the
-full model/observation comparison remains incomplete. The remaining 24 matrix
-cells and all five new full-game cohort attempts are pending.
+are frozen with scoped local admission. All 18 Sol challenge trials are
+complete and eligible, with verified cleanup: image-only succeeded in 6/9
+and hybrid in 4/9. Each task has three repetitions per mode with matching
+starting gameplay states. The eight idle-budget endings remain recorded,
+with the unmet native requirements reported separately. There are no technical
+exclusions or recorded reconnects. The 217 audited turns reported 4,094,609
+input tokens, 46,938 output tokens and 2,184.411 seconds of CLI latency.
+Independent audits reproduced all 135 hybrid prompts and same-PNG HUD
+extraction, including omissions under warning, cursor and reward overlays.
+This fixed-situation sample does not establish a general ranking. Luna's
+18 challenge cells and all five new full-game cohort attempts are pending.
 Historical failures remain preserved. See
 [current work](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/NEXT.md).
 

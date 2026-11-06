@@ -16,14 +16,13 @@ Separate November 6 game diagnostics reproduced a focus-related native clock
 defect. The rebuilt fix passed protected startup, all nine timing probes and
 independent admission checks. Focus loss now stops an owned advance, and a
 pre-capture probe recorded no timer growth after refocus with the GUI unpaused.
-Fresh Sol/Luna cohorts are frozen. Sol's nine image-only challenge trials are
-complete: two successes and one gameplay budget failure per challenge. Sol's
-three hybrid combat trials produced one success, one scout escape and one
-crew-loss failure despite collecting the reward. All 12 trials are eligible
-with verified cleanup. Independent audits reproduced all 86 hybrid prompts
-and their screenshot-derived HUD values, including omissions under warning
-and reward overlays.
-The remaining 24 challenge cells and new full-game attempts are pending. See
+Fresh Sol/Luna cohorts are frozen. All 18 Sol challenge trials are complete
+and eligible, with verified cleanup: image-only succeeded in 6/9 and hybrid
+in 4/9. The eight unsuccessful trials remain recorded. Independent audits
+matched starting gameplay states and reproduced all 135 hybrid prompts and
+their screenshot-derived HUD values, including omissions under overlays.
+These fixed-situation results do not establish a general ranking. Luna's
+18 challenge cells and all five new full-game cohort attempts are pending. See
 [current results and remaining work](docs/NEXT.md).
 
 Future full-game cohorts can declare matched decision, wall-time and idle budgets

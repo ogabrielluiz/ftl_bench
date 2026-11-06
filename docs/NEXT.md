@@ -2,6 +2,93 @@
 
 **WIP / alpha. Current status as of 2026-11-06. Historical snapshots retain their original dates.**
 
+## Sol challenge block complete (2026-11-06, 22:26 UTC)
+
+All eighteen Sol cells in `matrix-focus-5155dab-20261106` completed and remain
+eligible, with ten task successes and eight idle-budget stops. No technical
+exclusions or CLI reconnects were recorded. All eighteen attempts remain
+recorded in this cohort.
+
+| Challenge | Image task successes | Hybrid task successes | Image decisions by repeat | Hybrid decisions by repeat |
+| --- | ---: | ---: | --- | --- |
+| Combat | 2/3 | 1/3 | 13, 9, 21 | 43, 25, 18 |
+| Fire and crew recovery | 2/3 | 1/3 | 5, 11, 3 | 12, 11, 5 |
+| Repair, charge and departure | 2/3 | 2/3 | 12, 4, 4 | 4, 6, 11 |
+| Total | 6/9 | 4/9 | 82 | 135 |
+
+The eight unsuccessful trials ended at the idle limit. Two scouts escaped
+without rewards, three trials left crew injured, two departed before full
+engine repair, and one lost a crew member despite collecting the reward.
+The native outcome and terminal reason remain separate. Scores alone do not
+establish task success.
+
+All eighteen canonical reset states were recomputed: every hybrid trial matches
+its image counterpart, and repeats match within each task. The task, seed,
+instructions, controls and budgets remain frozen. Full PNGs can differ; the
+audits bind each actual actor capture independently. These are descriptive
+results for three fixed situations, with three repetitions per mode. Luna has
+not started, so the declared four-condition matched groups remain incomplete.
+No general model ranking or hybrid performance benefit is established.
+
+| Mode | Audited CLI turns | Reported input tokens | Cached subset | Reported output tokens | Reasoning subset | Reported CLI latency |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Image | 82 | 1,548,076 | 398,080 | 18,439 | 6,892 | 855.210 s |
+| Hybrid | 135 | 2,546,533 | 1,671,680 | 28,499 | 9,201 | 1,329.201 s |
+| Total | 217 | 4,094,609 | 2,069,760 | 46,938 | 16,093 | 2,184.411 s |
+
+Every recorded turn was tool-free with one harness attempt. Latency covers
+reported CLI calls, not total elapsed trial or audit time. Cached tokens are
+a subset of input; reasoning tokens are a subset of output. The requested
+model is `gpt-6.1-sol`; resolved backend identity remains unreported. The
+aggregate review retains every trial's hull, crew health, native score and
+components, latency, wall time, usage, terminal reason and native goal checks.
+
+The nine hybrid input audits reconstructed all 135 exact prompts and PNG
+attachments, permitted input/acknowledgement history and actor memory. Every
+reported HUD value and its full crop/anchor provenance reproduced from that
+same PNG. Previously inspected exact crop bytes were reused as visual witnesses;
+new states were inspected directly. Hull was supplied on 132/135 turns, drone
+parts on all 135, and fuel, scrap and missiles on 127 each. The omissions were
+three hull-anchor rejections under a warning or cursor, and eight turns with
+reward overlays across the other three fields. This measures reporting coverage
+in the observed sample, not general OCR accuracy. `paused: true` remains the
+public decision-interface flag, separate from the five PNG-derived numbers.
+
+In fire repeat one, the image and hybrid opening screenshots showed the same
+hull-anchor occlusion. The final hybrid repair trial also supplied actual
+settled arrival screenshots to the actor; the earlier successful hybrid repair
+repeats ended at arrival and supplied only the pre-jump map to their final
+decisions. No evaluator or hidden gameplay fields were present in the explicit
+prompts.
+
+The saved review reproduced the full eighteen-member comparison and verified
+the prior seventeen trials' referenced artifacts unchanged. All original save
+backups and restorations passed. At 22:26:21 UTC, the live boundary check matched
+all seven saves, prior Lua, six runtime files and 84 executable source pins,
+with no FTL process at either process check and no pending-launch marker.
+
+Local receipts under `dist/resume-20261106/`:
+
+| Receipt | SHA-256 |
+| --- | --- |
+| `matrix-sol-18-cell-block-independent-review-20261106.json` | `0cd8ada62b0e00c7cf068ff591acb0652504c59cfa8f09ddb26fd0e12d074d12` |
+| `matrix-sol-hybrid-input-audit-aggregate-20261106.json` | `1adaab1a59214700f03fe764fc174678bd80a526df42765584492966124c1400` |
+| `matrix-live-cleanup-20261106T222621845413Z.json` | `914037279a5770a4f41df3986c71c021db0d83d8f0288ffd708279f72e11bba4` |
+| `focus-matrix-sol-eighteen-cell-dashboard-http-20261106T222654Z.json` | `d287b75d5ab31353f5d48ce6590dca65a4878324892603b262b1dac48c77031d` |
+
+The final actual HTTP audit matched every Sol row, per-task/mode counts and the
+last repair trial's native failure, eligibility and exact replay PNG/HUD data.
+Rendered-page verification still awaits enabled local browser control.
+
+Next is the Sol/image sector-one pilot in `fullgame-focus-5155dab-20261106`,
+then both Sol full games. Read-only preflight matched its frozen sources and
+evidence, Codex CLI and six installed runtime files; protected child admission
+runs again before model calls. All five full-game cohort cells are still planned
+at this checkpoint. After both Sol full-game attempts, run Luna's eighteen
+challenge cells and both Luna full games. Only audited native victory or defeat
+in a full-game cell counts toward the four required endings; pilots, challenge
+results and budget stops remain separate.
+
 ## Sol hybrid combat and input audit (2026-11-06, 22:00 UTC)
 
 The first three hybrid cells completed in `matrix-focus-5155dab-20261106`.
