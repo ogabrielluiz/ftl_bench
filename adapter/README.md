@@ -16,28 +16,43 @@ From a checkout, prefix these with `uv run --directory harness`. Runs require th
 
 ## Visual runs
 
-`run_visual.py` is the production visual entry point behind `ftlbench visual`. Close FTL first and use an authenticated Codex CLI plus the visual DLL/provenance implementing clock 2 and `fresh-start-seed-v3`.
+`run_visual.py` handles `ftlbench visual`. Close FTL first and install the visual
+DLL/provenance implementing clock 2 and `fresh-start-seed-v3`. The default
+`codex` backend uses the authenticated Codex CLI.
 
 ```powershell
 ftlbench visual --model gpt-6.1-sol --mode image --seed 1 --reasoning-effort medium --max-decisions 300 --max-wall-seconds 14400 --output runs/visual/sol-image-001
 ftlbench visual --model gpt-6-luna --mode hybrid --seed 1 --reasoning-effort medium --max-decisions 300 --max-wall-seconds 14400 --output runs/visual/luna-hybrid-001
 ```
 
-Visual startup requires v3 by default and sends its explicit native setup packet automatically. `FullGameSetupSession` permits one fresh request and an empty zero-frame capture, with no fixture mutation or structured gameplay before the actor. `run_loop` records the canonical first image before validating admission; the actor then sees that same image with opening intro choices intact. The hidden receipt and packet proofs never enter actor input. The structured runner and its `AgentSession` contract remain unchanged.
+Visual startup requires v3 by default and sends its explicit native setup packet automatically. `FullGameSetupSession` permits one fresh request and an empty zero-frame capture before the actor. `run_loop` records the canonical first image before validating admission. The actor sees that image with opening intro choices intact, and the evaluator retains the hidden receipt and packet proofs.
 
 Admission refusal stops before model calls and retains setup observations, available admission/image evidence and terminal cause. The existing protected lifecycle restores saves and the external bridge and records any cleanup failure. Measured no-model setup/progression checks do not establish a completed full game, a model ranking or general full-game reproducibility. See `docs/visual-iteration.md` for the complete visual procedure and comparison scope.
 
-## Model backends
+`--backend jev` and `--backend openai-decisions` select the typed visual
+contract. The actor chooses one primitive or wait, narrows pointer targets on
+the archived screenshot and selects a frame advance. Each stage has a saved
+request and response audit. The `visual-decide` command exercises that path on
+an explicit PNG without a game. These are standalone diagnostics. See the
+[typed backend guide](../docs/typed-decision-backends.md) for options and
+credential setup.
+
+## Structured model backends
 
 | Backend | Contract | Authentication |
 |---|---|---|
 | `anthropic` | Messages action text | `ANTHROPIC_API_KEY` |
 | `openai` | Public Responses strict JSON action plan | `OPENAI_API_KEY` |
+| `openai-decisions` | `openai-decisions-actuator-choice-v1` with `gpt-6-luna` | `OPENAI_API_KEY` |
 | `jev` | `jev-actuator-choice-v1` typed actuator choices | `TYPESAFE_API_KEY` or `JEV_API_KEY` |
 | `claude-cli` | Local completion text | Authenticated `claude` |
 | `codex` | Local completion text | Authenticated `codex`; optional `CODEX_BIN` |
 
-`--env-file` loads only the selected literal KEY=value file. Jev chooses observed actuator settings independently, with 255 options per question and 12 commands per plan. Bridge rejection remains visible; oversized/invalid provider plans fail instead of being truncated. Its manifest and per-turn telemetry identify the constrained action-selection contract. OpenAI Decisions preview is not implemented; the public Responses backend is a separate integration.
+`--env-file` loads only the selected literal `KEY=value` file. The typed
+backends choose observed actuator settings independently, with at most 255
+options per question and 12 commands per plan. Bridge rejection remains
+visible. Oversized or invalid plans fail, and manifests and per-turn telemetry
+identify the action-selection contract.
 
 Custom completion functions may return text or `model_backend.Completion(text, metadata)`. Metadata records provider usage, request identity, latency, retries and decision contract without credentials. Model errors finalize the attempt as an error while retaining its last valid game state.
 

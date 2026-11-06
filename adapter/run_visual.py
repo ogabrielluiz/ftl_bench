@@ -1,4 +1,4 @@
-"""Run the separately versioned visual benchmark with Codex CLI and protected saves."""
+"""Run visual actors with protected saves; frozen comparisons retain Codex CLI."""
 from __future__ import annotations
 
 import argparse
@@ -219,9 +219,15 @@ def run_loop(transport: VisualSession, agent: CodexVisualAgent, recorder: Trajec
                     raise RuntimeError("Visible HUD reader image differs from the archived decision image")
             observation = VisualObservation(frame.image_path, frame.reference["frame_id"], mode=mode,
                                             visible_hud=hud,
-                                            history=history[-8:], memory=memory)
+                                            history=history[-8:], memory=memory,
+                                            expected_image_sha256=frame.reference["sha256"])
             try:
                 decision = agent.decide(observation)
+            except (CooperativeStop, KeyboardInterrupt) as error:
+                if getattr(error, "metadata", {}).get("api_audit_version") == 1:
+                    recorder.record("model_cancelled", [], frame.observation, model=error.metadata,
+                                    visual=visual_record(mode, frame, None, [], 0, hud=hud, hud_provenance=hud_provenance))
+                raise
             except (VisualProtocolError, VisualBackendError) as error:
                 recorder.record("model_error", [], frame.observation, model=error.metadata,
                                 visual=visual_record(mode, frame, None, [], 0, hud=hud, hud_provenance=hud_provenance))
@@ -232,6 +238,13 @@ def run_loop(transport: VisualSession, agent: CodexVisualAgent, recorder: Trajec
                                 thought=decision.intent, visual=visual_record(mode, frame, None, [], 0,
                                     hud=hud, hud_provenance=hud_provenance))
                 stop_control.check("after_actor_before_dispatch")
+            if decision.metadata.get("api_audit_version") == 1 and time.monotonic() - start >= max_wall_seconds:
+                recorder.record("model_cancelled", [], frame.observation, model=decision.metadata,
+                                thought=decision.intent,
+                                visual={**visual_record(mode, frame, None, [], 0, hud=hud, hud_provenance=hud_provenance),
+                                        "cancellation_reason": "wall_clock_budget"})
+                reason = "wall_clock_budget"
+                break
             after, interference = None, None
             try:
                 after = transport.step(frame, decision.actions, decision.advance_frames)
@@ -319,9 +332,10 @@ def run_loop(transport: VisualSession, agent: CodexVisualAgent, recorder: Trajec
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model", default="gpt-6.1-sol")
+    parser.add_argument("--backend", choices=("codex", "openai-decisions", "jev"), default="codex")
+    parser.add_argument("--model", help="Defaults: codex gpt-6.1-sol; decisions gpt-6-luna; jev jev-1.14.0")
     parser.add_argument("--mode", choices=("image", "hybrid"), default="image")
-    parser.add_argument("--reasoning-effort", default="medium")
+    parser.add_argument("--reasoning-effort", help="Codex only; default medium")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--stop-after-sector", type=int,
                         help="Stop when native map.sector reaches this positive target; separate from a full-game trial")
@@ -335,6 +349,16 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--stop-file", type=Path)
     parser.add_argument("--stop-scope")
     args = parser.parse_args(argv)
+    if args.backend != "codex" and args.experiment_file is not None:
+        parser.error("Typed API actors require a separate comparison protocol; --experiment-file is Codex-only")
+    if args.backend != "codex" and args.reasoning_effort is not None:
+        parser.error("--reasoning-effort is unsupported by typed decision APIs")
+    if args.backend == "codex":
+        args.model = args.model or "gpt-6.1-sol"
+        args.reasoning_effort = args.reasoning_effort or "medium"
+    else:
+        from visual_choice_agent import DEFAULT_MODELS
+        args.model = args.model or DEFAULT_MODELS[args.backend]
     if args.stop_scope is not None and args.stop_file is None:
         parser.error("--stop-scope requires --stop-file")
     control = StopControl(args.stop_file, args.stop_scope)
@@ -346,10 +370,16 @@ def main(argv: list[str] | None = None) -> None:
     if args.stop_after_sector is not None and args.stop_after_sector < 1:
         parser.error("--stop-after-sector must be positive")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8]
-    client = codex_runtime_identity()
+    client = codex_runtime_identity() if args.backend == "codex" else None
     directory = (args.output or ROOT / "harness/runs/visual" / stamp).resolve()
+    if args.backend == "codex":
+        agent = CodexVisualAgent(model=args.model, reasoning_effort=args.reasoning_effort, codex_bin=client["path"])
+    else:
+        from visual_choice_agent import TypedVisualAgent
+        agent = TypedVisualAgent(args.backend, args.model, audit_root=directory / "api-decisions",
+                                 stop_check=lambda: control.check("between_api_stages"))
+        agent.require_credentials()
     directory.mkdir(parents=True, exist_ok=False)
-    agent = CodexVisualAgent(model=args.model, reasoning_effort=args.reasoning_effort, codex_bin=client["path"])
     actor_identity = agent.instruction_identity()
     bridge = ROOT / "mod/ftl_bench_bridge/dev/ftl_bench_dev.lua"
     protected = ProtectedGame(ftl_user_folder(), directory / "save-backup", bridge)
@@ -358,9 +388,9 @@ def main(argv: list[str] | None = None) -> None:
                         goal=[SubObjective("sector", args.stop_after_sector)] if args.stop_after_sector else
                              [SubObjective("victory", 1, kind="boolean")], budget_jumps=40)
     meta = {"track": TRACK, "observation_mode": args.mode, "model": args.model,
-            "agent": f"codex-{args.model}-{TRACK}", "run_id": directory.name,
+            "agent": f"{args.backend}-{args.model}-{TRACK}", "run_id": directory.name,
             "scenario_id": scenario.id, "scenario": scenario.to_dict(),
-            "provider": "codex", "reasoning_effort": args.reasoning_effort,
+            "provider": args.backend, "reasoning_effort": args.reasoning_effort,
             "codex_cli": client,
             "seed": args.seed, "classification": "diagnostic_only",
             "valid_for_model_comparison": False, "started_at": datetime.now(timezone.utc).isoformat(),
@@ -371,6 +401,10 @@ def main(argv: list[str] | None = None) -> None:
             "trial_scope": "sector_progress" if args.stop_after_sector else "full_game",
             "stop_after_sector": args.stop_after_sector,
             "startup_contract": "fresh-start-seed-v3", "fixture_free_startup": True}
+    if args.backend != "codex":
+        meta.pop("codex_cli", None)
+        meta["decision_contract"] = actor_identity["decision_contract"]
+        meta["api_audit_version"] = 1
     meta["external_input_guard_required"] = True
     meta.update(visual_clock_version=VISUAL_CLOCK_VERSION,
                 fixed_step_numerator=FIXED_STEP_NUMERATOR, fixed_step_denominator=FIXED_STEP_DENOMINATOR)
@@ -392,7 +426,8 @@ def main(argv: list[str] | None = None) -> None:
             protected.launch()
             control.check("after_game_launch")
             fingerprint = runtime_fingerprint(ROOT)
-            fingerprint["codex_cli"] = client
+            if client is not None:
+                fingerprint["codex_cli"] = client
             (directory / "runtime-fingerprint.json").write_text(json.dumps(fingerprint, indent=2), encoding="utf-8")
             if args.experiment_file is not None:
                 sys.path.insert(0, str(ROOT / "scripts"))

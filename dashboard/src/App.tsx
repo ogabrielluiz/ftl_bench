@@ -479,6 +479,7 @@ function SystemStrip({ systems }: { systems?: SystemStatus[] }) {
 
 function TopPanel({ data, lastUpdated }: { data: DashboardState; lastUpdated: Date | null }) {
   const header = data.header;
+  const typedUsage = header.model_usage?.typed_visual_api;
   const hullMax = header.hull_max || 30;
   const enemy = parsePair(header.enemy);
   const score = data.selected_score?.score ?? header.ftl_score;
@@ -529,6 +530,15 @@ function TopPanel({ data, lastUpdated }: { data: DashboardState; lastUpdated: Da
         {" · "}{display(header.model_usage.input_tokens)} input / {display(header.model_usage.output_tokens)} output tokens
         {header.model_usage.latency_seconds_mean !== null ? ` · ${header.model_usage.latency_seconds_mean.toFixed(2)}s average` : ""}
         <br />Usage covers recorded completions; failed request usage and cost may be unavailable.
+      </p> : null}
+      {typedUsage ? <p className="muted">
+        Typed visual API · {typedUsage.completed_decisions}/{typedUsage.decisions} decisions completed
+        {" · "}{typedUsage.http_requests.headers_received}/{typedUsage.http_requests.attempted} received HTTP headers
+        {" · "}{typedUsage.http_requests.completed} complete response bodies
+        {" · "}{typedUsage.http_requests.validated} valid stage responses
+        {typedUsage.http_requests.preflight_errors ? ` · ${typedUsage.http_requests.preflight_errors} preflight errors` : ""}
+        <br />{display(typedUsage.usage.complete_totals.input_tokens, "unavailable")} input / {display(typedUsage.usage.complete_totals.output_tokens, "unavailable")} output tokens
+        {" · "}Input usage reported for {typedUsage.usage.reported_calls.input_tokens}/{typedUsage.http_requests.attempted} stages.
       </p> : null}
 
       <div className="metric-grid">

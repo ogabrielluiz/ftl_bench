@@ -41,8 +41,11 @@ def main():
         parser.error("build a wheel first or provide --wheel")
     wheel = (args.wheel or candidates[-1]).resolve()
     required = ["README.md", "adapter/README.md", "adapter/run_benchmark.py", "adapter/decision_backends.py",
+                "adapter/openai_decisions_backend.py", "adapter/visual_choice_agent.py",
+                "adapter/visual_decision_api.py", "adapter/visual_decision_audit.py", "adapter/visual_decision_probe.py",
                 "adapter/visual_agent.py", "adapter/run_visual.py", "adapter/visible_hud.py",
                 "adapter/visual_reporting.py", "prompts/ftl_visual_v1.md", "prompts/ftl_visual_v2.md",
+                "prompts/ftl_visual_choices_v1.md",
                 "mod/ftl_bench_bridge/dev/ftl_bench_dev.lua", "prompts/ftl_agent_v5.md",
                 "native/manifest.json", "native/patches/0002-economy-fuel-controls.patch",
                 "native/patches/0003-visual-io.patch", "native/include/Benchmark_FreshStartSeed.inc",
@@ -72,7 +75,8 @@ def main():
     python = environment / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     subprocess.run(["uv", "pip", "install", "--python", str(python), str(wheel) + "[dashboard]"],
                    cwd=temporary, check=True, env=child_environment)
-    for arguments in (["version"], ["run", "--help"], ["visual", "--help"], ["install-native", "--help"], ["report", "--help"]):
+    for arguments in (["version"], ["run", "--help"], ["visual", "--help"], ["visual-decide", "--help"],
+                      ["install-native", "--help"], ["report", "--help"]):
         result = subprocess.run([str(python), "-m", "ftl_bench.cli", *arguments],
                                 cwd=temporary, check=True, capture_output=True, text=True, env=child_environment)
         print(result.stdout.splitlines()[0])
@@ -117,12 +121,19 @@ assert 'visual_clock_version' in patch and 'world_updates' in patch
 assert 'visual_clock_version' in lua and 'world_updates' in lua
 sys.path.insert(0, str(root/'adapter'))
 from visual_agent import CodexVisualAgent, VisualObservation, decision_schema
+from openai_decisions_backend import OPENAI_DECISIONS_MODEL, openai_decisions_complete
+from visual_choice_agent import DEFAULT_MODELS, TypedVisualAgent
+from visual_decision_api import request_choice
+from visual_decision_audit import audit_decision
+from visual_decision_probe import main as visual_decide
 from ftl_bench.visual_session import VisualSession, VisualTransportError, validate_visual_clock
 from ftl_bench.observation import Observation
 from ftl_bench.protected_game import ProtectedGame
 from ftl_bench.fullgame_setup import FullGameSetupSession
 from ftl_bench.challenge_setup import DeterministicSetupSession
 assert CodexVisualAgent().model == 'gpt-6.1-sol'
+assert DEFAULT_MODELS == {'jev': 'jev-1.14.0', 'openai-decisions': OPENAI_DECISIONS_MODEL}
+assert OPENAI_DECISIONS_MODEL == 'gpt-6-luna'
 assert decision_schema(1280, 720)['properties']['actions']['maxItems'] == 4
 assert (root/'prompts/ftl_visual_v1.md').is_file()
 clock = Observation.from_dict({'schema_version': 3, 'tick': 0, 'seed': 1, 'game_started': True, 'paused': True,

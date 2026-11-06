@@ -17,6 +17,8 @@ import statistics
 import struct
 import zlib
 
+from ftl_bench.reporting import is_typed_visual_run, is_typed_visual_trace, summarize_typed_visual_calls
+
 
 def canonical_sha256(value) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
@@ -48,6 +50,19 @@ def outcome_category(reason: str | None, status: str | None = None) -> str:
 def summarize_model_calls(records: list[dict]) -> dict:
     """Preserve usage coverage: an absent provider count is never a zero count."""
     calls = [r["model"] for r in records if isinstance(r.get("model"), dict) and r["model"]]
+    typed = [call for call in calls if is_typed_visual_trace(call)]
+    typed_run = any(is_typed_visual_run(r["meta"]) for r in records
+                    if r.get("kind") == "meta" and isinstance(r.get("meta"), dict))
+    if typed or typed_run:
+        summary = summarize_typed_visual_calls(typed)
+        codex = [call for call in calls if not is_typed_visual_trace(call)]
+        if codex:
+            summary["codex"] = _summarize_codex_calls(codex)
+        return summary
+    return _summarize_codex_calls(calls)
+
+
+def _summarize_codex_calls(calls: list[dict]) -> dict:
     keys = {k for call in calls for k in _object(call.get("usage")) if isinstance(k, str)}
     keys.update(("input_tokens", "cached_input_tokens", "output_tokens"))
     counts, totals = {}, {}
@@ -552,6 +567,11 @@ def aggregate_visual_runs(directories, protocol: dict | None = None, *, admissio
         problems = list(child_issues) if child_audit_recorded else []
         try:
             manifest, report = _read(directory / "run.json"), _read(directory / "visual-report.json")
+            if is_typed_visual_run(manifest) or "http_requests" in audit["model_calls"]:
+                trials.append({"directory": str(directory), "eligible": False,
+                               "exclusions": ["typed_visual_api_diagnostic_only"], "audit": audit,
+                               "model_calls": audit["model_calls"]})
+                continue
             experiment = report.get("experiment") or manifest.get("experiment") or {}
             validated_success = False
             identity = {key: experiment.get(key) for key in ("protocol", "scenario", "seed", "task_version", "task_sha256",

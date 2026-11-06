@@ -455,7 +455,7 @@ Only Kestrel A/easy is selected and verified automatically. Full-run solve requi
 
 Native nullable economy costs/reactor may be omitted by the Lua codec. Missing cost means unknown/unavailable, never free. `can_upgrade` and recovery legality remain authoritative. `waitfuel` requests a normal recovery turn, with encounter/fleet consequences; frame waits do not substitute for it or guarantee fuel.
 
-Pre-v7 rows are noncomparable. Report all control/economy/routing/beacon/hostility contracts plus suite, tier, mode, prompt, native artifacts, backend/decision contract and retries. Jev remains `jev-actuator-choice-v1`; OpenAI Decisions preview remains unsupported without its schema.
+Pre-v7 rows are noncomparable. Report all control/economy/routing/beacon/hostility contracts plus suite, tier, mode, prompt, native artifacts, backend/decision contract and retries. At this checkpoint, Jev used `jev-actuator-choice-v1` and OpenAI Decisions preview was unsupported without its schema. The later [typed API implementation](typed-decision-backends.md) does not change these historical rows.
 
 Next work is fresh public baseline/model rows and then held-out comparisons. Optional sector-choice, flagship surge, breach and special-system coverage needs representative traces. macOS needs an equivalent native build and live validation. No retained full-game win or held-out reference rows are established here.
 

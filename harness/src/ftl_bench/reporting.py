@@ -9,6 +9,7 @@ import json
 import math
 import re
 from pathlib import Path
+from statistics import median
 from typing import Any
 
 from .aggregate import aggregate
@@ -16,6 +17,7 @@ from .scenario import Scenario, load_suite
 from .scoring import score_instance
 
 FINAL_STATUSES = {"completed", "error", "interrupted"}
+TYPED_VISUAL_CONTRACT = "ftl-visual-typed-choice-v1"
 
 
 def run_validation(manifest: dict, sidecar: dict | None = None) -> dict:
@@ -54,9 +56,88 @@ def _number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0
 
 
+def is_typed_visual_trace(trace: dict) -> bool:
+    return trace.get("decision_contract") == TYPED_VISUAL_CONTRACT
+
+
+def is_typed_visual_run(record: dict) -> bool:
+    return is_typed_visual_trace(record) or (
+        record.get("track") == "visual-v1" and record.get("provider") in ("jev", "openai-decisions"))
+
+
+def _api_stage_tokens(stage: dict) -> dict[str, int]:
+    usage = stage.get("usage")
+    if not isinstance(usage, dict):
+        return {}
+    tokens = {key: value for key, value in usage.items()
+              if isinstance(key, str) and key.endswith("_tokens") and type(value) is int and value >= 0}
+    for key, section, field in (
+        ("cached_input_tokens", "input_tokens_details", "cached_tokens"),
+        ("cache_write_tokens", "input_tokens_details", "cache_write_tokens"),
+        ("reasoning_tokens", "output_tokens_details", "reasoning_tokens"),
+    ):
+        details = usage.get(section)
+        value = details.get(field) if isinstance(details, dict) else None
+        if type(value) is int and value >= 0:
+            tokens.setdefault(key, value)
+    return tokens
+
+
+def _api_latency_summary(entries: list[dict]) -> dict:
+    latencies = [entry["latency_seconds"] for entry in entries if _number(entry.get("latency_seconds"))]
+    observed = round(sum(latencies), 3) if latencies else None
+    return {"reported_calls": len(latencies), "observed_total": observed,
+            "total": observed if len(latencies) == len(entries) else None,
+            "median": median(latencies) if latencies else None}
+
+
+def summarize_typed_visual_calls(traces: list[dict]) -> dict:
+    """Summarize each recorded HTTP stage once, including stages in rejected decisions."""
+    recorded = [stage for trace in traces if isinstance(trace.get("api_calls"), list)
+                for stage in trace["api_calls"] if isinstance(stage, dict)]
+    stages = [stage for stage in recorded if type(stage.get("attempts")) is int and stage["attempts"] == 1]
+    responses = [stage for stage in stages if stage.get("response_received") is True]
+    complete_bodies = sum(stage.get("response_partial") is not True and stage.get("response_truncated") is not True
+                          and stage.get("error_code") != "response_length_mismatch" for stage in responses)
+    usage_by_stage = [_api_stage_tokens(stage) for stage in stages]
+    keys = {"input_tokens", "cached_input_tokens", "output_tokens", "reasoning_tokens"}
+    keys.update(key for usage in usage_by_stage for key in usage)
+    counts, totals = {}, {}
+    for key in sorted(keys):
+        values = [usage[key] for usage in usage_by_stage if key in usage]
+        counts[key] = len(values)
+        totals[key] = sum(values) if values else None
+    reported_models = [stage["model"] for stage in stages if isinstance(stage.get("model"), str) and stage["model"]]
+    return {"calls": len(stages), "decisions": len(traces),
+            "completed_decisions": sum(trace.get("decision_complete") is True for trace in traces),
+            "http_requests": {"attempted": len(stages),
+                              "headers_received": len(responses), "completed": complete_bodies,
+                              "validated": sum(stage.get("status") == "completed" for stage in stages),
+                              "error": sum(stage.get("status") == "error" for stage in stages),
+                              "invalid_response": sum(stage.get("status") == "invalid_response" for stage in stages),
+                              "preflight_errors": sum(type(stage.get("attempts")) is int and stage["attempts"] == 0
+                                                      for stage in recorded)},
+            "usage": {"source": "typed_visual_api_stage_usage", "observed_totals": totals,
+                      "reported_calls": counts,
+                      "complete_totals": {key: value if counts[key] == len(stages) else None
+                                          for key, value in totals.items()},
+                      "scope": "reported usage across recorded HTTP stages; missing stage usage leaves totals unavailable"},
+            "latency_seconds": _api_latency_summary(stages),
+            "decision_latency_seconds": _api_latency_summary(traces),
+            "requested_models": sorted({trace["requested_model"] for trace in traces
+                                        if isinstance(trace.get("requested_model"), str)}),
+            "response_model_identity": {"reported_models": sorted(set(reported_models)),
+                                        "reported_calls": len(reported_models),
+                                        "status": "reported" if reported_models else "not_reported"}}
+
+
 def summarize_model_usage(records: list[dict]) -> dict:
     """Sum recorded completions without inventing token prices or failed-call usage."""
     traces = [record["model"] for record in records if isinstance(record.get("model"), dict)]
+    typed = [trace for trace in traces if is_typed_visual_trace(trace)]
+    traces = [trace for trace in traces if not is_typed_visual_trace(trace)]
+    typed_run = any(is_typed_visual_run(record["meta"]) for record in records
+                    if record.get("kind") == "meta" and isinstance(record.get("meta"), dict))
     tokens = {"input_tokens": 0, "output_tokens": 0}
     known = {key: 0 for key in tokens}
     costs: list[float] = []
@@ -93,6 +174,7 @@ def summarize_model_usage(records: list[dict]) -> dict:
         "completions_with_latency": len(latencies),
         "requests": requests,
         "scope": "Recorded completions only; usage and cost of failed or unrecorded requests are unknown.",
+        **({"typed_visual_api": summarize_typed_visual_calls(typed)} if typed or typed_run else {}),
     }
 
 
@@ -285,9 +367,19 @@ def render_run_report(report: dict, *, as_json: bool = False) -> str:
              f"{'Complete' if coverage['complete'] else 'Partial/provisional'} finalized-file coverage; coverage does not certify model comparability.",
              f"Model-comparison instances: {report['comparison']['instances']}; excluded diagnostic instances: {report['comparison']['excluded_instances']}.",
              "Model-comparison aggregate: " + metrics["headline"],
-             f"Failed selected comparison attempts: {metrics['failed']}; interrupted: {metrics['interrupted']}; all recorded attempt failures: {report['recorded_aggregate']['attempt_failures']}.",
-             f"Recorded model completions: {usage['recorded_completions']}; input tokens: {usage['input_tokens']}; output tokens: {usage['output_tokens']}; recorded cost USD: {usage['recorded_cost_usd']}.",
-             usage["scope"]]
+             f"Failed selected comparison attempts: {metrics['failed']}; interrupted: {metrics['interrupted']}; all recorded attempt failures: {report['recorded_aggregate']['attempt_failures']}."]
+    typed = usage.get("typed_visual_api")
+    if not typed or usage["recorded_completions"]:
+        lines.extend([f"Recorded model completions: {usage['recorded_completions']}; input tokens: {usage['input_tokens']}; output tokens: {usage['output_tokens']}; recorded cost USD: {usage['recorded_cost_usd']}.",
+                      usage["scope"]])
+    if typed:
+        requests = typed["http_requests"]
+        totals = {key: value if value is not None else "unavailable"
+                  for key, value in typed["usage"]["complete_totals"].items()}
+        lines.extend([f"Typed visual API completed {typed['completed_decisions']}/{typed['decisions']} decisions. "
+                      f"Of {requests['attempted']} HTTP attempts, {requests['headers_received']} received headers, "
+                      f"{requests['completed']} received complete bodies, and {requests['validated']} returned valid answers.",
+                      f"Token totals across attempted stages · {totals['input_tokens']} input / {totals['output_tokens']} output."])
     if not report["validation"]["comparison_eligible"]:
         recorded = report["recorded_aggregate"]
         lines.extend(["DIAGNOSTIC ONLY: recorded outcomes do not enter model-comparison aggregates.",

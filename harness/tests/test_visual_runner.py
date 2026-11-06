@@ -162,7 +162,8 @@ def test_actor_boundary_and_replay_text_match_without_native_state(tmp_path, mod
     assert report["valid_for_model_comparison"] is False
     assert len(agent.seen) == 2
     for observed in agent.seen:
-        assert set(vars(observed)) == {"image_path", "frame_id", "mode", "visible_hud", "history", "memory"}
+        assert set(vars(observed)) == {"image_path", "frame_id", "mode", "visible_hud", "history", "memory", "expected_image_sha256"}
+        assert observed.expected_image_sha256 == hashlib.sha256(observed.image_path.read_bytes()).hexdigest()
         serialized = json.dumps(asdict(observed), default=str)
         assert "native-secret" not in serialized and "enemy-secret" not in serialized
         assert "999" not in serialized and "418" not in serialized
@@ -228,6 +229,42 @@ def test_model_error_preserves_seen_frame_without_dispatch(tmp_path, monkeypatch
     assert report["metrics"]["final_hull"] == 30 and report["metrics"]["ftl_score"] == 418
     monkeypatch.setattr(live, "BENCH", tmp_path)
     assert live.replay_snapshot("trajectory")["item"]["record_kind"] == "model_error"
+
+
+def test_typed_decision_after_wall_budget_retains_evidence_without_dispatch(tmp_path, monkeypatch):
+    initial = frame(tmp_path)
+    transport = Transport([initial])
+    recorder = TrajectoryRecorder(tmp_path / "trajectory.jsonl")
+    now = 0.0
+    monkeypatch.setattr(runner, "time", SimpleNamespace(monotonic=lambda: now))
+    agent = Agent()
+    decide = agent.decide
+    api_call = {"stage": "advance", "attempts": 1, "response_received": True,
+                "status": "completed", "usage": {"input_tokens": 17}}
+
+    def late_decision(observation):
+        nonlocal now
+        decision = decide(observation)
+        decision.metadata.update(api_audit_version=1, decision_contract="ftl-visual-typed-choice-v1",
+                                 decision_complete=True, api_calls=[api_call])
+        now = 2.0
+        return decision
+
+    monkeypatch.setattr(agent, "decide", late_decision)
+    report = runner.run_loop(transport, agent, recorder, max_decisions=1, max_wall_seconds=1)
+    assert len(agent.seen) == 1 and transport.calls == []
+    rows = load_trajectory(recorder.path)
+    assert [row["kind"] for row in rows] == ["meta", "reset", "model_cancelled", "end"]
+    cancelled = rows[-2]
+    assert cancelled["actions"] == cancelled["visual"]["inputs"] == []
+    assert cancelled["visual"]["before"] == initial.reference and cancelled["visual"]["after"] is None
+    assert cancelled["visual"]["advance"]["requested_frames"] == 0
+    assert cancelled["visual"]["cancellation_reason"] == "wall_clock_budget"
+    assert cancelled["model"]["api_calls"] == [api_call]
+    assert rows[-1]["reason"] == report["reason"] == "wall_clock_budget"
+    assert report["decisions"] == 0
+    assert report["model_calls"]["http_requests"]["attempted"] == 1
+    assert report["model_calls"]["usage"]["complete_totals"]["input_tokens"] == 17
 
 
 def test_visual_event_dismissal_does_not_report_zero_or_infer_event_count_from_primitive(tmp_path):
@@ -500,6 +537,48 @@ def test_cli_saves_are_protected_before_launch_and_restored_before_success_manif
     snapshot = live.build("run/trajectory")
     assert snapshot["selected_score"]["score"] == 418
     assert snapshot["agg"]["mean"] is None and snapshot["agg"]["comparison_excluded"] == 1
+
+
+@pytest.mark.parametrize("backend", ["jev", "openai-decisions"])
+def test_typed_api_uses_real_actor_without_codex_and_preserves_saves(tmp_path, protected_cli, monkeypatch, backend):
+    from test_visual_agent import png
+    from test_visual_decision_probe import provider
+    from visual_decision_audit import audit_decision
+    save, original, events, _, _ = protected_cli
+    sent = provider(monkeypatch, backend, control="key:f:shift")
+    monkeypatch.setattr(runner, "codex_runtime_identity", lambda: pytest.fail("API must not resolve Codex"))
+    transports = []
+    def transport(session, directory):
+        frames = [frame(directory), frame(directory, 1, victory=True)]
+        for current in frames:
+            current.image_path.write_bytes(png())
+            current.reference["sha256"] = hashlib.sha256(current.image_path.read_bytes()).hexdigest()
+        value = Transport(frames)
+        transports.append(value)
+        return value
+    monkeypatch.setattr(runner, "VisualSession", transport)
+    directory = tmp_path / "api-run"
+    runner.main(["--backend", backend, "--output", str(directory), "--max-decisions", "1"])
+    manifest = json.loads((directory / "run.json").read_text())
+    assert manifest["provider"] == backend and "codex_cli" not in manifest
+    assert manifest["decision_contract"] == "ftl-visual-typed-choice-v1"
+    assert manifest["valid_for_model_comparison"] is False and manifest["save_restoration"] == "verified"
+    assert (save / "continue.sav").read_bytes() == original
+    assert not (save / "generated.sav").exists()
+    assert events[-2:] == ["stop", "restore"] and len(sent) == 2
+    rows = load_trajectory(directory / "trajectory.jsonl")
+    steps = [row for row in rows if row.get("kind") == "step"]
+    assert len(steps) == 1 and steps[0]["model"]["decision_complete"] is True
+    assert audit_decision(directory / steps[0]["model"]["artifact"])["valid"] is True
+
+
+@pytest.mark.parametrize("extra", [["--experiment-file", "cohort.json"], ["--reasoning-effort", "medium"]])
+def test_api_rejects_incompatible_cli_contract_before_launch(tmp_path, monkeypatch, extra):
+    monkeypatch.setattr(runner, "codex_runtime_identity", lambda: pytest.fail("Must fail before resolving CLI"))
+    output = tmp_path / "run"
+    with pytest.raises(SystemExit):
+        runner.main(["--backend", "jev", "--output", str(output), *extra])
+    assert not output.exists()
 
 
 @pytest.mark.parametrize("failure", ["launch", "provenance"])

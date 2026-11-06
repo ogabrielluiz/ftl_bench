@@ -535,8 +535,10 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
     burning the whole budget. A high hard cap still bounds pathological runs.
 
     The session is already reset to the scenario seed by run_instance; we just play."""
-    if backend not in {"anthropic", "claude-cli", "codex", "openai", "jev"}:
+    if backend not in {"anthropic", "claude-cli", "codex", "openai", "openai-decisions", "jev"}:
         raise ValueError(f"unknown model backend: {backend}")
+    if backend == "openai-decisions" and model not in (None, "gpt-6-luna"):
+        raise ValueError("OpenAI Decisions currently supports only gpt-6-luna")
     if step_mult < 1 or stall_limit < 0:
         raise ValueError("step_mult must be positive and stall_limit must be nonnegative")
     if model is None:
@@ -550,6 +552,8 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
             model = os.environ.get("OPENAI_MODEL", "gpt-6.1-sol")
         elif backend == "jev":
             model = "jev-1.13.0"
+        elif backend == "openai-decisions":
+            model = "gpt-6-luna"
     manual = load_prompt(prompt_version)  # load once; fail fast if the version is missing
 
     def complete(system: str, user: str) -> str:
@@ -563,6 +567,9 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
         if backend == "jev":
             from decision_backends import jev_complete
             return jev_complete(system, user, model)
+        if backend == "openai-decisions":
+            from openai_decisions_backend import openai_decisions_complete
+            return openai_decisions_complete(system, user, model)
         return anthropic_complete(system, user, model)
 
     def agent_fn(sess, scenario, log, attempts=()) -> dict:
@@ -570,7 +577,7 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
         # carry the lessons into this try's system prompt (Reflexion). First try: attempts is empty.
         # Structured backends answer plans/choices, not free-text lessons. Carry the
         # recorded same-seed history directly instead of requesting a mismatched response.
-        reflection = ("\n\n".join(attempt.digest() for attempt in attempts) if backend in {"jev", "openai"}
+        reflection = ("\n\n".join(attempt.digest() for attempt in attempts) if backend in {"jev", "openai", "openai-decisions"}
                       else reflect(attempts, complete)) if attempts else ""
         if reflection:
             log(f"    [llm] reflection after {len(attempts)} prior attempt(s) at this seed "
@@ -771,12 +778,12 @@ def make_llm_agent(model: str | None = None, backend: str = "anthropic", step_mu
 
     agent_fn.metadata = {"model": model or "default", "backend": backend,
                          "prompt_version": prompt_version,
-                         "retry_context": "recorded_digest" if backend in {"jev", "openai"} else "reflection",
+                         "retry_context": "recorded_digest" if backend in {"jev", "openai", "openai-decisions"} else "reflection",
                          "reasoning_effort": os.environ.get("CODEX_REASONING_EFFORT")
                          if backend == "codex" else None}
-    if backend == "jev":
+    if backend in {"jev", "openai-decisions"}:
         agent_fn.metadata.update(action_selection="enumerated",
-                                 decision_contract="jev-actuator-choice-v1")
+                                 decision_contract="jev-actuator-choice-v1" if backend == "jev" else "openai-decisions-actuator-choice-v1")
     elif backend == "openai":
         agent_fn.metadata.update(action_selection="structured_plan",
                                  reasoning_effort=os.environ.get("OPENAI_REASONING_EFFORT"))

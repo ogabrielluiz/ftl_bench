@@ -31,8 +31,8 @@ def inspect_installation(*, user_folder=None, game_dir=None, backend=None,
         for filename in ("FTLGame.exe", "Hyperspace.dll", "xinput1_4.dll", "lua-5.3.dll"):
             check(filename, (game / filename).is_file(), game / filename)
 
-    if backend in {"anthropic", "openai", "jev"}:
-        name = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY", "jev": "TYPESAFE_API_KEY"}[backend]
+    if backend in {"anthropic", "openai", "openai-decisions", "jev"}:
+        name = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY", "openai-decisions": "OPENAI_API_KEY", "jev": "TYPESAFE_API_KEY"}[backend]
         if backend == "jev" and not os.environ.get(name) and os.environ.get("JEV_API_KEY"):
             name = "JEV_API_KEY"
         key = (os.environ.get(name) or "").strip().strip('"').strip("'")

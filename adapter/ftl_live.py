@@ -304,7 +304,8 @@ def visual_view(record: dict, path: str | Path, record_index: int) -> dict | Non
     if not isinstance(visual, dict):
         return None
     result = {key: visual[key] for key in ("observation_mode", "inputs", "advance", "outcome", "visible_summary",
-                                         "visible_summary_provenance", "external_input_guard", "planned_inputs")
+                                         "visible_summary_provenance", "external_input_guard", "planned_inputs",
+                                         "cancellation_reason")
               if key in visual}
     for phase in ("before", "after"):
         frame = visual.get(phase)

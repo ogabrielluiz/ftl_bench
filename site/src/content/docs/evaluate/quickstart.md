@@ -22,7 +22,7 @@ uv run --directory harness ftlbench --env-file "C:\Projects\.env.txt" run --agen
 uv run --directory harness ftlbench --env-file "C:\Projects\.env.txt" run --agent llm --backend jev --model jev-1.13.0 --mode gameover
 ```
 
-OpenAI uses `OPENAI_API_KEY` and the public Responses API. Jev uses `TYPESAFE_API_KEY` and typed actuator choices. Anthropic, Claude CLI and Codex CLI are also available. Credentials are not printed; existing environment values take precedence over the explicitly selected file.
+The `openai` backend uses `OPENAI_API_KEY` and the Responses API. The separate `openai-decisions` backend uses the same key with typed choices and `gpt-6-luna`. Jev uses `TYPESAFE_API_KEY` and typed actuator choices. Anthropic, Claude CLI and Codex CLI are also available. Credentials are not printed; existing environment values take precedence over the explicitly selected file. [Typed visual probes](/evaluate/bring-your-model/#typed-visual-actors) can test an explicit screenshot without launching FTL.
 
 ## Full-game reporting
 

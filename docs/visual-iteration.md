@@ -78,10 +78,12 @@ Cancellation acknowledgement is operator testimony, not automatic queue proof.
 The fix passes 240 focused offline checks after the final recovery fixes. The
 broader harness suite passed 2,583 tests with 17 skips before those fixes; all
 five [CI jobs for the final implementation `552377c`](https://github.com/ogabrielluiz/ftl_bench/actions/runs/38156148686)
-passed. Live validation remains pending, with no new admission or cohort. It does not retrofit
-the historical bb6014b Steam failure: that request still awaits operator action,
-has no new-code marker, and must not be passed to recovery without one created
-by the new code. Keep further game runs stopped until cancellation is confirmed.
+passed. The operator confirmed cancellation of the historical bb6014b Steam
+request on 2026-10-14; subsequent protected startup and timing probes exercised
+the new lifecycle. That historical failure has no new-code marker and must not
+be passed to recovery without one created by the new code. The later attempt-3
+aggregate fire timing check failed, so fresh runtime admission remains pending.
+See [NEXT.md](NEXT.md) for the separate lifecycle and timing evidence.
 
 For reproducible settings and durable cooperative stopping, prefer the full-game
 experiment controller. The standalone examples above do not configure a stop

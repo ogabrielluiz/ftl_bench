@@ -84,6 +84,7 @@ export interface VisualTrace {
   after?: VisualFrame;
   inputs?: VisualInput[];
   planned_inputs?: VisualInput[];
+  cancellation_reason?: string;
   external_input_guard?: {
     reason?: string;
     expected_generation?: string | null;
@@ -116,13 +117,47 @@ export interface VisualReplayState {
   item?: { i: number | string; record_kind?: string; thought?: string; model?: ModelTrace; ack_timeout?: boolean; visual: VisualTrace } | null;
 }
 
+interface ModelTokenUsage {
+  input_tokens?: number;
+  cached_input_tokens?: number;
+  output_tokens?: number;
+  reasoning_tokens?: number;
+  input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
+  output_tokens_details?: { reasoning_tokens?: number };
+}
+
+export interface TypedVisualApiCall {
+  stage: string | null;
+  status: "completed" | "error" | "invalid_response";
+  attempts?: number;
+  response_received?: boolean;
+  http_status?: number;
+  provider?: string;
+  model?: string | null;
+  requested_model?: string;
+  request_id?: string | null;
+  client_request_id?: string | null;
+  latency_seconds?: number;
+  usage?: ModelTokenUsage | null;
+  artifact?: string;
+  choice?: string;
+  confidence?: number;
+  selected_probability?: number;
+  option_count?: number;
+  top_choices?: { value: string; probability: number }[];
+}
+
 export interface ModelTrace {
   model?: string;
   provider?: string;
   request_id?: string;
   client_request_id?: string;
   latency_seconds?: number;
-  usage?: { input_tokens?: number; output_tokens?: number };
+  usage?: ModelTokenUsage | null;
+  decision_contract?: string;
+  decision_complete?: boolean;
+  api_audit_version?: number;
+  api_calls?: TypedVisualApiCall[];
   cli_exit_code?: number;
   cli_failure?: { kind?: string; partial?: boolean; error?: string; event_type?: string; event_index?: number; item_type?: string; stdout?: CliDiagnosticStream; stderr?: CliDiagnosticStream };
   cli_event_policy?: string;
@@ -151,6 +186,12 @@ export interface ModelUsage {
   latency_seconds_mean: number | null;
   recorded_cost_usd: number | null;
   scope: string;
+  typed_visual_api?: {
+    decisions: number;
+    completed_decisions: number;
+    http_requests: { attempted: number; headers_received: number; completed: number; validated: number; preflight_errors: number };
+    usage: { complete_totals: Record<string, number | null>; reported_calls: Record<string, number> };
+  };
 }
 
 export interface InstanceItem {

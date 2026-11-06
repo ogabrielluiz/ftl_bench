@@ -11,6 +11,7 @@ Use the built-in agent loop for a model row, or `AgentSession` for a custom agen
 |---|---|---|
 | `anthropic` | Messages action text | `ANTHROPIC_API_KEY` |
 | `openai` | Public Responses strict JSON action plan | `OPENAI_API_KEY` |
+| `openai-decisions` | Decisions Choice over observed actuators, `gpt-6-luna` | `OPENAI_API_KEY` |
 | `jev` | Typed Choice over observed actuators | `TYPESAFE_API_KEY` or `JEV_API_KEY` |
 | `claude-cli` | Local action text | Authenticated `claude` |
 | `codex` | Local action text | Authenticated `codex`; optional `CODEX_BIN` |
@@ -29,7 +30,19 @@ Questions are independent, so reactor or other actuator selections can conflict.
 
 ### OpenAI contract
 
-The adapter calls the [public Responses API with structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs), generating a strict JSON action plan translated into the same paused commands. OpenAI Decisions preview is not implemented because its schema is unavailable here. Responses support does not imply preview access.
+The `openai` adapter calls the [Responses API with structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs), generating a strict JSON action plan translated into the same paused commands. The separate `openai-decisions` backend uses the [Decisions API](https://developers.openai.com/api/docs/guides/decisions), currently with `gpt-6-luna`, to select enumerated actuator settings. It records `openai-decisions-actuator-choice-v1`, validates answer domains and probabilities, and makes one HTTP attempt per turn.
+
+## Typed visual actors
+
+`ftlbench visual --backend jev|openai-decisions` uses screenshots instead of the structured native observation. Codex remains the default visual backend. The typed actors select one ordinary input, narrow mouse targets to an exact pixel through successive regions, and then choose a simulation advance. This separate `ftl-visual-typed-choice-v1` contract is diagnostic and cannot enter the frozen Codex comparison.
+
+Try one explicit screenshot without launching FTL or sending game input:
+
+```powershell
+ftlbench --env-file "C:\path\to\.env.txt" visual-decide --backend jev --image "C:\path\to\frame.png" --output "C:\path\to\new-probe"
+```
+
+Visual Jev defaults to `jev-1.14.0` with the provider's experimental image opt-in. OpenAI Decisions defaults to `gpt-6-luna`. Each stage archives request/response evidence, confidence, timing and available usage. Failed or interrupted stages remain visible; missing usage stays unknown. There are no automatic retries or provider fallback. Live provider validation and fresh native admission remain pending. See the [full contract and reproduction guide](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/typed-decision-backends.md).
 
 ## Custom completion function
 

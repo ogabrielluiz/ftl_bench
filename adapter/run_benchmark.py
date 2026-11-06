@@ -452,9 +452,9 @@ def main() -> None:
                     help="scripted | random | llm (a real frontier model)")
     ap.add_argument("--model", default=None,
                     help="llm track: model id (default claude-sonnet-4-6 for anthropic)")
-    ap.add_argument("--backend", choices=["anthropic", "openai", "jev", "claude-cli", "codex"], default="anthropic",
+    ap.add_argument("--backend", choices=["anthropic", "openai", "openai-decisions", "jev", "claude-cli", "codex"], default="anthropic",
                     help="llm track: anthropic API (needs ANTHROPIC_API_KEY) | local claude -p | "
-                         "OpenAI Responses API (OPENAI_API_KEY) | Jev (TYPESAFE_API_KEY) | "
+                         "OpenAI Responses/Decisions APIs (OPENAI_API_KEY) | Jev (TYPESAFE_API_KEY) | "
                          "local OpenAI codex exec (uses your codex auth)")
     ap.add_argument("--env-file", default=None,
                     help="explicit local KEY=value file for backend credentials; values are never printed")

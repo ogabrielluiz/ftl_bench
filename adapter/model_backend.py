@@ -15,8 +15,14 @@ class Completion(str):
         return result
 
 
+class _RejectRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def post_json(endpoint: str, body: dict, key: str, *, provider: str,
-              timeout: float = 90, attempts: int = 3, headers: dict | None = None) -> tuple[dict, dict]:
+              timeout: float = 90, attempts: int = 3, headers: dict | None = None,
+              allow_redirects: bool = True) -> tuple[dict, dict]:
     if not key:
         raise RuntimeError(f"{provider} API key is not configured")
     client_id = str(uuid4())
@@ -24,10 +30,12 @@ def post_json(endpoint: str, body: dict, key: str, *, provider: str,
         endpoint, data=json.dumps(body).encode("utf-8"),
         headers={"Content-Type": "application/json", "X-Client-Request-Id": client_id,
                  **(headers if headers is not None else {"Authorization": f"Bearer {key}"})}, method="POST")
+    open_request = (urllib.request.urlopen if allow_redirects else
+                    urllib.request.build_opener(_RejectRedirects()).open)
     started = time.monotonic()
     for attempt in range(attempts):
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with open_request(request, timeout=timeout) as response:
                 data = json.loads(response.read())
                 if not isinstance(data, dict):
                     raise RuntimeError(f"{provider} returned an invalid response object")
@@ -38,6 +46,9 @@ def post_json(endpoint: str, body: dict, key: str, *, provider: str,
                             "attempts": attempt + 1}
                 return data, metadata
         except urllib.error.HTTPError as error:
+            if not allow_redirects and 300 <= error.code < 400:
+                error.close()
+                raise RuntimeError(f"{provider} API HTTP {error.code}: redirects are disabled") from None
             detail = error.read().decode("utf-8", errors="replace").replace(key, "[redacted]")[:300]
             if error.code in {429, 500, 502, 503, 504, 529} and attempt + 1 < attempts:
                 time.sleep(2 * (attempt + 1))

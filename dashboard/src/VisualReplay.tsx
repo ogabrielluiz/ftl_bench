@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import ModelRequestDetails from "./ModelRequestDetails";
 import type { VisualFrame, VisualInput, VisualReplayState } from "./types";
 
 function shown(value: number | string | null | undefined) {
@@ -61,6 +62,12 @@ export function VisualDecision({ replay, phase, markers }: {
   const noDispatch = interference && visual.external_input_guard?.packet_dispatched === false;
   const inputs = noDispatch ? [] : visual.inputs || [];
   const advance = visual.advance;
+  let cancellation = "A stop was requested while the model was responding. Its response and usage were saved; no proposed inputs were dispatched.";
+  if (visual.cancellation_reason === "wall_clock_budget") {
+    cancellation = "The wall-clock budget elapsed before dispatch. The completed decision and any reported usage were saved. No proposed inputs were dispatched.";
+  } else if (item.model?.api_audit_version === 1 && item.model.decision_complete !== true) {
+    cancellation = "The typed decision was interrupted before completion. Recorded HTTP stages and available usage were retained. No proposed inputs were dispatched.";
+  }
   const fixedSeconds = advance?.visual_clock_version === 2
     && advance.fixed_step_numerator === 1 && advance.fixed_step_denominator === 60
     && typeof advance.actual_frames === "number" && advance.actual_frames >= 0
@@ -77,9 +84,10 @@ export function VisualDecision({ replay, phase, markers }: {
         : advance?.visual_clock_version === 1 ? "variable per update (clock v1)" : "unrecorded"}</span>
       <span>Model response: {item.model?.latency_seconds === undefined ? "unrecorded" : `${item.model.latency_seconds.toFixed(2)}s`}</span>
     </div>
+    {item.model?.api_audit_version === 1 ? <ModelRequestDetails model={item.model} /> : null}
     {item.ack_timeout ? <p className="api-error">Input acknowledgement unavailable. Some inputs may have taken effect.</p> : null}
     {item.record_kind === "model_error" ? <p className="api-error">The model request did not produce a usable decision. No inputs were dispatched.</p> : null}
-    {item.record_kind === "model_cancelled" ? <p className="muted">A stop was requested while the model was responding. Its response and usage were saved; no proposed inputs were dispatched.</p> : null}
+    {item.record_kind === "model_cancelled" ? <p className="muted">{cancellation}</p> : null}
     {interference ? <p className="api-error">{noDispatch
       ? "Outside input stopped the run before dispatch. No planned inputs were sent."
       : visual.external_input_guard?.packet_dispatched === true

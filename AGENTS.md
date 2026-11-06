@@ -137,6 +137,15 @@ only conservative values extracted from that same PNG, omitting uncertainty.
 Never expose hidden native state or evaluator assessments to the actor. Archive
 the canonical first image before startup validation.
 
+Treat `ftl-visual-typed-choice-v1` as a standalone diagnostic contract. Keep it
+separate from frozen Codex cohorts and the structured actuator contracts.
+Every stage uses the same archived screenshot and at most one HTTP attempt.
+An invalid stage or missing audit evidence ends the decision before input
+dispatch. Keep the request identity, bounded response evidence, probabilities
+and reported usage per stage. A usage total is unknown when an attempted stage
+omits the corresponding count. Keep credentials out of saved prompts,
+requests, responses and logs. See `docs/typed-decision-backends.md`.
+
 Full-game completion requires audited native victory or defeat. A pilot,
 budget stop, concession or interruption is not a completed full game. Preserve
 native score provenance; enemy lifecycle flags and raw kill counters alone do

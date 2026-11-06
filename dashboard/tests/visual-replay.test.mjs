@@ -49,6 +49,39 @@ test("delivery, evaluator uncertainty, simulated frames and model latency remain
   assert.doesNotMatch(html, /<svg/);
 });
 
+test("selected replay shows typed API stages alongside the original screenshot", () => {
+  const replay = { item: { i: 0, record_kind: "model_error", visual: { before: frame }, model: {
+    api_audit_version: 1, decision_complete: false, api_calls: [
+      { stage: "control", status: "completed", confidence: 0.6, choice: "click", usage: { input_tokens: 18 } },
+      { stage: "pixel", status: "error", http_status: 429, artifact: "api/decision-1/02-pixel" },
+    ],
+  } } };
+  const html = render(VisualDecision, { replay, phase: "before", markers: true });
+  assert.match(html, /Exact screenshot supplied to the model/);
+  assert.match(html, /Decision incomplete · 2 HTTP stages recorded/);
+  assert.match(html, /Choice click · confidence 60.0%/);
+  assert.match(html, /HTTP 429/);
+  assert.match(html, /api\/decision-1\/02-pixel/);
+  assert.match(html, /No inputs were dispatched/);
+});
+
+test("replay distinguishes late API decisions from interrupted API chains", () => {
+  const visual = { before: frame, inputs: [] };
+  const model = { api_audit_version: 1, api_calls: [], decision_complete: true };
+  const cancelled = (trace, decision) => render(VisualDecision, { phase: "before", markers: true,
+    replay: { item: { i: 0, record_kind: "model_cancelled", model: decision, visual: trace } } });
+  const late = cancelled({ ...visual, cancellation_reason: "wall_clock_budget" }, model);
+  assert.match(late, /The wall-clock budget elapsed before dispatch/);
+  assert.match(late, /The completed decision and any reported usage were saved/);
+  assert.doesNotMatch(late, /A stop was requested/);
+
+  const interrupted = cancelled(visual, { ...model, decision_complete: false });
+  assert.match(interrupted, /The typed decision was interrupted before completion/);
+  assert.match(interrupted, /Recorded HTTP stages and available usage were retained/);
+  assert.match(interrupted, /No proposed inputs were dispatched/);
+  assert.doesNotMatch(interrupted, /The completed decision|Its response and usage were saved/);
+});
+
 test("unrecorded timing is displayed as unrecorded, never zero or elapsed wall time", () => {
   const replay = { selected: "test", index: 0, total: 1, item: { i: 0, visual: { before: frame } } };
   const html = render(VisualDecision, { replay, phase: "before", markers: false });

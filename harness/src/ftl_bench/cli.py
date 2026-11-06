@@ -28,10 +28,11 @@ USAGE = """ftlbench — FTL agent benchmark
 usage:
   ftlbench run   [--agent scripted|random|llm] [--tier ...] [--max-instances N] ...
   ftlbench play  <obs|reset|jump|fire|...> [args...]
-  ftlbench visual [--model gpt-6.1-sol] [--mode image|hybrid] [--seed 1] ...
+  ftlbench visual [--backend codex|openai-decisions|jev] [--model ...] [--mode image|hybrid] [--seed 1] ...
+  ftlbench visual-decide --backend jev|openai-decisions --image <png> --output <new-directory>
   ftlbench install-mod [--url <release-asset>]
   ftlbench version
-  ftlbench doctor [--backend anthropic|openai|jev|claude-cli|codex] [--live] [--full-game] [--json]
+  ftlbench doctor [--backend anthropic|openai|openai-decisions|jev|claude-cli|codex] [--live] [--full-game] [--json]
   ftlbench dashboard [--runs <directory>] [--suite <path>] [--port 8765]
   ftlbench report <run-directory> [--json] [--output <path>] [--legacy-suite <path>]
   ftlbench deploy-bridge
@@ -179,7 +180,7 @@ def main(argv: list[str] | None = None) -> None:
         import json
         from ftl_bench.doctor import inspect_installation
         ap = argparse.ArgumentParser(prog="ftlbench doctor")
-        ap.add_argument("--backend", choices=["anthropic", "claude-cli", "codex", "openai", "jev"])
+        ap.add_argument("--backend", choices=["anthropic", "claude-cli", "codex", "openai", "openai-decisions", "jev"])
         ap.add_argument("--game-dir")
         ap.add_argument("--live", action="store_true")
         ap.add_argument("--full-game", action="store_true")
@@ -259,7 +260,11 @@ def main(argv: list[str] | None = None) -> None:
         print("Deploy the bridge with ftlbench deploy-bridge, then launch FTL through Steam.")
         return
 
-    if cmd == "visual":
+    if cmd == "visual-decide":
+        _adapter_on_path()
+        import visual_decision_probe
+        visual_decision_probe.main(rest)
+    elif cmd == "visual":
         _adapter_on_path()
         import run_visual
         run_visual.main(rest)

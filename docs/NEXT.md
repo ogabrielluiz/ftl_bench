@@ -1,6 +1,55 @@
 # Current validation and next work
 
-**WIP / alpha. Current status: 2026-10-14 13:00 UTC; historical challenge and full-game snapshots below remain dated 2026-10-11.**
+**WIP / alpha. Current status as of 2026-11-06. Historical snapshots retain their original dates.**
+
+## Typed decision backends (2026-11-06)
+
+The structured runner exposes `openai-decisions` alongside its Jev and
+Responses backends. Standalone visual runs can select `jev` or
+`openai-decisions` in addition to the default Codex CLI. The
+`ftlbench visual-decide` command accepts one archived PNG and saves a
+replayable decision without a game launch. Mocked responses exercise the
+request and audit paths. Live provider validation remains pending, and no
+FTL game was launched for this integration. Typed visual runs are diagnostic
+and require their own comparison protocol. Existing frozen Codex cohorts
+remain historical evidence. See [typed decision backends](typed-decision-backends.md).
+
+Final offline validation passed 2,808 checkout tests (20 skips), 25 headless
+contract tests and 25 dashboard tests, plus dashboard and documentation builds.
+The installed wheel passed isolated CLI, bundled-source and dashboard checks.
+The unpacked source release passed 2,755 tests (73 skips); its additional skips
+cover checkout-bound native admission proofs. Windows symlink privileges and
+the missing host C++ compiler account for the other skipped checks. These
+results establish offline integration and packaging, not provider compatibility
+or gameplay acceptance.
+
+The tested local wheel SHA-256 is
+`a96f654f23b637651e677c79cc5d648341ce4256e00c09f6e53441a2870337a8`;
+the tested source release is
+`c29f0d0b4c1d7cb84b3b4aaa7f90de9f10742b2b37d66e76385d3b91df46f5e2`.
+Both are under `harness/dist/`; generated distributions remain outside Git.
+
+## Attempt-three installation and timing (2026-10-14)
+
+After the isolated rehearsal below, the attempt-three DLL, provenance and
+patched data were installed in the real game with verified rollback bytes.
+The local installation evidence is under
+`dist/live-installation-attempt3-20261014T132339Z-94ecea82/`. A saved independent
+review verified eight protected startup checks, including the untouched
+opening image and restored saves.
+
+The aggregate timing comparison rejected fire repeatability. Repetition two
+first differed in room oxygen at `fixed-advance-8` despite matching requested
+and actual frames and update counter deltas. The saved differential bounds
+the first sampled change to that interval. Independent cleanup verified the
+original saves and prior bridge. Fresh repeatability evidence, review and
+controller admission remain pending.
+
+| Local receipt under `dist/resume-20261014/` | SHA-256 |
+| --- | --- |
+| `attempt3-startup-saved-independent-review.json` | `b04daa86c5ef59fea653d45582fe0beebd2ff39431f4701edcea42e7042cca0b` |
+| `attempt3-failed-repeatability-current-cleanup-review.json` | `491dde0158cf0729b4b033f7171aceb46b5a223e5ccd8b584571afdfb85c6c72` |
+| `attempt3-fire-timing-differential-20261014T133653Z.json` | `8350cc8831cc6bbf24470b5d3afd1e6091429538e6166e2da00dd86b63fac11b` |
 
 ## Isolated installation rehearsal (2026-10-14)
 
@@ -195,9 +244,9 @@ container settings and retained CMake records identify Clang 12.0.0 at
 
 The source build and data packaging are now exercised end to end. The pinned
 image and its toolchain dependencies were reused. DLL bytes differ from attempt
-two, so byte-identical reproduction is not established. No new runtime was
-installed: installation and live acceptance remain required. The preserved
-pilot and frozen model cohorts use their original admitted runtime.
+two, so byte-identical reproduction is not established. Installation and timing
+validation took place separately as recorded above. The preserved pilot and
+frozen model cohorts use their original admitted runtime.
 
 The packaged-release CI check exposed a separate test-client defect with newer
 Starlette dependencies: three synthetic ASGI clients returned an immediately
@@ -1282,7 +1331,8 @@ documentation snapshot, and no new release is published.
 ## Remaining work
 
 1. Collect fresh startup/timing diagnostics, independent review and admission for
-   the changed CLI recovery sources. Freeze new challenge and full-game cohorts;
+   the installed attempt-three runtime and current sources. Freeze new Codex
+   challenge and full-game cohorts;
    preserve the original failed Sol/image attempt and all old cohort outcomes.
 2. Run the new cohort's Sol challenges, pilot and two full-game conditions first,
    followed by Luna's challenges and two full-game conditions, sequentially.
@@ -1295,6 +1345,9 @@ documentation snapshot, and no new release is published.
 4. Make native acceptance/evidence setup reproducible from a fresh checkout,
    validate the merged headless runtime, and revalidate any
    changed implementation and rebuild packages before release.
+5. Exercise each typed visual provider against an archived PNG and replay its
+   saved stages. Evaluate live visual play under a separate comparison protocol
+   after fresh runtime admission.
 
 Use the [experiment controller commands](visual-experiment-protocol.md#freezing-and-resumption)
 and [full-game sequence](visual-experiment-protocol.md#full-game-progression).

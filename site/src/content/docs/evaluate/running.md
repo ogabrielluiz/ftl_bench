@@ -8,7 +8,7 @@ Use `ftlbench run --help` for all options. From a checkout, prefix it with `uv r
 | Option | Meaning |
 |---|---|
 | `--agent scripted|random|llm` | Shared runner/scorer with different policies |
-| `--backend anthropic|openai|jev|claude-cli|codex` | Model integration |
+| `--backend anthropic|openai|openai-decisions|jev|claude-cli|codex` | Model integration |
 | `--model` | Explicit provider model identity |
 | `--env-file` | Explicit credential file; e.g. `C:\Projects\.env.txt` |
 | `--suite`, `--tier`, `--type` | Scenario selection; default mixed `suite_v1.json` |
@@ -37,7 +37,7 @@ Under the unique run directory:
 
 Manifests record requested and verified setup, suite/scenario, prompt/model/backend/mode/retries, protocol, installed DLL and Lua bridge hashes, and native build provenance. Prompt content is hashed so edits remain identifiable within a named version.
 
-Jev rows additionally identify `jev-actuator-choice-v1`; provider telemetry includes request/usage/latency information where returned. Secrets are never recorded.
+Structured Jev rows identify `jev-actuator-choice-v1`; OpenAI Decisions rows identify `openai-decisions-actuator-choice-v1`. Typed visual runs use `ftl-visual-typed-choice-v1` and remain diagnostic. Provider telemetry includes request/usage/latency information where returned. HTTP attempts and completed actor decisions are counted separately; missing usage is unknown. Credentials stay outside saved evidence.
 
 ```powershell
 ftlbench report <run-directory>

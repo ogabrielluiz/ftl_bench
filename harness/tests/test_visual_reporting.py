@@ -7,6 +7,7 @@ import pytest
 
 import visual_agent as agent
 import visual_reporting as reporting
+from ftl_bench.reporting import summarize_model_usage
 from test_visual_agent import png, event_stream
 
 
@@ -221,6 +222,92 @@ def test_usage_missing_is_unknown_and_cache_is_not_added_to_input():
     assert report["usage"]["complete_totals"]["input_tokens"] is None
     assert report["latency_seconds"]["observed_total"] == 2 and report["latency_seconds"]["total"] is None
     assert report["response_model_identity"]["status"] == "not_reported"
+
+
+def test_typed_visual_usage_covers_attempted_stages_without_pooling_codex():
+    typed = {"provider": "openai-decisions", "decision_contract": "ftl-visual-typed-choice-v1",
+             "api_audit_version": 1, "requested_model": "luna", "decision_complete": False,
+             "latency_seconds": 4, "usage": {"input_tokens": 999}, "api_calls": [
+        {"stage": "control", "status": "completed", "attempts": 1, "response_received": True, "model": "luna",
+         "latency_seconds": 1, "usage": {"input_tokens": 10, "output_tokens": 2,
+                                         "input_tokens_details": {"cached_tokens": 3},
+                                         "output_tokens_details": {"reasoning_tokens": 0}}},
+        {"stage": "point", "status": "invalid_response", "attempts": 1, "response_received": True, "model": "luna",
+         "latency_seconds": 1.5, "usage": {"input_tokens": 5, "output_tokens": 0}},
+    ]}
+    timed_out = {**typed, "provider": "jev", "requested_model": "jev", "latency_seconds": 2,
+                 "api_calls": [{"stage": "control", "status": "error", "attempts": 1, "response_received": False,
+                                "latency_seconds": 2, "usage": None}]}
+    partial_rows = [{"kind": "model_error", "model": trace} for trace in (typed, timed_out)]
+    partial_only = reporting.summarize_model_calls(partial_rows[:1])
+    assert partial_only["usage"]["complete_totals"]["input_tokens"] == 15
+    assert partial_only["completed_decisions"] == 0
+
+    codex = {"model": {"provider": "codex", "usage": {"input_tokens": 100, "output_tokens": 4}}}
+    rows = [codex, *partial_rows]
+    report = reporting.summarize_model_calls(rows)
+    assert report["usage"]["source"] == "typed_visual_api_stage_usage"
+    assert (report["calls"], report["decisions"], report["completed_decisions"]) == (3, 2, 0)
+    assert report["http_requests"] == {"attempted": 3, "headers_received": 2, "completed": 2, "validated": 1, "error": 1,
+                                       "invalid_response": 1, "preflight_errors": 0}
+    assert report["usage"]["observed_totals"] == {"input_tokens": 15, "output_tokens": 2,
+                                                    "cached_input_tokens": 3, "reasoning_tokens": 0}
+    assert report["usage"]["reported_calls"]["input_tokens"] == 2
+    assert all(value is None for value in report["usage"]["complete_totals"].values())
+    assert report["latency_seconds"]["total"] == 4.5 and report["decision_latency_seconds"]["total"] == 6
+    assert report["response_model_identity"]["reported_calls"] == 2
+    assert report["codex"]["usage"]["complete_totals"]["input_tokens"] == 100
+    dashboard = summarize_model_usage(rows)
+    assert dashboard["recorded_completions"] == 1 and dashboard["input_tokens"] == 100
+    assert dashboard["typed_visual_api"] == {key: value for key, value in report.items() if key != "codex"}
+
+
+def test_typed_visual_counts_complete_bodies_separately_from_headers():
+    def attempt(**details):
+        return {"attempts": 1, "response_received": True, "status": "error", **details}
+
+    calls = [attempt(status="completed", usage={"input_tokens": 17}),
+             attempt(response_partial=True, error_code="request_deadline_exceeded"),
+             attempt(response_partial=True, error_code="operator_interrupted"),
+             attempt(http_status=429, error_code="http_error"),
+             attempt(status="invalid_response", response_truncated=True, error_code="response_size_limit"),
+             attempt(status="invalid_response", error_code="response_length_mismatch"),
+             attempt(status="invalid_response", error_code="invalid_response_json"),
+             attempt(response_received=False)]
+    rows = [{"kind": "model_error", "model": {"decision_contract": "ftl-visual-typed-choice-v1",
+                                            "decision_complete": False, "api_calls": calls}}]
+    summary = reporting.summarize_model_calls(rows)
+    assert summary["http_requests"] == {"attempted": 8, "headers_received": 7, "completed": 3,
+                                        "validated": 1, "error": 4, "invalid_response": 3, "preflight_errors": 0}
+    assert summary["usage"]["reported_calls"]["input_tokens"] == 1
+    assert summary["usage"]["observed_totals"]["input_tokens"] == 17
+    assert summary["usage"]["complete_totals"]["input_tokens"] is None
+    assert summarize_model_usage(rows)["typed_visual_api"] == summary
+
+
+def test_typed_visual_run_without_attempted_requests_keeps_its_report_source():
+    rows = [{"kind": "meta", "meta": {"track": "visual-v1", "provider": "jev"}}]
+    summary = reporting.summarize_model_calls(rows)
+    assert summary["usage"]["source"] == "typed_visual_api_stage_usage"
+    assert summary["calls"] == summary["decisions"] == 0
+    assert summary["usage"]["complete_totals"]["input_tokens"] is None
+    assert summarize_model_usage(rows)["typed_visual_api"] == summary
+    rows.append({"kind": "model_error", "model": {"decision_contract": "ftl-visual-typed-choice-v1",
+                 "api_calls": [{"status": "error", "attempts": 0, "response_received": False}]}})
+    summary = reporting.summarize_model_calls(rows)
+    assert summary["decisions"] == 1 and summary["http_requests"]["preflight_errors"] == 1
+    assert summary["http_requests"]["attempted"] == summary["usage"]["reported_calls"]["input_tokens"] == 0
+
+
+def test_typed_visual_run_is_excluded_even_with_intact_legacy_audit(tmp_path):
+    directory = tmp_path / "typed"
+    saved_run(directory)
+    manifest = json.loads((directory / "run.json").read_text(encoding="utf-8"))
+    write(directory / "run.json", {**manifest, "track": "visual-v1", "provider": "jev"})
+    result = reporting.aggregate_visual_runs([directory])
+    assert result["trials"][0]["audit"]["complete"]
+    assert result["trials"][0]["exclusions"] == ["typed_visual_api_diagnostic_only"]
+    assert not result["conditions"] and not result["qualified_scoped_comparison"]
 
 
 def recovered_run(directory):

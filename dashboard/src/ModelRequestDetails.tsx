@@ -1,4 +1,4 @@
-import type { ModelTrace, CliDiagnosticStream } from "./types";
+import type { ModelTrace, CliDiagnosticStream, TypedVisualApiCall } from "./types";
 
 function Stream({ name, stream }: { name: string; stream?: CliDiagnosticStream }) {
   if (!stream) return null;
@@ -25,9 +25,51 @@ function RawUsage({ text }: { text?: string }) {
   </details> : null;
 }
 
+function probability(value?: number) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1
+    ? `${(value * 100).toFixed(1)}%` : "unavailable";
+}
+
+function TypedStage({ call }: { call: TypedVisualApiCall }) {
+  const usage = call.usage;
+  const choices = Array.isArray(call.top_choices) ? call.top_choices.slice(0, 5) : [];
+  return <li>
+    <strong>{call.stage || "Stage unavailable"} · {call.status === "invalid_response" ? "invalid response" : call.status}</strong>
+    {typeof call.latency_seconds === "number" ? ` · ${call.latency_seconds.toFixed(2)}s` : null}
+    <p>{call.provider || "Provider unavailable"} · {call.model || "response model unavailable"}
+      {call.requested_model ? ` · Requested ${call.requested_model}` : null}
+      {call.http_status !== undefined ? ` · HTTP ${call.http_status}` : null}
+      {call.attempts === 0 ? " · Preflight failed" : null}
+      {call.request_id || call.client_request_id ? ` · Request ${call.request_id || call.client_request_id}` : null}</p>
+    <p>Input {usage?.input_tokens ?? "unavailable"} · output {usage?.output_tokens ?? "unavailable"}
+      {" · "}cached {usage?.cached_input_tokens ?? usage?.input_tokens_details?.cached_tokens ?? "unavailable"}
+      {" · "}reasoning {usage?.reasoning_tokens ?? usage?.output_tokens_details?.reasoning_tokens ?? "unavailable"} tokens</p>
+    {call.choice !== undefined ? <p>Choice {call.choice} · confidence {probability(call.confidence)}
+      {" · "}selected probability {probability(call.selected_probability)}
+      {call.option_count !== undefined ? ` · ${call.option_count} options` : null}</p> : null}
+    {choices.length ? <p>Top choices {choices.map(choice =>
+      `${choice.value} ${probability(choice.probability)}`).join(", ")}</p> : null}
+    {call.artifact ? <p>Saved HTTP audit <code>{call.artifact}</code></p> : null}
+  </li>;
+}
+
 export default function ModelRequestDetails({ model, latest = false }: { model: ModelTrace; latest?: boolean }) {
   const failure = model.cli_failure;
   const recovery = model.cli_recovery;
+  const stages = model.api_audit_version === 1 && Array.isArray(model.api_calls)
+    ? model.api_calls.filter(call => call && typeof call === "object") : null;
+  if (stages) {
+    const displayLimit = 32;
+    return <details className="muted">
+      <summary>Typed visual decision · {model.model || model.provider || "identity unavailable"}
+        {model.latency_seconds !== undefined ? ` · ${model.latency_seconds.toFixed(2)}s` : ""}</summary>
+      <p>{model.decision_complete === true ? "Decision completed" : "Decision incomplete"} · {stages.length} HTTP stages recorded</p>
+      <p>Total reported usage across all stages · input {model.usage?.input_tokens ?? "unavailable"}
+        {" · "}output {model.usage?.output_tokens ?? "unavailable"} tokens</p>
+      <ol aria-label="Typed API stages">{stages.slice(0, displayLimit).map((call, i) => <TypedStage call={call} key={i} />)}</ol>
+      {stages.length > displayLimit ? <p>Showing the first {displayLimit} stages.</p> : null}
+    </details>;
+  }
   return <details className="muted">
     <summary>{latest ? "Latest model request" : "Model request"}: {model.model || model.provider || "identity unavailable"}
       {model.latency_seconds !== undefined ? ` · ${model.latency_seconds.toFixed(2)}s` : ""}</summary>

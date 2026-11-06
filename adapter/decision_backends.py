@@ -5,8 +5,8 @@ arbitrary plan. This adapter enumerates observable actuator settings, asks one
 Choice per actuator, and renders the selected commands without a scripted policy.
 Questions are independent. Reactor allocations can therefore conflict and are
 subject to the same bridge feedback as other agents. Plans over the shared action
-limit are rejected, never silently truncated. No OpenAI Decisions endpoint is
-assumed: a future provider can return the same Completion once publicly specified.
+limit are rejected, never silently truncated. The OpenAI Decisions adapter reuses
+these actuator choices and plan checks through its own documented wire schema.
 
 HTTP/schema: https://docs.typesafe.ai/api
 Models: https://docs.typesafe.ai/models
@@ -318,7 +318,8 @@ def build_jev_request(system: str, user: str, model: str | None = None) -> tuple
     return body, decisions
 
 
-def render_jev_plan(data: dict, request: dict, decisions: list[dict]) -> str:
+def render_jev_plan(data: dict, request: dict, decisions: list[dict], *,
+                    require_highest_probability: bool = True) -> str:
     answers = data.get("answers")
     if not isinstance(answers, dict):
         raise DecisionContractError("Jev response is missing typed answers", details={"invariant": "answers_map"})
@@ -360,7 +361,7 @@ def render_jev_plan(data: dict, request: dict, decisions: list[dict]) -> str:
             raise DecisionContractError(prefix + f"probability sum={total:.12g} across {len(probabilities)} options; expected 1 within tolerance 0.01",
                                         details={"question": key, "invariant": "probability_sum",
                                                  "probability_sum": total, "option_count": len(probabilities), "tolerance": 0.01})
-        if probabilities[answer["choice"]] < max(probabilities.values()) - 1e-9:
+        if require_highest_probability and probabilities[answer["choice"]] < max(probabilities.values()) - 1e-9:
             chosen, maximum = probabilities[answer["choice"]], max(probabilities.values())
             raise DecisionContractError(f"Jev choice for {key!r} is not the highest-probability option (chosen={chosen:.12g}, maximum={maximum:.12g})",
                                         details={"question": key, "invariant": "highest_probability",

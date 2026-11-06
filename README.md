@@ -7,6 +7,11 @@ An agent benchmark that drives the real **FTL: Faster Than Light** engine throug
 ## Status: work in progress
 
 The visual benchmark is an **alpha implementation with partial live validation**.
+The November 6 typed Decisions and Jev integrations have offline coverage.
+Live provider validation and fresh native admission remain pending. No FTL
+game was launched for the November 6 integration. See
+[typed decision backends](docs/typed-decision-backends.md).
+
 Future full-game cohorts can declare matched decision, wall-time and idle budgets
 at freeze time; defaults remain 300 / 14,400 seconds / 8. See the
 [full-game protocol](docs/visual-experiment-protocol.md#full-game-progression).
@@ -109,9 +114,11 @@ also preserves existing WSL settings when configuring idle behavior, fixing a
 missing-newline corruption. A file-only installation rehearsal completed the
 executable downgrade, authenticated loader, new DLL/provenance and data patch.
 Its installed files are retained; the rehearsal baseline was restored exactly,
-and the real game and saves were unchanged. This used retained local originals,
-not a fresh Steam download. Live acceptance of the new runtime remains required;
-see the [WIP evidence](docs/NEXT.md).
+and the real game and saves were untouched during that rehearsal. The rehearsal
+used retained local originals. The verified attempt-three payload was later
+installed in the real game on October 14. Protected startup passed, but the
+aggregate fire timing comparison rejected repeatability, so fresh admission
+remains pending. See the [installation and timing evidence](docs/NEXT.md).
 
 A separate corrected viewer fixes an HTTP 500 caused by mixed ISO and numeric
 run timestamps. Its rendered current-cohort outcome and replay check passed
@@ -128,16 +135,15 @@ defects, their fixes and the limited validation scope.
 
 ## Visual iteration
 
-The new `visual-v1` track gives Codex CLI a screenshot at each paused decision and
+The `visual-v1` track gives the actor a screenshot at each paused decision and
 accepts ordinary clicks, drags, cursor moves and key presses. Native state remains
 available to the evaluator and dashboard; it is not included in the model input.
 Every decision retains its exact image, input delivery, simulation-frame count and
 resulting image for inspection.
 
-This track is under live validation; standalone attempts remain diagnostic until
-their experiment audit establishes eligibility. It requires authenticated Codex
-CLI, native protocol 5, fixed clock 2 and `fresh-start-seed-v3`. Install the visual
-DLL/provenance pair below, close FTL and run:
+Visual runs require native protocol 5, fixed clock 2 and `fresh-start-seed-v3`.
+The default backend is `codex`, which uses the authenticated Codex CLI.
+With the visual DLL/provenance pair installed and FTL closed, run the default actor:
 
 ```powershell
 uv run --directory harness ftlbench visual --model gpt-6.1-sol --mode image --seed 1
@@ -147,8 +153,16 @@ The Windows runner backs up the current saves, launches a fresh run, then closes
 its game process and restores/verifies the original saves on exit. `--mode hybrid`
 adds conservative HUD numerals read from the same archived PNG, omitting obscured
 or uncertain fields without native-state fallback. `--model gpt-6-luna` selects
-the other declared CLI model. See [visual iteration](docs/visual-iteration.md) for
-the contract. Historical structured runs remain a separate track.
+the other declared CLI model. Standalone attempts are diagnostic.
+
+`--backend jev` and `--backend openai-decisions` select a typed visual actor.
+It chooses one primitive input or a wait, narrows pointer targets to pixels on
+the same archived screenshot, and chooses the frame advance. Use
+`ftlbench visual-decide` with an archived PNG to exercise the provider and replay
+the saved choices without starting FTL. The
+[typed backend guide](docs/typed-decision-backends.md) covers credentials,
+diagnostic commands and audit files. The
+[visual iteration guide](docs/visual-iteration.md) covers the Codex workflow.
 
 For reproducible full-game cohorts and durable cooperative stopping, use the
 [full-game experiment controller](docs/visual-experiment-protocol.md#full-game-progression).
@@ -270,6 +284,9 @@ uv run --directory harness ftlbench --env-file "C:\Projects\.env.txt" run --agen
 # Jev typed-choice adapter
 uv run --directory harness ftlbench --env-file "C:\Projects\.env.txt" run --agent llm --backend jev --model jev-1.13.0 --suite ../scenarios/full_game.json --tier public --mode gameover
 
+# OpenAI Decisions typed-choice adapter
+uv run --directory harness ftlbench --env-file "<credential-file>" run --agent llm --backend openai-decisions --model gpt-6-luna --suite ../scenarios/full_game.json --tier public --mode gameover
+
 # Read-only live dashboard
 uv run --directory harness --extra dashboard ftlbench dashboard
 ```
@@ -280,13 +297,18 @@ Select the environment file explicitly. Simple `KEY=value` lines are loaded lite
 |---|---|
 | `anthropic` | `ANTHROPIC_API_KEY`; Messages API action text |
 | `openai` | `OPENAI_API_KEY`; public Responses API with a strict action-plan JSON schema |
+| `openai-decisions` | `OPENAI_API_KEY`; typed Choices for observed actuators using `gpt-6-luna` |
 | `jev` | `TYPESAFE_API_KEY` (or `JEV_API_KEY`); typed Choice questions for observable actuators |
 | `claude-cli` | Installed, authenticated `claude` CLI |
 | `codex` | Installed, authenticated `codex` CLI; optional `CODEX_BIN` |
 
-Jev uses the separately labeled `jev-actuator-choice-v1` contract. It chooses from observed power settings, crew destinations, targets, navigation, economy and special-system actuators, then an advance interval. Independent choices can conflict; the same bridge feedback applies. Each question has at most 255 options and each plan at most 12 commands; invalid or oversized plans fail explicitly. It does not generate arbitrary action text. Compare its rows with this action-selection contract stated.
-
-The OpenAI backend uses the [public Responses API](https://developers.openai.com/api/docs/guides/structured-outputs). An OpenAI Decisions preview adapter is not implemented because its request/response schema is unavailable here; preview availability must not be inferred from Responses support.
+The typed backends enumerate observed power settings, crew destinations, targets,
+navigation, economy and special-system actuators, then choose an advance interval.
+Independent choices can conflict and are subject to bridge feedback. Each
+question has at most 255 options and each plan at most 12 commands. Reports
+identify `jev-actuator-choice-v1` and `openai-decisions-actuator-choice-v1`
+separately. See [typed decision backends](docs/typed-decision-backends.md) for
+request validation and diagnostic status.
 
 ## Interface and scoring
 

@@ -54,3 +54,23 @@ test("accepted reconnect notices expose completed-turn scope and unknown aborted
   assert.match(html, /Reported call usage: input 10 · output 2/);
   assert.doesNotMatch(html, /Rejected CLI call/);
 });
+test("typed visual decision shows bounded stage diagnostics and preserves unknown usage", () => {
+  const stage = { stage: "control", status: "completed", provider: "jev", model: "jev-1.13.0",
+    request_id: "request-1", latency_seconds: 0.5, usage: { input_tokens: 12, output_tokens: 0,
+      input_tokens_details: { cached_tokens: 7 }, output_tokens_details: { reasoning_tokens: 0 } },
+    choice: "click", selected_probability: 0.75, confidence: 0.8, option_count: 9,
+    artifact: "actor-audit/decision-01/01-control", response_body: "data:image/png;base64,private",
+    top_choices: Array.from({length: 6}, (_, i) => ({ value: `candidate-${i}`, probability: 0.1 })) };
+  const html = render({ api_audit_version: 1, decision_complete: false, api_calls: [stage,
+    { stage: "point", status: "invalid_response", artifact: "actor-audit/decision-01/02-point" }] });
+  assert.match(html, /Decision incomplete · 2 HTTP stages recorded/);
+  assert.match(html, /Total reported usage across all stages · input unavailable/);
+  assert.match(html, /control · completed/);
+  assert.match(html, /request-1/);
+  assert.match(html, /Input 12 · output 0 · cached 7 · reasoning 0 tokens/);
+  assert.match(html, /Choice click · confidence 80.0% · selected probability 75.0% · 9 options/);
+  assert.match(html, /candidate-4/);
+  assert.match(html, /point · invalid response/);
+  assert.match(html, /<code>actor-audit\/decision-01\/02-point<\/code>/);
+  assert.doesNotMatch(html, /candidate-5|data:image|Rejected CLI call/);
+});

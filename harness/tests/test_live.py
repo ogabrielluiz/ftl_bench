@@ -63,6 +63,18 @@ def test_setup_capture_is_replayable_without_fabricating_model_decisions(bench):
     assert [row[1]["kind"] for row in live.visual_replay_rows(rows)] == ["step"]
 
 
+def test_visual_replay_preserves_budget_cancellation_reason(bench):
+    path = bench / "trajectory.jsonl"
+    rows = [{"kind": "meta", "meta": {"provider": "jev"}},
+            {"kind": "model_cancelled", "actions": [], "model": {"api_audit_version": 1, "decision_complete": True},
+             "visual": {"inputs": [], "cancellation_reason": "wall_clock_budget"}},
+            {"kind": "end", "status": "completed", "reason": "wall_clock_budget"}]
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    item = live.replay_snapshot(live.name_of(path))["item"]
+    assert item["record_kind"] == "model_cancelled"
+    assert item["visual"] == {"inputs": [], "cancellation_reason": "wall_clock_budget"}
+
+
 def scenario(sid="custom", target=1):
     return {"id": sid, "type": "reach_sector", "seed": 7,
             "goal": [{"key": "sector", "target": target, "kind": "threshold", "weight": 1}]}

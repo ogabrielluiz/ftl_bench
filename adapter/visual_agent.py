@@ -63,6 +63,7 @@ class VisualObservation:
     visible_hud: dict = field(default_factory=dict)
     history: list[dict] = field(default_factory=list)
     memory: str = ""
+    expected_image_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -462,6 +463,8 @@ class CodexVisualAgent:
     def decide(self, observation: VisualObservation) -> VisualDecision:
         try:
             image_bytes, image = read_screenshot(observation.image_path)
+            if observation.expected_image_sha256 is not None and image["sha256"] != observation.expected_image_sha256:
+                raise VisualProtocolError("screenshot differs from the archived frame identity")
             prompt = build_visual_prompt(observation, image, self._instructions)
         except VisualProtocolError as error:
             raise VisualBackendError("Visual decision input failed validation: " + str(error)) from error

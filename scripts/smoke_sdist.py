@@ -73,9 +73,19 @@ for header in ('Benchmark_FreshStartSeed.inc', 'Benchmark_FreshStartUtility.h'):
 assert 'visual_clock_version' in (root/current['patch']).read_text()
 assert 'world_updates' in (root/current['patch']).read_text()
 for path in ('adapter/visual_agent.py', 'adapter/run_visual.py', 'prompts/ftl_visual_v1.md',
+             'adapter/openai_decisions_backend.py', 'adapter/visual_choice_agent.py', 'adapter/visual_decision_api.py',
+             'adapter/visual_decision_audit.py', 'adapter/visual_decision_probe.py', 'prompts/ftl_visual_choices_v1.md',
              'scripts/validate_visual_live.py', 'scripts/validate_visual_interference.py', 'scripts/validate_visual_sector.py',
              'native/patches/0003-visual-io.patch'):
     assert (root/path).is_file(), path
+sys.path.insert(0, str(root/'adapter'))
+from openai_decisions_backend import OPENAI_DECISIONS_MODEL, openai_decisions_complete
+from visual_choice_agent import DEFAULT_MODELS, TypedVisualAgent
+from visual_decision_api import request_choice
+from visual_decision_audit import audit_decision
+from visual_decision_probe import main as visual_decide
+assert DEFAULT_MODELS == {'jev': 'jev-1.14.0', 'openai-decisions': OPENAI_DECISIONS_MODEL}
+assert OPENAI_DECISIONS_MODEL == 'gpt-6-luna'
 from ftl_bench.visual_session import VisualSession, validate_visual_clock
 from ftl_bench.protected_game import ProtectedGame
 from ftl_bench.fullgame_setup import FullGameSetupSession
@@ -85,6 +95,7 @@ for script in ('validate_visual_live.py', 'validate_visual_interference.py', 'va
     result = subprocess.run([sys.executable, str(root/'scripts'/script), '--help'], capture_output=True, text=True)
     if result.returncode:
         raise RuntimeError(script + ' help failed: ' + result.stderr + result.stdout)
+subprocess.run([sys.executable, '-m', 'ftl_bench.cli', 'visual-decide', '--help'], check=True, capture_output=True)
 print('Isolated source release uses current and archived bundled native patches')
 """
     subprocess.run([*command, "python", "-c", check], cwd=temporary, check=True, env=child_environment)
