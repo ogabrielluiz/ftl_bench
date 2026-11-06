@@ -2,6 +2,85 @@
 
 **WIP / alpha. Current status as of 2026-11-06. Historical snapshots retain their original dates.**
 
+## Sol hybrid combat and input audit (2026-11-06, 22:00 UTC)
+
+The first three hybrid cells completed in `matrix-focus-5155dab-20261106`.
+All are eligible, with one task success and two idle-budget stops. The full
+twelve-cell checkpoint has seven successes, five idle-budget stops and zero
+technical exclusions. Every attempted outcome remains recorded.
+
+| Repeat | Gameplay outcome | Decisions | Final hull | Crew alive | Native score | Median CLI latency |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | Scout escaped; no reward | 43 | 22 | 3 | 40 | 10.115 s |
+| 2 | Enemy destroyed, 18 scrap collected, one crew lost | 25 | 27 | 2 | 58 | 9.071 s |
+| 3 | Enemy destroyed, 18 scrap collected, all crew survived | 18 | 25 | 3 | 58 | 11.816 s |
+
+Repeat two is a native `failed_native_loss` because the public task requires
+all crew to survive. Its comparison category is `budget_exhausted`, describing
+the later idle-budget stop. The reward and score do not establish task success.
+Repeat one's raw enemy-destruction counter changed on escape without a reward;
+the archived screenshot and strict evaluator preserve that distinction.
+
+Canonical starting gameplay signatures match all three image combat controls.
+Image-only combat achieved 2/3 and hybrid 1/3 for this fixed encounter. These
+three repetitions describe this local sample. Luna is still unstarted, and
+no complete four-condition matched group or general model ranking is claimed.
+
+Independent input audits reconstructed all 86 hybrid prompts and exact PNG
+attachments, actor memory and permitted action/acknowledgement history. The
+frozen reader reproduced every numeric summary and its crop/anchor provenance;
+distinct reported crop states were visually inspected or joined to exact
+previously inspected crop bytes. Only the five allowed numeric HUD fields
+come from the PNG; `paused: true` is the public decision-interface guarantee.
+No native evaluator fields were present in the explicit actor prompts.
+
+The first repeat omitted hull once under a flashing red warning and restored
+it when readable. The second omitted fuel, scrap and missiles during eight
+turns with reward pop-ups obscuring those fields. The third supplied all five
+readings on every turn. These observed omissions used no hidden-state fallback.
+This is finite live coverage of the frozen reader, not every possible layout.
+
+Hybrid combat totals are 86 audited tool-free turns, 1,629,947 input tokens
+(1,042,432 cached), 19,891 output tokens (6,775 reasoning) and 896.159 seconds
+of reported CLI latency. Across all twelve cells: 168 turns, 3,178,023 input
+(1,440,512 cached), 38,330 output (13,667 reasoning) and 1,751.369 seconds.
+Cached tokens are a subset of input and reasoning tokens a subset of output.
+There were no recorded reconnects;
+the requested model is Sol, while resolved backend identity remains unreported.
+
+The saved outcome review rederived the full twelve-member comparison and
+verified the prior eleven trials' referenced artifacts and outcomes unchanged.
+All saved restorations passed. The separate live boundary check at 22:00:08 UTC
+matched all seven saves, prior Lua, six runtime files and 84 source pins, with no FTL process
+at either process check and no pending-launch marker.
+
+Local receipts under `dist/resume-20261106/`:
+
+| Receipt | SHA-256 |
+| --- | --- |
+| `matrix-sol-hybrid-combat-repeats-independent-review-20261106.json` | `580eae02802be151c1cd2dceb9e125bee5b33b11266bb9248cac64b8f639814f` |
+| `matrix-sol-hybrid-combat-repeat01-actor-input-pixel-audit-20261106.json` | `f67a4a1e2227c92174113b87e605e5758e2cb37c2aecfa01d3c54abf3976daa9` |
+| `matrix-sol-hybrid-combat-repeat02-actor-input-pixel-audit-20261106.json` | `48095245aabba840be7efdb471a0487d367f10757808f7b792b7d642c83ffcb4` |
+| `matrix-sol-hybrid-combat-repeat03-actor-input-pixel-audit-20261106.json` | `0d8dec6010dd7585120a85dc7c0ff30322666581e4014a2634576e32c33bfdfc` |
+| `matrix-live-cleanup-20261106T220008048320Z.json` | `ebd3c2ecbcc8ca8ff5c6e4f2014cdbdb414aa1662f87f66128a015e8bb6877de` |
+
+The QA HTTP audit verified the first hybrid trial's running-to-terminal
+projection, task failure versus eligibility, restored saves, exact before/after
+PNG bytes and HUD provenance returned by the replay API. Its receipt is
+`focus-matrix-sol-hybrid-combat-dashboard-http-20261106T214718Z.json`, SHA-256
+`deb371479cb7d1bc55cc8c645b38a1c05d6ab8464f2bcb6a3a0c499e1aca3e83`.
+The final HTTP review matched all twelve rows, the third hybrid trial's success
+and replay images, and the second trial's separate native crew-loss outcome.
+`focus-matrix-twelve-cell-dashboard-http-20261106T220144Z.json` has SHA-256
+`09728a5ed6042d33f5c02d9beba902067501ffe710e39d910faad4f2dc022866`.
+Rendered-page verification remains pending while browser control is disabled.
+
+Next are the six Sol hybrid fire/recovery and repair/departure cells, followed
+by the Sol sector pilot and both full games, then Luna's eighteen challenge
+cells and both full games. Twenty-four matrix cells and all five full-game
+cohort attempts remain unstarted at this checkpoint. Continue one cell per
+invocation with independent outcome/input review and live cleanup checks.
+
 ## Sol image challenge block complete (2026-11-06, 21:31 UTC)
 
 All nine Sol image-only cells in `matrix-focus-5155dab-20261106` are complete
@@ -18,8 +97,9 @@ game determinism.
 | Repair, charge and departure | 2/3 | 12, 4, 4 | Reached another beacon with one engine bar still damaged |
 
 The fire failure ended after eight empty zero-frame decisions with no world
-updates or change in observed gameplay state. The repair failure reached full charge and spent one fuel on
-a confirmed arrival, but did not fully repair the engines before departure.
+updates or change in observed gameplay state. The repair failure reached full
+charge and spent one fuel on a confirmed arrival, but did not fully repair the
+engines before departure.
 The two successful repair repeats established full repair, power and charge
 at the origin before their confirmed arrivals. The two missed objectives
 are recorded as gameplay failures. All nine retained the ship and

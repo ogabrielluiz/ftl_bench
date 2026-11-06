@@ -22,8 +22,13 @@ are frozen with scoped local admission. All nine Sol image-only challenge
 trials are eligible: each challenge produced two task successes and one
 idle-budget failure, with verified cleanup. The 82 audited turns reported
 1,548,076 input tokens, 18,439 output tokens and 855.210 seconds of CLI latency.
-The remaining 27 matrix cells and all five new full-game cohort attempts are
-pending. These results do not yet compare models or observation modes.
+Sol's three hybrid combat trials subsequently produced one success, one scout
+escape and one crew-loss failure despite collecting the reward. All 12 trials
+remain eligible. Independent audits reproduced the 86 hybrid prompts and
+same-PNG HUD extraction, including omissions under warning and reward overlays.
+For this fixed encounter, image-only combat achieved 2/3 and hybrid 1/3; the
+full model/observation comparison remains incomplete. The remaining 24 matrix
+cells and all five new full-game cohort attempts are pending.
 Historical failures remain preserved. See
 [current work](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/NEXT.md).
 
