@@ -21,8 +21,10 @@ and eligible, with verified cleanup: image-only succeeded in 6/9 and hybrid
 in 4/9. The eight unsuccessful trials remain recorded. Independent audits
 matched starting gameplay states and reproduced all 135 hybrid prompts and
 their screenshot-derived HUD values, including omissions under overlays.
-These fixed-situation results do not establish a general ranking. Luna's
-18 challenge cells and all five new full-game cohort attempts are pending. See
+These fixed-situation results do not establish a general ranking. The new
+Sol/image pilot ended in native crew-loss defeat after 89 decisions, with clean
+input and restoration audits. It remains excluded from full-game totals.
+Luna's 18 challenge cells and all four new full-game conditions remain unfinished. See
 [current results and remaining work](docs/NEXT.md).
 
 Future full-game cohorts can declare matched decision, wall-time and idle budgets

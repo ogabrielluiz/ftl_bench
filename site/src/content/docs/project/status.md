@@ -27,8 +27,11 @@ exclusions or recorded reconnects. The 217 audited turns reported 4,094,609
 input tokens, 46,938 output tokens and 2,184.411 seconds of CLI latency.
 Independent audits reproduced all 135 hybrid prompts and same-PNG HUD
 extraction, including omissions under warning, cursor and reward overlays.
-This fixed-situation sample does not establish a general ranking. Luna's
-18 challenge cells and all five new full-game cohort attempts are pending.
+This fixed-situation sample does not establish a general ranking. The new
+Sol/image pilot ended in native crew-loss defeat after 89 decisions, four jumps
+and five visited beacons in sector one. Its input and restoration audits passed;
+the pilot contributes zero full-game completions. Luna's 18 challenge cells and
+all four new full-game conditions remain unfinished.
 Historical failures remain preserved. See
 [current work](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/NEXT.md).
 
