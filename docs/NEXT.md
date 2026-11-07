@@ -29,12 +29,60 @@ Budgets are listed as decisions, wall seconds and idle decisions.
 | `matrix-store-47db7f6-20261107` | `0c6bdfe7fbb03dd1c314ca8062d318be34cb9ed6c083e48dbbf39f187fbac942` | 36 challenge cells | 60 / 1,800 / 8 |
 | `fullgame-store-47db7f6-20261107` | `a4f81ad3fb081bda9a891c3d45855e137470ca26527ceb40eb04bcbfe9eb0b54` | Sol/image sector-one pilot, then four full-game cells | 1,500 / 86,400 / 8 |
 
+### Sol/image challenge checkpoint (02:00:58 UTC)
+
+All nine Sol/image cells finished and are eligible. Three met their native
+task criteria, and six stopped at their budgets. There were zero technical
+exclusions. The results describe this image-only condition and fixed seed.
+The remaining 27 challenge cells and all five full-game entries are planned.
+
+| Challenge | Successes | Decisions by repeat | Native result |
+| --- | --- | --- | --- |
+| Combat | 0/3 | 33 / 60 / 20 | Two scout escapes without rewards and one native kill with an original crew loss. |
+| Fire and crew recovery | 3/3 | 5 / 5 / 3 | All fires extinguished, crew at full health, oxygen recovered and ship stayed at the original beacon. |
+| Repair, charge and escape | 0/3 | 12 / 11 / 12 | All three spent one fuel and arrived at a connected beacon with all crew alive. The charged drive was ready, but engines remained at 1/2 before departure. |
+
+All three fire trials together acknowledged 4,020 native updates. They reported
+244,949 input tokens (198,144 cached), 3,624 output tokens (1,471 reasoning)
+and 139.009 seconds of CLI latency across 13 completed turns.
+Across all nine cells, 161 completed turns reported 3,045,189 input tokens
+(2,306,048 cached) and 37,692 output tokens (13,900 reasoning). Total CLI
+latency was 1,602.486 seconds, with a pooled median of 9.085 seconds and no
+recorded reconnects. Native acknowledgements covered 30,790 of 32,133
+requested updates.
+
+Independent review matched 161 actor inputs and 170 PNGs, with input-guard
+generation zero at every acknowledgement. Canonical gameplay starts matched
+within each scenario. Dashboard HTTP matched all nine completed cells and
+the final trial's first and last replay image pairs. The live boundary
+verified 15 inventory roles, seven original saves, 85 source pins, FTL
+closed and no pending-launch marker.
+
+The nine Sol/hybrid challenges come next. Then run the Sol/image sector-one
+pilot and both Sol full-game modes before the 18 Luna challenges and two Luna
+full games. Rendered dashboard verification is deferred while the operator
+is away.
+
+Local receipts under `dist/store-admission-47db7f6-20261107/`
+
+| File | SHA-256 |
+| --- | --- |
+| `store-matrix-sol-image-fire-crew-recovery-repeat03-independent-review.json` | `6301f32a30dd71b466bdc8bd248044790c6f72e2ad36570dd11a89df60feb2a2` |
+| `store-matrix-sol-image-repair-charge-escape-repeat01-independent-review.json` | `41ef7c083e0b60c1f5d4c217a93c5e1a5b852f58e534e9bb900761f7316c2635` |
+| `store-matrix-sol-image-repair-charge-escape-repeat03-independent-review.json` | `273a5c71f5b6a74711555576d2738b846474f411541e70b59d21fce9672896cf` |
+| `store-live-boundary-20261107T020058310835Z.json` | `5876a391e0754b4fc6460faba5cdb180852239fd35684092e1d4f7496f2ba3f4` |
+
+The independent input aggregate is
+`dist/store-ui-build/matrix-store-sol-image-nine-cell-actor-input-independent-audit-20261107.json`,
+SHA-256 `9c683a06120cbcdc909409583bc54191aa11352a7003103b2669ca447336a6ee`.
+It joins the nine individual receipts, exact prompts, event streams and images.
+
 ### Sol/image combat batch (01:37 UTC)
 
-Three of 36 challenge cells are finished and 33 remain planned. All three
-combat repeats were eligible, with zero task successes and zero technical
-exclusions. The comparison, visual reports and dashboard API classify all
-three terminations as `budget_exhausted`. The native goal checks distinguish
+At this boundary, three of 36 challenge cells had finished and 33 remained
+planned. All three combat repeats were eligible, with zero task successes
+and zero technical exclusions. The comparison, visual reports and dashboard
+API classify all three terminations as `budget_exhausted`. The native goal checks distinguish
 the reasons each attempt missed the task.
 
 | Repeat | Decisions | Budget that ended the run | Native outcome |
@@ -60,9 +108,8 @@ inventory roles, all seven original saves, 85 source pins, FTL closed and no
 pending-launch marker. Local receipts under `dist/store-admission-47db7f6-20261107/`
 include the [independent review and live boundary hashes](#combat-batch-receipts).
 
-Fire and crew recovery is next. The full-game ledger has five planned entries.
-The previous cohorts retain their recorded states. Rendered dashboard
-verification is deferred while the operator is away.
+Fire and crew recovery was the next planned group at this boundary. The
+full-game ledger had five planned entries.
 
 #### Combat batch receipts
 
