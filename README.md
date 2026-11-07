@@ -9,9 +9,11 @@ An agent benchmark that drives the real **FTL: Faster Than Light** engine throug
 **Current launch hold.** The first Luna/hybrid combat attempt failed during
 protected startup at 07:59 UTC, before any actor call or screenshot. Its pending
 launch guard remains unresolved and restoration is unverified. Operator
-cancellation and FTL closure are required before recovery. The frozen matrix
-controller also requires a separate continuation fix after recovery. See
-[current work](docs/NEXT.md) for the guard, backup and recovery limitations.
+cancellation and FTL closure are required before recovery. The current frozen
+matrix controller remains blocked after recovery. A future matrix scheduling
+change has offline regression coverage and requires fresh admission and a new
+execution boundary. See [current work](docs/NEXT.md) for the guard, backup and
+recovery limitations.
 
 The visual benchmark is an **alpha implementation with partial live validation**.
 The November 7 UTC hybrid run exposed stale native repair prices and ended

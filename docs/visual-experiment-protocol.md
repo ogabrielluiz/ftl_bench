@@ -68,6 +68,22 @@ Focused API tests and an actual rendered current-cohort/replay check passed;
 valid evidence remains distinct from task success. See [the dated viewer and
 trial snapshot](NEXT.md) for receipts, usage and the remaining review limits.
 
+## Pending launch recovery scheduling
+
+For future admitted matrix controllers, a separate verified pending-launch
+recovery can establish readiness to schedule the next planned cell. The
+original failed run, restoration status and technical exclusion are preserved.
+The check binds the operator's cancellation acknowledgement, exact ownership,
+timeout, manifest and backup paths, then rehashes the save and bridge backups,
+verifies the exact live inventory and bridge, and requires an absent ownership
+marker and no FTL process. It writes a new exclusive
+`recovery-checks/<id>.json` receipt.
+
+This source change requires fresh admission and a new execution boundary.
+The current frozen cohort remains held, with operator confirmation and real
+recovery pending. Full-game controllers retain their stronger technical-stop
+policy. See [the current hold and offline implementation](NEXT.md).
+
 ## Preserved cohort and prospective repairs (2026-10-11)
 
 The `matrix-fresh-v3-20261011` cohort, protocol `551c712f...`, is stopped and its

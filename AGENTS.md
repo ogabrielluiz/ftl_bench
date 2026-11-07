@@ -221,6 +221,14 @@ Never approve a delayed launch outside protection; preserve failed collections
 and use new outputs for fresh diagnostics. Happy-path live validation does not
 establish every delayed-launch recovery path.
 
+For admitted matrix controllers that support recovery scheduling, a verified
+`recovery-restoration.json` can permit the next planned cell only after its
+ownership, manifest, backups, exact live inventory, bridge, absent marker and
+closed FTL checks pass. Retain the failed trial and exclusion, and write a new
+exclusive `recovery-checks/` receipt. Source changes require fresh admission
+and a new execution boundary. The full-game controller keeps its stronger
+technical-stop policy.
+
 ## Git scope
 
 Tracked files retain their exact committed bytes through `.gitattributes`.

@@ -15,6 +15,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "adapter"))
@@ -397,11 +398,90 @@ def reconcile(directory, cell):
                 result_status=run.get("status"), result_reason=run.get("reason"))
 
 
+def require_recovery_restoration(directory, cell, run):
+    """Accept released pending-launch recovery for scheduling, never result eligibility."""
+    from ftl_bench import protected_game as protected
+
+    trial = saved_trial(directory, cell)
+    backup = protected._safe_path(trial / "save-backup")
+    manifest_path = protected._safe_path(backup / "manifest.json")
+    receipt_path = protected._safe_path(backup / "recovery-restoration.json")
+    timeout_path = protected._safe_path(backup / "launch-timeout.json")
+    manifest, receipt, timeout = map(read_json, (manifest_path, receipt_path, timeout_path))
+    recovery = receipt.get("recovery", {})
+    files = manifest.get("files")
+    if (run.get("status") != "error" or run.get("save_restoration") != "not_verified"
+            or run.get("reason") != "protected_launch_error"
+            or run.get("failure_type") != "infrastructure_failure"
+            or run.get("production_source_unchanged") is not True
+            or not isinstance(files, dict) or "bridge_sha256" not in manifest
+            or not isinstance(manifest.get("save_directory"), str)
+            or not Path(manifest["save_directory"]).is_absolute()):
+        raise ValueError("unsupported pending-launch recovery")
+    save = protected._safe_path(Path(manifest["save_directory"]))
+    if not save.is_dir():
+        raise ValueError("original save directory is missing or not a directory")
+    expected = {"contract": "protected-launch-recovery-v1",
+                "ownership_id": timeout.get("ownership_id"),
+                "save_directory": str(save), "backup_directory": str(backup),
+                "manifest_sha256": protected._hash(manifest_path),
+                "operator_confirmed_pending_launch_cancelled": True,
+                "queue_cancellation_verified_by_harness": False,
+                "prior_launch_state": "launch_pending"}
+    if (not isinstance(timeout.get("ownership_id"), str) or not timeout["ownership_id"]
+            or timeout.get("contract") != "protected-launch-timeout-v1"
+            or timeout.get("state") != "launch_pending"
+            or timeout.get("queue_cancellation_verified") is not False
+            or recovery != expected
+            or recovery.get("operator_confirmed_pending_launch_cancelled") is not True
+            or recovery.get("queue_cancellation_verified_by_harness") is not False
+            or manifest["save_directory"] != str(save)
+            or backup == save or backup.is_relative_to(save)
+            or receipt.get("verified") is not True
+            or receipt.get("files") != {name: True for name in files}
+            or any(value is not True for value in receipt.get("files", {}).values())):
+        raise ValueError("unbound pending-launch recovery")
+    marker = protected._safe_path(save / protected.PENDING_LAUNCH)
+    if marker.exists():
+        raise ValueError("pending-launch ownership has not been released")
+    for name, sha in files.items():
+        if (not isinstance(name, str) or Path(name).name != name
+                or Path(name).suffix.lower() != ".sav"
+                or protected._hash(protected._safe_path(backup / name)) != sha):
+            raise ValueError("original save backup changed")
+    bridge = protected._safe_path(backup / "ftl_bench_dev.lua")
+    if (protected._hash(bridge) if bridge.is_file() else None) != manifest["bridge_sha256"]:
+        raise ValueError("original bridge backup changed")
+    if manifest["bridge_sha256"] is None and bridge.exists():
+        raise ValueError("unexpected original bridge backup")
+    # Reuse the lifecycle's read-only exact live inventory, bridge and process check.
+    game = object.__new__(protected.ProtectedGame)
+    game.save, game.backup, game.manifest, game._guard = save, backup, manifest, None
+    game._verify_restored()
+    if protected._safe_path(save / protected.PENDING_LAUNCH).exists():
+        raise ValueError("pending-launch ownership appeared during verification")
+    checks = protected._safe_path(Path(directory) / "recovery-checks")
+    checks.mkdir(exist_ok=True)
+    protected._write_json(checks / (uuid4().hex + ".json"), {
+        "contract": "matrix-controller-recovery-check-v1", "checked_at": stamp(),
+        "cell_id": cell["id"], "verified": True, "result_eligibility_unchanged": True,
+        "backup_directory": str(backup), "save_directory": str(save),
+        "source_sha256": protected._hash(Path(__file__)),
+        "files_sha256": {path.relative_to(trial).as_posix(): protected._hash(path)
+                         for path in (manifest_path, receipt_path, timeout_path, trial / "run.json")},
+        "recovery": recovery}, exclusive=True)
+
+
 def require_restoration(directory, cell):
     """A prior failed cleanup stays blocking across controller restarts."""
     receipt = saved_trial(directory, cell) / "save-backup/restoration.json"
     manifest = receipt.with_name("manifest.json")
     try:
+        if not receipt.exists():
+            from ftl_bench.protected_game import _safe_path
+            run = read_json(_safe_path(saved_trial(directory, cell) / "run.json"))
+            require_recovery_restoration(directory, cell, run)
+            return
         run = read_json(saved_trial(directory, cell) / "run.json")
         restoration, originals = read_json(receipt), read_json(manifest)
         files = originals.get("files")
@@ -410,7 +490,7 @@ def require_restoration(directory, cell):
                 or restoration.get("verified") is not True or not isinstance(files, dict)
                 or restoration.get("files") != {name: True for name in files}):
             raise ValueError("incomplete restoration receipt")
-    except (OSError, ValueError, TypeError) as error:
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, RuntimeError) as error:
         raise RuntimeError(f"Save restoration is not verified for {cell['id']}; inspect before continuing") from error
 
 

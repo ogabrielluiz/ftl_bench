@@ -50,6 +50,28 @@ The scoped no-actor observation is
 `dist/store-ui-build/matrix-store-luna-hybrid-combat-repeat01-no-actor-infrastructure-observation-20261107.json`,
 SHA-256 `0e449e45c226d0a00c5267544d49c42dae3cef8df1c47c23f4f8a8f9f0d155e7`.
 
+## Prospective matrix recovery scheduling (offline)
+
+The isolated `protected-recovery-continuation` change has offline regression
+coverage. A newly admitted matrix controller can accept a separately bound,
+verified `recovery-restoration.json` to schedule the next planned cell after
+a `protected_launch_error` infrastructure failure. The failed trial retains
+its original run metadata, missing original restoration receipt and exclusion.
+
+The scheduling check requires the operator's cancellation acknowledgement,
+the exact ownership ID, timeout state, manifest hash and backup/save-directory
+bindings. It rehashes the original save and bridge backups, verifies the exact
+live save inventory and restored bridge, checks that the ownership marker is
+absent and verifies FTL is closed. Each successful scheduling check writes a
+new exclusive `recovery-checks/<id>.json` receipt binding the controller hash
+and the manifest, recovery, timeout and run metadata hashes.
+
+The real pending launch has not been recovered, and operator confirmation
+remains pending. The current frozen matrix still uses its original controller.
+Using this source change requires fresh admission and a new execution boundary.
+The full-game controller retains its stronger stop after a technical child
+failure, even when recovery has restored the profile.
+
 ## Luna/image nine-cell checkpoint (2026-11-07, 07:53:38 UTC)
 
 All nine Luna/image attempts finished, with six eligible trials, two task

@@ -10,7 +10,10 @@ The first Luna/hybrid combat attempt failed during protected startup at
 remains unresolved and restoration is unverified. The seven save backups
 and prior Lua remain intact. Operator cancellation and FTL closure are
 required before recovery, and recovery alone leaves the frozen matrix
-controller blocked.
+controller blocked. Offline regression checks cover a future matrix scheduling
+change that accepts separately verified recovery evidence. Using that change
+requires fresh admission and a new execution boundary. The current pending
+request still awaits operator confirmation.
 
 The current ledger has 28 finished attempts and eight planned cells, with
 24 eligible trials, 12 successes and four technical exclusions. The fourth
