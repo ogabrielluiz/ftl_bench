@@ -173,6 +173,12 @@ deadlock arrival. Check both the hidden transition and the settled visible modal
 including queued arrival-choice resolution, real rendering and bounded frame counts. See
 `docs/native-store-arrival.md`; artifact integrity alone cannot detect this stall.
 
+The frozen clock can refresh native item controls for the visible vanilla buy
+tab. Keep that refresh inside the store child, outside tab switching and
+gameplay loops. Verify the displayed repair quote and actual scrap debit on a
+zero-frame reopen and purchase, including exact save restoration. See
+`docs/native-store-refresh.md` for the gate and protected probe.
+
 Check a cohort's `protocol.json` source pins before editing experiment inputs.
 Do not mutate frozen sources or saved runs to make an existing cohort pass.
 Changed sources, tasks or budgets require a new freeze/output directory.

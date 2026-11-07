@@ -2,7 +2,83 @@
 
 **WIP / alpha. Current status as of 2026-11-07 UTC. Historical snapshots retain their original dates.**
 
-## Confirmed store price defect; hybrid stopped safely (2026-11-07, 00:15 UTC)
+## Scoped controller admission and new cohorts (2026-11-07 UTC)
+
+The protected `47db7f6` collection passed all eight startup checks and all nine
+fixed-step timing probes, with exact frame equality within each case. The
+independent review passed eight targeted rejection checks. Scoped admission
+binds 85 executable source files and 579 evidence files. The final receipt
+records `controller_admission: true` and `production_accepted: false`.
+
+Local admission files are under
+`harness/runs/validation/visual-v1/store-admission-47db7f6-20261107/`.
+
+| File | SHA-256 |
+| --- | --- |
+| `startup/validation.json` | `b4afc802acb5bacbca7119eb61c5af148d42333476a5324de86b09bfabb58f2c` |
+| `timing/fixed-step-report.json` | `d072ba364275c3406458f7452aa6a666b10fd9c92ae4e62bd359f84a48f9296d` |
+| `review/review.json` | `c9eba6413fcf90a7e3342e906bf94378339590f717b69ae8a5df49dbd103b565` |
+| `controller-admission-spec.json` | `86d284bf02808508e10faf15523bfd4e711f86b86200c4d7db9799f81a687e83` |
+| `controller-admission.json` | `fa2e9a45332038088afa49e69d581e0063ce62c4d7c1c72a3e5c09a9f7f0c82c` |
+
+Both cohorts are frozen under `harness/runs/visual/` with Codex CLI `0.162.1`.
+Budgets are listed as decisions, wall seconds and idle decisions.
+
+| Cohort | Embedded protocol SHA-256 | Conditions | Budgets |
+| --- | --- | --- | --- |
+| `matrix-store-47db7f6-20261107` | `0c6bdfe7fbb03dd1c314ca8062d318be34cb9ed6c083e48dbbf39f187fbac942` | 36 challenge cells | 60 / 1,800 / 8 |
+| `fullgame-store-47db7f6-20261107` | `a4f81ad3fb081bda9a891c3d45855e137470ca26527ceb40eb04bcbfe9eb0b54` | Sol/image sector-one pilot, then four full-game cells | 1,500 / 86,400 / 8 |
+
+The first Sol/image combat cell started at 01:05 UTC. The full-game ledger
+has five planned entries. Model results for the new cohorts are pending.
+The previous matrix and full-game cohorts retain their recorded states.
+Rendered dashboard verification is deferred while the operator is away.
+
+## Protected store refresh passed (2026-11-07, 00:46 UTC)
+
+The isolated `store-ui-refresh` checkout built executable commit `47db7f6`.
+The Windows Release DLL linked under the pinned Clang 12 toolchain, and the
+build completed at 00:42 UTC. The preliminary Debug dependency build failed
+in vcpkg's Boost.Filesystem port. The retained log records that failure and the
+subsequent successful Release compile and link.
+
+The Release DLL was independently verified and installed at 00:45 UTC.
+Its SHA-256 is
+`e8cd1f3d8df3dff115f8c6bb20096b4748bc5da8aa77ff0ebffef2dcadf10923`,
+and its provenance SHA-256 is
+`7f0abe4c5a2372f81e685c72d95989ac01ca7fe181a38fa3558fc26b9770c2a8`.
+The installer replaced the DLL and provenance. Installed `ftl.dat` matched the
+verified baseline, and both rebuilt mod archives matched the prior member
+bytes. The original runtime pair remains in the installation backup.
+
+The same protected probe ran on the prior and replacement DLLs. It reached the
+store through a normal jump and Continue, then supplied two controlled hull
+changes in a disposable session. Both runs quoted 6 scrap at hull 27. After
+closing the store and reducing hull to 22, the prior DLL still quoted and
+charged 6. The replacement quoted and charged 16. The reopen and Fix All clicks
+each admitted zero frames, with the world counter and native timer unchanged.
+Both runs repaired to hull 30, preserved the hidden arrival and visible store
+gates, and restored all seven original saves and the prior Lua bridge.
+
+Independent review rehashed 123 declared artifacts and 85 executable source
+pins per run, joined all twelve steps to their PNGs and native records, and
+verified the final live inventory with FTL closed and no pending-launch
+marker. This is a fixture-only result with zero model calls. The refresh
+covers the visible vanilla buy tab. Custom stores remain outside its scope.
+
+See [the store refresh evidence](native-store-refresh.md) and
+[the admission workflow](native-acceptance.md#prospective-portable-controller-admission).
+
+Local receipts in the isolated checkout:
+
+| Receipt | SHA-256 |
+| --- | --- |
+| `dist/store-ui-build/operator-evidence/build.log` | `74ad582dd67c5dc0463c090ba492d09e0154710d295e2f369f897cd80004b4fa` |
+| `dist/store-ui-build/installation-20261107T004525896415Z-8e1fb814/independent-build-review.json` | `73dee5ada7ea74dd5341bbb8b50c9d5f32a26881426f2f3dc6e599c0c082fbb7` |
+| `dist/store-ui-build/installation-20261107T004525896415Z-8e1fb814/result.json` | `dc8df2b6268ab8577245b837d1cece59b964e4e6919577bd0bb933eb586637af` |
+| `dist/store-ui-build/store-refresh-red-green-independent-audit-20261107.json` | `67a8db8c8d5115250262f654cf012ed07be0701615574668d1216f1e6a011036` |
+
+## Confirmed store price defect and cooperative stop (2026-11-07, 00:15 UTC)
 
 The Sol/hybrid full-game attempt exposed a native GUI cache defect in the
 benchmark's zero-frame decision path. At the first store, the repair-all price
@@ -56,18 +132,16 @@ including the cancelled turn, was 5,418,781 input tokens (4,161,280 cached) and
 Cached and reasoning tokens are subsets; no reconnect was recorded. These
 mechanical input and usage checks do not validate the store-price behavior.
 
-Fix work is isolated in `ftl_bench-store-ui-20261107`, branch `store-ui-refresh`.
-Next: implement a bounded visible-store refresh, verify cached-price regression
-and zero gameplay advancement, build and test the native runtime under protection,
-then collect fresh admission and freeze replacement comparison cohorts. Preserve
-the timing, focus, hidden-arrival and exact-cleanup contracts. No new game is
-running at this checkpoint. Rendered dashboard inspection remains deferred.
+The subsequent rebuild and protected store probe ran in
+`ftl_bench-store-ui-20261107`. Their results are recorded above. The preserved
+attempt and its original runtime remain the evidence for this interruption.
 
 Local receipts under `dist/resume-20261106/`:
 
 | Receipt | SHA-256 |
 | --- | --- |
 | `focus-fullgame-sol-hybrid-stale-store-price-20261107T001714Z.json` | `4a82a980ec4db64ad52ad5ffd3278b09dd2d0268640fe5bce1440f750ea2833b` |
+| `focus-fullgame-sol-hybrid-stale-store-native-dispatch-20261107T003117Z.json` | `316c06c40ca9890fd822855e5110a7e8b214a795920a10e03e1fb36b78bda458` |
 | `fullgame-live-cleanup-20261107T001557277146Z.json` | `8a2010e5d4dd0c7644170bcd28b68471ab29286a52df593d2d42ef8e3444b51a` |
 | `focus-fullgame-sol-hybrid-dashboard-http-20261107T001825Z.json` | `0039a56596fcd0791f8acd4d68095f6239d6d61f4fb5cd8b9b1f434b2a4a0c64` |
 | `fullgame-sol-hybrid-terminal-input-audit-20261106.json` | `30d596697b5edb352394012878bc25198153ffab3617a257cb32bdd32d6e1dcc` |

@@ -5,13 +5,20 @@ description: Current protocol, retained diagnostic evidence and comparable repor
 
 ## Visual benchmark status — November 7, 2026 UTC
 
-The Sol/hybrid full-game attempt exposed a confirmed stale store-price defect:
-zero-frame decisions suppress the native GUI update that refreshes repair costs.
-One purchase therefore charged 6 scrap to repair eight hull instead of 16.
-The assistant operator stopped the run cooperatively, preserving its artifacts
-and exact save restoration. It remains incomplete and diagnostic. A fix is being
-developed in a separate checkout; further comparisons require fresh validation
-and newly frozen cohorts. Earlier results below retain their original scope.
+The Sol/hybrid full-game attempt stopped cooperatively after a stale store
+price charged 6 scrap for eight hull repairs. Its artifacts and verified
+save restoration are preserved. The rebuilt Release runtime from `47db7f6`
+passed the same protected zero-frame store path, quoting and charging 16 scrap
+at hull 22. Both probes restored the original saves and prior Lua. Independent
+review verified 123 artifacts and 85 source pins per run.
+
+The probe covers the visible vanilla buy tab and made no model calls. The
+rebuilt runtime has scoped controller admission after eight protected startup
+checks, nine timing probes and eight independent rejection checks. A new
+36-cell challenge matrix and a separate sector pilot plus four full-game
+conditions are frozen. Results are pending. Rendered dashboard inspection
+is deferred while the operator is away. See the
+[store refresh evidence](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/native-store-refresh.md).
 
 The visual benchmark remains an alpha with partial live validation. Codex CLI
 is the default. Decisions and Jev now have separate typed visual adapters and
@@ -25,24 +32,25 @@ paused updates could count toward a gameplay advance, and refocusing could
 advance the timer during a frozen hold. The rebuilt fix passed protected
 startup, all nine timing probes and eight independent evidence-rejection
 checks. A pre-capture focus test also verified that native refocus leaves the
-world and timer frozen even when the UI becomes unpaused. New Sol/Luna cohorts
-are frozen with scoped local admission. All 18 Sol challenge trials are
-complete and eligible, with verified cleanup: image-only succeeded in 6/9
-and hybrid in 4/9. Each task has three repetitions per mode with matching
+world and timer frozen even when the UI becomes unpaused. The preserved Sol/Luna
+cohorts had scoped local admission for that focus-fix runtime. All 18 Sol
+challenge trials are complete and eligible, with verified cleanup. Image-only
+succeeded in 6/9 and hybrid in 4/9. Each task has three repetitions per mode with matching
 starting gameplay states. The eight idle-budget endings remain recorded,
 with the unmet native requirements reported separately. There are no technical
 exclusions or recorded reconnects. The 217 audited turns reported 4,094,609
 input tokens, 46,938 output tokens and 2,184.411 seconds of CLI latency.
 Independent audits reproduced all 135 hybrid prompts and same-PNG HUD
 extraction, including omissions under warning, cursor and reward overlays.
-This fixed-situation sample does not establish a general ranking. The new
-Sol/image pilot ended in native crew-loss defeat after 89 decisions, four jumps
+This fixed-situation sample does not establish a general ranking. The Sol/image
+pilot ended in native crew-loss defeat after 89 decisions, four jumps
 and five visited beacons in sector one. Its input and restoration audits passed;
 the pilot contributes zero full-game completions. Sol/image then reached an
 audited full-game defeat after 42 decisions at the second beacon, with native
-score 59 and all crew dead. Cleanup and the saved dashboard projection passed;
-full-game completion is now 1/4. Sol/hybrid, both Luna full-game conditions and
-Luna's 18 challenge cells remain unfinished.
+score 59 and all crew dead. Cleanup and the saved dashboard projection passed.
+The preserved cohort has one verified full-game ending out of four. The
+Sol/hybrid attempt is incomplete. Both Luna full games and all 18 Luna challenge
+cells remain planned in the preserved cohorts.
 Historical failures remain preserved. See
 [current work](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/NEXT.md).
 

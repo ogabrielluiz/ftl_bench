@@ -7,11 +7,14 @@ An agent benchmark that drives the real **FTL: Faster Than Light** engine throug
 ## Status: work in progress
 
 The visual benchmark is an **alpha implementation with partial live validation**.
-The November 7 UTC hybrid run exposed stale native store repair prices during
-zero-frame decisions. It was stopped cooperatively and preserved as a diagnostic;
-all original saves were restored. A store UI refresh fix is being developed in
-an isolated checkout. Further comparisons require fresh validation and new
-cohorts after the executable change. See [current work](docs/NEXT.md).
+The November 7 UTC hybrid run exposed stale native repair prices and ended
+with a cooperative stop and verified save restoration. The rebuilt runtime
+passed a protected vanilla store probe. At hull 22, the same zero-frame reopen
+and purchase charged 16 scrap on the new DLL and 6 on the prior DLL. Both probes
+restored the original saves and ran without model calls. The rebuilt runtime has
+scoped controller admission and two fresh frozen cohorts. Results for the new
+cohorts are pending. See the
+[store refresh evidence](docs/native-store-refresh.md) and [current work](docs/NEXT.md).
 The November 6 typed Decisions and Jev integrations have offline coverage.
 Live provider validation remains pending. The archived-image decision command
 is ready for a provider check with an explicitly selected credential file. See
@@ -21,18 +24,18 @@ Separate November 6 game diagnostics reproduced a focus-related native clock
 defect. The rebuilt fix passed protected startup, all nine timing probes and
 independent admission checks. Focus loss now stops an owned advance, and a
 pre-capture probe recorded no timer growth after refocus with the GUI unpaused.
-Fresh Sol/Luna cohorts are frozen. All 18 Sol challenge trials are complete
-and eligible, with verified cleanup: image-only succeeded in 6/9 and hybrid
-in 4/9. The eight unsuccessful trials remain recorded. Independent audits
-matched starting gameplay states and reproduced all 135 hybrid prompts and
-their screenshot-derived HUD values, including omissions under overlays.
-These fixed-situation results do not establish a general ranking. The new
-Sol/image pilot ended in native crew-loss defeat after 89 decisions, with clean
+The preserved Sol/Luna cohorts use that focus-fix runtime. All 18 Sol challenge
+trials are complete and eligible, with verified cleanup. Image-only succeeded
+in 6/9 and hybrid in 4/9. The eight unsuccessful trials remain recorded.
+Independent audits matched starting gameplay states and reproduced all 135
+hybrid prompts and their screenshot-derived HUD values, including omissions
+under overlays. These fixed-situation results do not establish a general ranking.
+The Sol/image pilot ended in native crew-loss defeat after 89 decisions, with clean
 input and restoration audits. It remains excluded from full-game totals.
 Sol/image then reached an audited native defeat after 42 decisions, completing
-the first of four full-game conditions. Sol/hybrid and both Luna full-game
-conditions remain unfinished, along with Luna's 18 challenge cells. See
-[current results and remaining work](docs/NEXT.md).
+one of four full-game conditions. Sol/hybrid remains an incomplete interrupted
+attempt. The two Luna full games and 18 Luna challenge cells remain planned in
+the preserved cohorts. See [current results and remaining work](docs/NEXT.md).
 
 Future full-game cohorts can declare matched decision, wall-time and idle budgets
 at freeze time; defaults remain 300 / 14,400 seconds / 8. See the
