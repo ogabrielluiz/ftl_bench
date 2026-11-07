@@ -28,6 +28,11 @@ crew-loss defeat after 286 decisions in native sector 2 (the third sector).
 This completed one of four full-game conditions, with the pilot excluded.
 Sol/hybrid was next, followed by the Luna trials.
 
+At the 06:32 UTC checkpoint, Sol/hybrid had ended in audited native
+crew-loss defeat after 655 decisions in native sector 5 (the sixth sector).
+Both Sol full-game conditions had native endings, leaving two Luna conditions
+planned. The pilot remains excluded. The Luna challenge matrix was next.
+
 The November 6 typed Decisions and Jev integrations have offline coverage.
 Live provider validation remains pending. The archived-image decision command
 is ready for a provider check with an explicitly selected credential file. See

@@ -2,6 +2,53 @@
 
 **WIP / alpha. Current status as of 2026-11-07 UTC. Historical snapshots retain their original dates.**
 
+## Sol/hybrid full-game checkpoint (2026-11-07, 06:32:29 UTC)
+
+Sol/hybrid in `fullgame-store-47db7f6-20261107` ended with
+`native_game_over` after 655 decisions. Native telemetry and the terminal
+PNG agree on crew-loss defeat, score 1,464, hull 24 and oxygen 65%. The run
+reached native sector 5 (the sixth sector). It recorded 45 settled jumps,
+five sector crossings and 42 distinct native locations. The two Sol
+conditions have native endings, both defeats. Two of four
+full-game conditions are complete at this boundary, with zero victories and
+the pilot excluded.
+
+| Condition | Decisions | Native sector reached | Native score | CLI seconds | Median seconds |
+| --- | --- | --- | --- | --- | --- |
+| Sol/image | 286 | 2 (third sector) | 462 | 2,585.382 | 8.1825 |
+| Sol/hybrid | 655 | 5 (sixth sector) | 1,464 | 6,180.742 | 8.557 |
+
+The hybrid run reported 12,369,596 input tokens (9,769,856 cached) and
+138,059 output tokens (38,865 reasoning), with elapsed time 8,042.063 seconds.
+Its native clock acknowledged 106,271 of 132,722 requested updates.
+The comparison covers these two recorded trajectories on the same seed.
+The saved visual reports retain their diagnostic scope. Resolved backend
+model identity and monetary cost remain unavailable.
+
+Independent input review reconstructed all 655 exact prompts and native
+acknowledgements, 656 PNGs, and all CLI event and answer hashes. The 204
+distinct pixel states joined 202 direct witnesses and two exact prior
+witnesses. Numeric extraction omitted 233 fields across 94 turns under its
+overlay and anchor rules. The input guard remained clear, with zero tools
+or reconnects.
+
+The 06:32:29 UTC boundary verified 15 inventory roles, seven original saves,
+85 executable source pins, FTL closed and no pending-launch marker. All 18 Sol
+challenge results and the pilot were preserved. The 18 Luna challenge cells
+were next, followed by Luna image and hybrid full games. Rendered dashboard
+verification remains deferred while the operator is away.
+
+Local review files under `dist/store-admission-47db7f6-20261107/`
+
+| File | SHA-256 |
+| --- | --- |
+| `store-fullgame-sol-hybrid-independent-review.json` | `b8c21667d4663aeba64d2ad6c422053a4b266dacb712fe658cf7a44a4d3e382a` |
+| `store-live-boundary-20261107T063229542466Z.json` | `5151537557a176a05f21b4c53230e3de471e8c57b60a3fb6d4f4415d02a91d81` |
+
+The independent input audit is
+`dist/store-ui-build/fullgame-store-sol-hybrid-actor-input-independent-audit-20261107.json`,
+SHA-256 `8c9a090c0de5fc9885f9b6c95acadfc894d3f80d394e85ccb50d7358e95b29c0`.
+
 ## Sol/image full-game checkpoint (2026-11-07, 04:13:23 UTC)
 
 Sol/image in `fullgame-store-47db7f6-20261107` ended with

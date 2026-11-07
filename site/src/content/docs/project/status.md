@@ -43,6 +43,13 @@ restoration audits passed. One of four full-game conditions was complete,
 with zero victories and the pilot excluded. Sol/hybrid was next at this
 boundary, followed by the Luna trials.
 
+At the 06:32 UTC checkpoint, Sol/hybrid had ended in audited native crew-loss
+defeat after 655 decisions in native sector 5 (the sixth sector), with score
+1,464 and hull 24. The two Sol conditions had native endings, both defeats.
+Two of four full-game conditions were complete, with zero victories and the
+pilot excluded. The 18 Luna challenge cells and two Luna full games remained
+planned at this boundary.
+
 The visual benchmark remains an alpha with partial live validation. Codex CLI
 is the default. Decisions and Jev now have separate typed visual adapters and
 an archived-image decision command; offline integration and packaging checks
