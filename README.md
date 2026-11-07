@@ -12,8 +12,10 @@ with a cooperative stop and verified save restoration. The rebuilt runtime
 passed a protected vanilla store probe. At hull 22, the same zero-frame reopen
 and purchase charged 16 scrap on the new DLL and 6 on the prior DLL. Both probes
 restored the original saves and ran without model calls. The rebuilt runtime has
-scoped controller admission and two fresh frozen cohorts. Results for the new
-cohorts are pending. See the
+scoped controller admission and two fresh frozen cohorts. The first three of
+36 challenge cells are complete. All three Sol/image combat repeats were
+eligible and exhausted their budgets with zero task successes. Fire and crew
+recovery is next. The full-game pilot and four runs remain planned. See the
 [store refresh evidence](docs/native-store-refresh.md) and [current work](docs/NEXT.md).
 The November 6 typed Decisions and Jev integrations have offline coverage.
 Live provider validation remains pending. The archived-image decision command

@@ -16,8 +16,13 @@ The probe covers the visible vanilla buy tab and made no model calls. The
 rebuilt runtime has scoped controller admission after eight protected startup
 checks, nine timing probes and eight independent rejection checks. A new
 36-cell challenge matrix and a separate sector pilot plus four full-game
-conditions are frozen. Results are pending. Rendered dashboard inspection
-is deferred while the operator is away. See the
+conditions are frozen. The first three Sol/image combat repeats are complete
+and eligible, with zero task successes. The scout escaped without a reward
+in two trials. The third earned the native kill and reward but lost an
+original crew member. All three exhausted their budgets. The matrix has 33
+cells planned, with fire and crew recovery next. The five full-game entries
+remain planned. Rendered dashboard inspection is deferred while the operator
+is away. See the
 [store refresh evidence](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/native-store-refresh.md).
 
 The visual benchmark remains an alpha with partial live validation. Codex CLI

@@ -29,10 +29,47 @@ Budgets are listed as decisions, wall seconds and idle decisions.
 | `matrix-store-47db7f6-20261107` | `0c6bdfe7fbb03dd1c314ca8062d318be34cb9ed6c083e48dbbf39f187fbac942` | 36 challenge cells | 60 / 1,800 / 8 |
 | `fullgame-store-47db7f6-20261107` | `a4f81ad3fb081bda9a891c3d45855e137470ca26527ceb40eb04bcbfe9eb0b54` | Sol/image sector-one pilot, then four full-game cells | 1,500 / 86,400 / 8 |
 
-The first Sol/image combat cell started at 01:05 UTC. The full-game ledger
-has five planned entries. Model results for the new cohorts are pending.
-The previous matrix and full-game cohorts retain their recorded states.
-Rendered dashboard verification is deferred while the operator is away.
+### Sol/image combat batch (01:37 UTC)
+
+Three of 36 challenge cells are finished and 33 remain planned. All three
+combat repeats were eligible, with zero task successes and zero technical
+exclusions. The comparison, visual reports and dashboard API classify all
+three terminations as `budget_exhausted`. The native goal checks distinguish
+the reasons each attempt missed the task.
+
+| Repeat | Decisions | Budget that ended the run | Native outcome |
+| --- | --- | --- | --- |
+| 1 | 33 | Idle decisions | Scout escaped at 6 hull with no reward. |
+| 2 | 60 | Total decisions | Scout escaped at 1 hull with no reward. |
+| 3 | 20 | Idle decisions | Native kill and reward of 18 scrap, three fuel and one missile. Initial crew ID 2 died before the reward. |
+
+The third trial's fixture `validation.json` and `run.json` classify the crew
+loss as `failed_native_loss`. Its final hull was 25 and its native score was
+58. All repeats shared canonical gameplay-start SHA-256
+`1759586db7dc376c6513220994a1e2e6e25b6fefa42c488cb5927b9481e36850`.
+Independent input review matched 113 exact prompts and 116 PNGs. The native
+clock acknowledged 23,641 of 23,913 requested updates. Input-guard generation
+remained zero. The CLI recorded no tool calls or reconnects and reported no
+resolved backend model identity.
+
+The 113 completed turns reported 2,144,248 input tokens (1,638,144 cached) and
+29,215 output tokens (11,559 reasoning). Total CLI latency was 1,205.630
+seconds, with a pooled median of 10.478 seconds. Dashboard HTTP checks matched
+the saved comparison and replay PNGs. The 01:37 UTC live boundary verified 15
+inventory roles, all seven original saves, 85 source pins, FTL closed and no
+pending-launch marker. Local receipts under `dist/store-admission-47db7f6-20261107/`
+include the [independent review and live boundary hashes](#combat-batch-receipts).
+
+Fire and crew recovery is next. The full-game ledger has five planned entries.
+The previous cohorts retain their recorded states. Rendered dashboard
+verification is deferred while the operator is away.
+
+#### Combat batch receipts
+
+| File | SHA-256 |
+| --- | --- |
+| `store-matrix-sol-image-combat-repeat03-independent-review.json` | `4f917ac7acc470d0855f8ac7b4ad835bd0beab72921e0e2e316e466c400af04d` |
+| `store-live-boundary-20261107T013706803412Z.json` | `0552317c61ba04878229b34f2cc41052b3e21c841c107127bb117876db0476f3` |
 
 ## Protected store refresh passed (2026-11-07, 00:46 UTC)
 
