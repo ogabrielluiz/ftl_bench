@@ -3,7 +3,15 @@ title: Validation and baselines
 description: Current protocol, retained diagnostic evidence and comparable reporting.
 ---
 
-## Visual benchmark status — November 6, 2026
+## Visual benchmark status — November 7, 2026 UTC
+
+The Sol/hybrid full-game attempt exposed a confirmed stale store-price defect:
+zero-frame decisions suppress the native GUI update that refreshes repair costs.
+One purchase therefore charged 6 scrap to repair eight hull instead of 16.
+The assistant operator stopped the run cooperatively, preserving its artifacts
+and exact save restoration. It remains incomplete and diagnostic. A fix is being
+developed in a separate checkout; further comparisons require fresh validation
+and newly frozen cohorts. Earlier results below retain their original scope.
 
 The visual benchmark remains an alpha with partial live validation. Codex CLI
 is the default. Decisions and Jev now have separate typed visual adapters and

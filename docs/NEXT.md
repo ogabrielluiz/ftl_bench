@@ -1,6 +1,77 @@
 # Current validation and next work
 
-**WIP / alpha. Current status as of 2026-11-06. Historical snapshots retain their original dates.**
+**WIP / alpha. Current status as of 2026-11-07 UTC. Historical snapshots retain their original dates.**
+
+## Confirmed store price defect; hybrid stopped safely (2026-11-07, 00:15 UTC)
+
+The Sol/hybrid full-game attempt exposed a native GUI cache defect in the
+benchmark's zero-frame decision path. At the first store, the repair-all price
+was initialized with 27 hull: three missing hull at two scrap each, or six scrap.
+After the store closed, fire damage reduced hull to 22. Reopening and purchasing
+with zero requested frames kept the old quote. The screenshot showed current
+hull 22, unit repair price 2 and repair-all price 6; the purchase restored hull
+to 30 while charging six scrap instead of the current cost of sixteen.
+
+Static inspection of the exact installed FTL executable and pinned native hook
+establishes the mechanism. `RepairStoreBox::OnLoop` recomputes the cached total;
+rendering and purchasing read it, while repair-all applies the current hull
+deficit. Native `Store::Open` only opens the window. Ordinary paused GUI ticks
+refresh its boxes, but the benchmark skips `CommandGui::OnLoop` while frozen
+and refreshes only map UI. The cache therefore persists across separate
+zero-frame decisions. A later store is a useful positive control: one admitted
+frame refreshed its quote, and repairing 12 to 30 hull correctly cost 36 scrap.
+The causal receipt retains exact PE byte spans, hashes, source and screenshot
+references. It does not claim an unperformed native replay or general prevalence.
+
+The assistant operator requested the official cooperative stop at
+00:15:14.206678 UTC, with reason
+`confirmed_stale_store_repair_price_during_zero_frame_decisions`. The game had
+286 dispatched decisions. The 287th completed model response was retained as
+cancelled before dispatch, with no dispatched actions, acknowledged frames or after-image.
+The prior observation and world counter remained unchanged. This is an
+operator interruption due to a confirmed harness defect, not a model concession,
+native defeat or full-game completion.
+
+The controller subsequently refused continuation because the saved child was
+interrupted; its nonzero parent exit is that guard, not failed save restoration.
+The live boundary audit at 00:15:57 UTC verified all seven original saves, all
+15 file roles and 84 frozen executable source pins, with FTL absent at both
+checks and no pending-launch marker. Dashboard HTTP showed one completed
+Sol/image defeat and one incomplete hybrid attempt, with the pilot excluded.
+The raw reports and their integrity verdicts remain unchanged; mechanical
+input integrity does not establish correct store pricing.
+
+At interruption the run was in native sector index 1, with 24 hull, four living
+crew and score 438. These are diagnostic observations, not qualified comparative
+performance. The cohort has two unstarted Luna full games; the challenge matrix
+retains all eighteen Sol results and eighteen unstarted Luna cells. Do not resume
+either cohort after changing executable sources or silently retry the hybrid cell.
+
+The terminal input audit reconstructed all 287 exact hybrid prompts and PNGs,
+including the cancelled response's input. All 92 distinct crop states have
+direct or exact prior pixel witnesses. There were 51 turns with conservative
+omissions, covering 79 numeric field slots. Reported completed-turn usage,
+including the cancelled turn, was 5,418,781 input tokens (4,161,280 cached) and
+59,115 output tokens (16,807 reasoning), with 2,707.964 seconds of CLI latency.
+Cached and reasoning tokens are subsets; no reconnect was recorded. These
+mechanical input and usage checks do not validate the store-price behavior.
+
+Fix work is isolated in `ftl_bench-store-ui-20261107`, branch `store-ui-refresh`.
+Next: implement a bounded visible-store refresh, verify cached-price regression
+and zero gameplay advancement, build and test the native runtime under protection,
+then collect fresh admission and freeze replacement comparison cohorts. Preserve
+the timing, focus, hidden-arrival and exact-cleanup contracts. No new game is
+running at this checkpoint. Rendered dashboard inspection remains deferred.
+
+Local receipts under `dist/resume-20261106/`:
+
+| Receipt | SHA-256 |
+| --- | --- |
+| `focus-fullgame-sol-hybrid-stale-store-price-20261107T001714Z.json` | `4a82a980ec4db64ad52ad5ffd3278b09dd2d0268640fe5bce1440f750ea2833b` |
+| `fullgame-live-cleanup-20261107T001557277146Z.json` | `8a2010e5d4dd0c7644170bcd28b68471ab29286a52df593d2d42ef8e3444b51a` |
+| `focus-fullgame-sol-hybrid-dashboard-http-20261107T001825Z.json` | `0039a56596fcd0791f8acd4d68095f6239d6d61f4fb5cd8b9b1f434b2a4a0c64` |
+| `fullgame-sol-hybrid-terminal-input-audit-20261106.json` | `30d596697b5edb352394012878bc25198153ffab3617a257cb32bdd32d6e1dcc` |
+| `fullgame-focus-sol-hybrid-interrupted-independent-review-verified-20261107.json` | `1dac062f1e97080a359bc150984fada7f3940782ad9f4d1fc9c9fc74828f01e6` |
 
 ## Sol image full game: first native ending (2026-11-06, 23:12 UTC)
 

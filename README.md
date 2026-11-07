@@ -7,6 +7,11 @@ An agent benchmark that drives the real **FTL: Faster Than Light** engine throug
 ## Status: work in progress
 
 The visual benchmark is an **alpha implementation with partial live validation**.
+The November 7 UTC hybrid run exposed stale native store repair prices during
+zero-frame decisions. It was stopped cooperatively and preserved as a diagnostic;
+all original saves were restored. A store UI refresh fix is being developed in
+an isolated checkout. Further comparisons require fresh validation and new
+cohorts after the executable change. See [current work](docs/NEXT.md).
 The November 6 typed Decisions and Jev integrations have offline coverage.
 Live provider validation remains pending. The archived-image decision command
 is ready for a provider check with an explicitly selected credential file. See
