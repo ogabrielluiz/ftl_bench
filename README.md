@@ -23,6 +23,11 @@ crew-loss defeat after 117 decisions. The pilot is excluded from the four
 full-game totals. Sol/image full game was next at this boundary, followed
 by Sol/hybrid, then the Luna trials.
 
+At the 04:13 UTC checkpoint, Sol/image had reached an audited native
+crew-loss defeat after 286 decisions in native sector 2 (the third sector).
+This completed one of four full-game conditions, with the pilot excluded.
+Sol/hybrid was next, followed by the Luna trials.
+
 The November 6 typed Decisions and Jev integrations have offline coverage.
 Live provider validation remains pending. The archived-image decision command
 is ready for a provider check with an explicitly selected credential file. See

@@ -2,6 +2,47 @@
 
 **WIP / alpha. Current status as of 2026-11-07 UTC. Historical snapshots retain their original dates.**
 
+## Sol/image full-game checkpoint (2026-11-07, 04:13:23 UTC)
+
+Sol/image in `fullgame-store-47db7f6-20261107` ended with
+`native_game_over` after 286 decisions. Native telemetry and the terminal
+PNG agree on crew-loss defeat, score 462, hull 11 and oxygen 84%. The run
+reached native sector 2 (the third sector), with no victory. It recorded 21
+settled jumps, including two sector transitions, and 21 distinct native
+locations. One of four full-game conditions is complete at this boundary, with the
+pilot excluded. All 18 Sol challenges retain their recorded results.
+
+Independent input review matched all 286 exact prompts and acknowledgements,
+287 PNGs and all CLI event and answer hashes. The input guard remained clear,
+with zero recorded tools or reconnects. The native clock acknowledged 57,757
+of 72,323 requested updates. The 286 completed turns reported 5,394,648
+input tokens (4,124,928 cached) and 59,980 output tokens (16,764 reasoning).
+Total CLI latency was 2,585.382 seconds, with a median of 8.1825 seconds.
+
+A separate saved store readback verified five FIX1 repairs for ten scrap.
+At hull 8, 12 and 13, the displayed and native FIXALL quotes were 44, 36 and
+34, matching the current missing hull. Both purchase decisions requested
+and acknowledged zero frames with unchanged native world counters.
+
+The live boundary verified 15 inventory roles, seven original saves,
+85 executable source pins, FTL closed and no pending-launch marker. The next
+planned run was Sol/hybrid, followed by the 18 Luna challenge cells and two
+Luna full games. Rendered dashboard verification remains deferred while the
+operator is away. Resolved backend model identity and monetary cost remain
+unavailable.
+
+Local review files under `dist/store-admission-47db7f6-20261107/`
+
+| File | SHA-256 |
+| --- | --- |
+| `store-fullgame-sol-image-independent-review.json` | `cc4dbc57568cda162e719ba5e0d27864987d910b6d5f4433a8ec3afcf7257f3f` |
+| `store-fullgame-sol-image-repair183-184-independent-readback.json` | `d76459a487efde633a208c976cdc4d8514e93a495a0be5bc3185fec9173dd147` |
+| `store-live-boundary-20261107T041323460620Z.json` | `29ed1ca7e5ace8f7321c1bca2a1b769d200c41cc972d32aca4ce17be61dfc74c` |
+
+The independent input audit is
+`dist/store-ui-build/fullgame-store-sol-image-image-actor-input-independent-audit-20261107.json`,
+SHA-256 `5376eef1ea9202d0fc5d6a3bd8ddb815734579c8ff2e5ff353c8747cd47f3b0b`.
+
 ## Sol/image pilot checkpoint (2026-11-07, 03:11:10 UTC)
 
 The sector-one pilot in `fullgame-store-47db7f6-20261107` ended with

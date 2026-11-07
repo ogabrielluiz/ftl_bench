@@ -36,6 +36,13 @@ contributes zero full-game completions, leaving all four full-game conditions
 planned at this boundary. Sol/image full game was next, then Sol/hybrid and
 the Luna trials.
 
+At the 04:13 UTC checkpoint, Sol/image had ended in native crew-loss defeat
+after 286 decisions in native sector 2 (the third sector). The final screenshot
+and native state agreed on score 462, hull 11 and oxygen 84%. Input and
+restoration audits passed. One of four full-game conditions was complete,
+with zero victories and the pilot excluded. Sol/hybrid was next at this
+boundary, followed by the Luna trials.
+
 The visual benchmark remains an alpha with partial live validation. Codex CLI
 is the default. Decisions and Jev now have separate typed visual adapters and
 an archived-image decision command; offline integration and packaging checks
