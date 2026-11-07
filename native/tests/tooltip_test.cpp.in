@@ -74,7 +74,8 @@ namespace BenchmarkVisualEngine {
     bool input_available=true;
     CApp* input_app() { return input_available ? &app : nullptr; }
     bool point(int x,int y) { return BenchmarkVisual::point_valid(x,y,1280,720); }
-    void refresh_idle_map_ui(CApp*) {}
+    void refresh_idle_input_ui(CApp*) {}
+    void refresh_idle_store_ui(CApp*) {}
     @CLEAR_POINTER_TOOLTIP@
     @REFRESH_POINTER_HOVER@
 }

@@ -2,6 +2,7 @@
 // The SIL functions are the game's backend-neutral renderer API, used by both
 // D3D11 and OpenGL. Reading before finish_frame captures the current client frame.
 #if defined(_WIN32) && defined(__i386__)
+#include "Store_Extend.h"
 namespace BenchmarkVisualEngine {
     void* read_pixels_address = nullptr;
     void* width_address = nullptr;
@@ -81,6 +82,41 @@ namespace BenchmarkVisualEngine {
         // no sector commit, UpdateDangerZone or world update can run here.
         map.OnLoop();
     }
+    void refresh_idle_store_ui(CApp* app)
+    {
+        if (!frame_clock.owned || frame_clock.advancing || frame_clock.update_permitted() ||
+            external_input.detected || !app || app->minimized || !app->inputFocus ||
+            app->menu.bOpen || app->langChooser.bOpen || !app->gui || !app->world ||
+            !app->world->bStartedGame) return;
+        CommandGui& gui=*app->gui;
+        CompleteShip* ship=app->world->playerShip;
+        const StarMap& map=app->world->starMap;
+        if (!gui.bPaused || gui.gameover || gui.alreadyWon || gui.bHideUI || !ship ||
+            !ship->shipManager || ship->shipManager->bJumping || map.bOpen ||
+            map.readyToTravel || map.waiting.running || gui.choiceBoxOpen || gui.choiceBox.bOpen ||
+            gui.menuBox.bOpen || gui.optionsBox.bOpen || gui.inputBox.bOpen ||
+            gui.gameOverScreen.bOpen || gui.leaveCrewDialog.bOpen || gui.writeErrorDialog.bOpen) return;
+        TabbedWindow& tabs=gui.storeScreens;
+        if (!tabs.bOpen || tabs.currentTab!=0 || tabs.windows.empty() ||
+            !tabs.windows[0] || !tabs.windows[0]->bOpen) return;
+        for (FocusWindow* window : gui.focusWindows)
+            if (window && window!=&tabs && window->bOpen) return;
+        // Win32 FTL 1.6.9 CommandGui::SetStore installs a Store* in buy tab 0.
+        // Refresh only its item controls: TabbedWindow::OnLoop can switch tabs.
+        Store* store=static_cast<Store*>(tabs.windows[0]);
+        // Native Store input and render use confirmBuy for modal ownership.
+        // Store::Close clears it without closing the embedded dialog flag.
+        if (store->shopper!=ship->shipManager || store->confirmBuy) return;
+        const Store_Extend* extension=STORE_EX(store);
+        // Custom stores also tick tab-button animations in their OnLoop.
+        if (!extension || extension->isCustomStore) return;
+        store->OnLoop();
+    }
+    void refresh_idle_input_ui(CApp* app)
+    {
+        refresh_idle_map_ui(app);
+        refresh_idle_store_ui(app);
+    }
     // Scoped cached input bits plus the normal SIL poll cover native callbacks
     // without leaving held keys behind or changing physical keyboard state.
     using ModifierScope = BenchmarkVisual::ModifierScope<CApp>;
@@ -135,8 +171,9 @@ HOOK_METHOD_PRIORITY(CommandGui, OnLoop, 99999, () -> void)
     CApp* app=Global::GetInstance()->GetCApp();
     const bool current=app && app->gui==this;
     if (current && !BenchmarkVisualEngine::frame_clock.update_permitted()) {
-        // CApp still resets and ages tooltips every UI frame. Replay only the
-        // ordinary stationary hover after that reset, never GUI/world OnLoop.
+        // Refresh the visible store item controls and stationary hover only.
+        // CApp still ages tooltips. The GUI/world loops remain frozen.
+        BenchmarkVisualEngine::refresh_idle_store_ui(app);
         BenchmarkVisualEngine::refresh_pointer_hover(app);
         return;
     }
@@ -309,9 +346,9 @@ bool hs_benchmark_mouse_move(int x,int y)
     CApp* app = BenchmarkVisualEngine::input_app();
     if (!app || !BenchmarkVisualEngine::point(x,y)) return false;
     BenchmarkVisual::SyntheticInputScope synthetic(BenchmarkVisualEngine::external_input);
-    BenchmarkVisualEngine::refresh_idle_map_ui(app);
+    BenchmarkVisualEngine::refresh_idle_input_ui(app);
     BenchmarkVisual::mouse_move(*app,x,y,0,0,false,false,BenchmarkVisualEngine::clear_pointer_tooltip);
-    BenchmarkVisualEngine::refresh_idle_map_ui(app);
+    BenchmarkVisualEngine::refresh_idle_input_ui(app);
     return true;
 #else
     return false;
@@ -324,9 +361,9 @@ bool hs_benchmark_mouse_click(int x,int y,int button,int modifiers)
     if (!app || !BenchmarkVisual::modifiers_valid(modifiers) || (button != 0 && button != 1) || !BenchmarkVisualEngine::point(x,y)) return false;
     BenchmarkVisual::SyntheticInputScope synthetic(BenchmarkVisualEngine::external_input);
     BenchmarkVisualEngine::ModifierScope held(*app,BenchmarkVisualEngine::injected_modifiers,modifiers);
-    BenchmarkVisualEngine::refresh_idle_map_ui(app);
+    BenchmarkVisualEngine::refresh_idle_input_ui(app);
     BenchmarkVisual::mouse_click(*app,x,y,button,BenchmarkVisualEngine::clear_pointer_tooltip);
-    BenchmarkVisualEngine::refresh_idle_map_ui(app);
+    BenchmarkVisualEngine::refresh_idle_input_ui(app);
     return true;
 #else
     return false;
@@ -340,9 +377,9 @@ bool hs_benchmark_mouse_drag(int x,int y,int to_x,int to_y,int button,int modifi
         !BenchmarkVisualEngine::point(x,y) || !BenchmarkVisualEngine::point(to_x,to_y)) return false;
     BenchmarkVisual::SyntheticInputScope synthetic(BenchmarkVisualEngine::external_input);
     BenchmarkVisualEngine::ModifierScope held(*app,BenchmarkVisualEngine::injected_modifiers,modifiers);
-    BenchmarkVisualEngine::refresh_idle_map_ui(app);
+    BenchmarkVisualEngine::refresh_idle_input_ui(app);
     BenchmarkVisual::mouse_drag(*app,x,y,to_x,to_y,button,BenchmarkVisualEngine::clear_pointer_tooltip);
-    BenchmarkVisualEngine::refresh_idle_map_ui(app);
+    BenchmarkVisualEngine::refresh_idle_input_ui(app);
     return true;
 #else
     return false;
@@ -356,10 +393,10 @@ bool hs_benchmark_key_press(const char* key,int modifiers)
     if (!app || !BenchmarkVisual::modifiers_valid(modifiers) || code < 0) return false;
     BenchmarkVisual::SyntheticInputScope synthetic(BenchmarkVisualEngine::external_input);
     BenchmarkVisualEngine::ModifierScope held(*app,BenchmarkVisualEngine::injected_modifiers,modifiers);
-    BenchmarkVisualEngine::refresh_idle_map_ui(app);
+    BenchmarkVisualEngine::refresh_idle_input_ui(app);
     app->OnKeyDown(static_cast<SDLKey>(code));
     app->OnKeyUp(static_cast<SDLKey>(code));
-    BenchmarkVisualEngine::refresh_idle_map_ui(app);
+    BenchmarkVisualEngine::refresh_idle_input_ui(app);
     BenchmarkVisualEngine::refresh_pointer_hover(app);
     return true;
 #else

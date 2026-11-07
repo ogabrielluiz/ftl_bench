@@ -3,7 +3,7 @@
   "base_commit": "d85d6df9626c13343d28b60f43b37d6eadcc7f1d",
   "native_protocol": 5,
   "patch": "native/patches/0003-visual-io.patch",
-  "patch_sha256": "74fa09eadf92e6f920262706c0461fd510dd0bd23ff65ae7bbb645609ddd4269",
+  "patch_sha256": "4edc25e6e3f7f56ed4e52021ed1a8e32793fd1099c1f4cb912da55c27e61f0d6",
   "visual_io_version": 1,
   "visual_clock_version": 2,
   "fixed_step_numerator": 1,

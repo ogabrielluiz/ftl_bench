@@ -141,6 +141,33 @@ def test_real_ftl_calls_fps_before_world_pause_and_gui_updates():
     assert struct.unpack("<f", at_rva(0x433908, 4))[0] == 0.0625
 
 
+def test_real_ftl_store_dispatch_uses_typed_buy_tab_and_repair_box_update():
+    executable = Path(r"C:\Program Files (x86)\Steam\steamapps\common\FTL Faster Than Light\FTLGame.exe")
+    if not executable.is_file():
+        pytest.skip("local FTL1.6.9 executable unavailable")
+    image = executable.read_bytes()
+    pe = struct.unpack_from("<I", image, 0x3c)[0]
+    table = pe + 24 + struct.unpack_from("<H", image, pe + 20)[0]
+    sections = [struct.unpack_from("<8sIIII", image, table + i * 40)
+                for i in range(struct.unpack_from("<H", image, pe + 6)[0])]
+    # CommandGui::SetStore supplies index zero and its Store* argument to
+    # TabbedWindow::SetNewWindow. The tab loop calls the active child OnLoop.
+    # The Store/repair box vtable entries resolve to the exact update functions.
+    spans = {0x11fde3: "c744240400000000", 0x11fdee: "893424e8ea4efeff",
+             0x104d32: "8904b3", 0x1060e9: "ff5018",
+             0x4bd254: "b0605000", 0x4bebac: "10284b00",
+             0x0b2839: "ff5008", 0x4bdbac: "70be5000",
+             0x10beba: "8b82d00000002b82cc0000000faf83580100008983e8000000",
+             # Store::Close clears confirmBuy; click and render read it.
+             0x0b2892: "c7837c06000000000000", 0x0b4bfd: "8b837c060000", 0x0b5dc9: "8b837c060000"}
+    for address, hex_bytes in spans.items():
+        expected = bytes.fromhex(hex_bytes)
+        _, _, rva, _, raw_offset = next(section for section in sections
+            if section[2] <= address and address + len(expected) <= section[2] + section[3])
+        offset = raw_offset + address - rva
+        assert image[offset:offset + len(expected)] == expected, hex(address)
+
+
 def test_shipped_visual_patch_contains_the_same_engine_and_codec_sources():
     manifest = json.loads((ROOT / "native/manifest.json").read_text())
     assert manifest["visual_io_version"] == 1
@@ -239,7 +266,13 @@ def map_ui_test_source():
         assert wrapper, f"actual shipped input wrapper is missing: {name}"
         wrappers.append(wrapper.group(0))
     template = (ROOT / "native/tests/map_ui_test.cpp.in").read_text()
+    store = re.search(r"    void refresh_idle_store_ui\(CApp\* app\)\n    \{.*?\n    \}", engine, re.S)
+    inputs = re.search(r"    void refresh_idle_input_ui\(CApp\* app\)\n    \{.*?\n    \}", engine, re.S)
+    gui_loop = re.search(r"HOOK_METHOD_PRIORITY\(CommandGui, OnLoop, 99999, \(\) -> void\)\n(\{.*?\n\})", engine, re.S)
+    assert store and inputs and gui_loop, "actual shipped store refresh helpers and idle GUI hook must be present"
     return template.replace("@REFRESH_IDLE_MAP_UI@", helper.group(0)).replace(
+        "@REFRESH_IDLE_STORE_UI@", store.group(0)).replace(
+        "@REFRESH_IDLE_INPUT_UI@", inputs.group(0)).replace("@GUI_LOOP@", gui_loop.group(1)).replace(
         "@INPUT_WRAPPERS@", "\n".join(wrappers))
 
 
@@ -276,7 +309,7 @@ def test_actual_pointer_tooltip_refresh_matches_final_hover_without_disarming_or
     subprocess.run([str(executable)], check=True)
 
 
-def test_actual_idle_map_ui_helper_refreshes_wait_without_committing_pending_world_work(tmp_path):
+def test_actual_idle_input_refresh_updates_map_wait_and_store_price_without_world_work(tmp_path):
     source = tmp_path / "map-ui.cpp"
     source.write_text(map_ui_test_source())
     compiler = shutil.which("g++")
@@ -286,3 +319,4 @@ def test_actual_idle_map_ui_helper_refreshes_wait_without_committing_pending_wor
     subprocess.run([compiler, "-std=c++11", "-O2", "-Wall", "-Wextra", "-pedantic",
                     "-I", str(ROOT / "native/include"), str(source), "-o", str(executable)], check=True)
     subprocess.run([str(executable)], check=True)
+    subprocess.run([str(executable), "store-refresh"], check=True)

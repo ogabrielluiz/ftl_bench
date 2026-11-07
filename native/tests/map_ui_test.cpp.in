@@ -1,4 +1,5 @@
 #include "Benchmark_Visual.h"
+#include <cstring>
 #include <functional>
 #include <iostream>
 #include <string>
@@ -42,20 +43,51 @@ struct StarMap {
     }
 };
 struct WorldManager { bool bStartedGame=true; CompleteShip* playerShip=&ship; StarMap starMap; } world;
+struct FocusWindow { bool bOpen=false; };
+struct TabbedWindow : FocusWindow {
+    std::vector<FocusWindow*> windows;
+    unsigned currentTab=0;
+};
+struct StoreBox {} pending_purchase;
+struct Store_Extend { bool isCustomStore=false; } extension;
+struct Store : FocusWindow {
+    FocusWindow confirmDialog;
+    StoreBox* confirmBuy=nullptr;
+    ShipManager* shopper=&manager;
+    Store_Extend* extension=&::extension;
+    int hull=27,maximum=30,unit_price=2,price=6,scrap=49;
+    unsigned refreshes=0;
+    void OnLoop() { ++refreshes; price=(maximum-hull)*unit_price; }
+    void BuyRepairAll() { if (scrap>=price) { scrap-=price; hull=maximum; } }
+} store;
+Store_Extend* STORE_EX(Store* active) { return active->extension; }
+FocusWindow sell_tab,other_window;
 struct CommandGui {
-    bool gameover=false,alreadyWon=false;
+    bool gameover=false,alreadyWon=false,bPaused=true,choiceBoxOpen=false,bHideUI=false;
+    FocusWindow choiceBox,menuBox,optionsBox,inputBox,gameOverScreen,leaveCrewDialog,writeErrorDialog;
+    TabbedWindow storeScreens;
+    std::vector<FocusWindow*> focusWindows;
+    unsigned ordinary_loops=0;
     void MouseMove(int x,int y) { world.starMap.MouseMove(x,y); }
+    void OnLoop();
 } gui;
 struct Point { int x,y; };
 struct Window { bool bOpen=false; void MouseMove(int,int) {} };
 struct CApp {
     CommandGui* gui=&::gui;
     WorldManager* world=&::world;
-    bool shift_held=false,lCtrl=false;
+    bool shift_held=false,lCtrl=false,minimized=false;
+    char inputFocus=1;
     Window langChooser,menu;
     void OnMouseMove(int,int,int,int,bool,bool,bool) { trace+='M'; }
     Point TranslateMouse(int x,int y) { return {x,y}; }
-    void OnLButtonDown(int,int) { trace+='D'; world->starMap.MouseClick(); }
+    void OnLButtonDown(int x,int) {
+        trace+='D';
+        world->starMap.MouseClick();
+        if (x==100) { gui->storeScreens.bOpen=true; store.bOpen=true; }
+        if (x==200 && gui->storeScreens.bOpen && gui->storeScreens.currentTab==0 && store.bOpen)
+            store.BuyRepairAll();
+    }
     void OnLButtonUp(int,int) { trace+='U'; }
     void OnRButtonDown(int,int) { trace+='d'; }
     void OnRButtonUp(int,int) { trace+='u'; }
@@ -65,6 +97,10 @@ struct CApp {
     }
     void OnKeyUp(SDLKey) { trace+='k'; }
 } app;
+struct Global {
+    static Global* GetInstance() { static Global instance; return &instance; }
+    CApp* GetCApp() { return &app; }
+};
 namespace BenchmarkVisualEngine {
     BenchmarkVisual::FrameClock frame_clock;
     BenchmarkVisual::ExternalInputGuard external_input;
@@ -76,18 +112,84 @@ namespace BenchmarkVisualEngine {
     void clear_pointer_tooltip() {} // independently covered by the actual tooltip helper test
     void refresh_pointer_hover(CApp*) {} // independently covered by the actual tooltip/key helper test
     @REFRESH_IDLE_MAP_UI@
+    @REFRESH_IDLE_STORE_UI@
+    @REFRESH_IDLE_INPUT_UI@
+}
+void CommandGui::OnLoop()
+{
+    auto super=[this]() { ++ordinary_loops; };
+    @GUI_LOOP@
 }
 @INPUT_WRAPPERS@
 void reset() {
     manager=ShipManager(); ship=CompleteShip(); world=WorldManager();
     gui=CommandGui(); app=CApp(); forceWait=false; trace.clear();
+    extension=Store_Extend(); store=Store(); sell_tab=FocusWindow(); other_window=FocusWindow();
+    gui.storeScreens.windows={&store,&sell_tab};
+    gui.focusWindows={&gui.storeScreens,&gui.choiceBox,&other_window};
     BenchmarkVisualEngine::frame_clock=BenchmarkVisual::FrameClock();
     BenchmarkVisualEngine::frame_clock.control(true,false);
     BenchmarkVisualEngine::external_input=BenchmarkVisual::ExternalInputGuard();
     BenchmarkVisualEngine::input_available=true;
 }
-int main()
+int store_refresh_regressions()
 {
+    using namespace BenchmarkVisualEngine;
+    reset();
+    store.hull=22; // Damage occurred after the hull-27 price was cached and the store closed.
+    CHECK(store.price==6 && !gui.storeScreens.bOpen);
+    CHECK(hs_benchmark_mouse_click(100,10,0,0)); // opens buy tab inside the same native tick
+    CHECK(gui.storeScreens.bOpen && store.bOpen && store.price==16 && store.refreshes==1);
+    CHECK(store.scrap==49 && store.hull==22 && frame_clock.world_updates==0);
+    CHECK(hs_benchmark_mouse_click(200,10,0,0)); // next primitive may share the same packet
+    CHECK(store.scrap==33 && store.hull==30 && store.price==0);
+    CHECK(frame_clock.world_updates==0 && !frame_clock.update_permitted());
+    CHECK(world.starMap.loops==0 && external_input.synthetic_depth==0);
+
+    reset(); gui.storeScreens.bOpen=store.bOpen=true; store.hull=22;
+    store.confirmDialog.bOpen=true; // Native Close may leave this stale after clearing confirmBuy.
+    gui.OnLoop(); // frozen GUI pass should refresh the price without calling the broad native loop
+    CHECK(store.price==16 && store.refreshes==1 && gui.ordinary_loops==0);
+    CHECK(frame_clock.world_updates==0 && !frame_clock.update_permitted());
+    frame_clock.control(false,false);
+    gui.OnLoop();
+    CHECK(store.refreshes==1 && gui.ordinary_loops==1); // ordinary caller takes the native path
+
+    const std::vector<std::function<void()>> exclude={
+        [](){ frame_clock.owned=false; }, [](){ frame_clock.advancing=true; },
+        [](){ frame_clock.control(true,true); frame_clock.begin_frame(); frame_clock.control(true,false); },
+        [](){ external_input.detected=true; }, [](){ app.inputFocus=0; },
+        [](){ app.minimized=true; }, [](){ app.menu.bOpen=true; },
+        [](){ app.langChooser.bOpen=true; }, [](){ app.gui=nullptr; },
+        [](){ app.world=nullptr; }, [](){ world.bStartedGame=false; },
+        [](){ gui.gameover=true; }, [](){ gui.alreadyWon=true; }, [](){ gui.bHideUI=true; },
+        [](){ gui.bPaused=false; }, [](){ world.playerShip=nullptr; },
+        [](){ world.starMap.bOpen=true; }, [](){ world.starMap.readyToTravel=true; },
+        [](){ world.starMap.waiting.running=true; },
+        [](){ ship.shipManager=nullptr; }, [](){ manager.bJumping=true; },
+        [](){ gui.storeScreens.bOpen=false; }, [](){ gui.storeScreens.currentTab=1; },
+        [](){ gui.storeScreens.windows.clear(); }, [](){ gui.storeScreens.windows[0]=nullptr; },
+        [](){ store.bOpen=false; }, [](){ store.confirmBuy=&pending_purchase; },
+        [](){ store.shopper=nullptr; },
+        [](){ store.extension=nullptr; }, [](){ extension.isCustomStore=true; },
+        [](){ gui.choiceBoxOpen=true; }, [](){ gui.choiceBox.bOpen=true; },
+        [](){ gui.menuBox.bOpen=true; }, [](){ gui.optionsBox.bOpen=true; },
+        [](){ gui.inputBox.bOpen=true; }, [](){ gui.gameOverScreen.bOpen=true; },
+        [](){ gui.leaveCrewDialog.bOpen=true; }, [](){ gui.writeErrorDialog.bOpen=true; },
+        [](){ other_window.bOpen=true; }
+    };
+    for (const auto& block : exclude) {
+        reset(); gui.storeScreens.bOpen=store.bOpen=true; store.hull=22; block();
+        refresh_idle_store_ui(&app);
+        CHECK(store.price==6 && store.refreshes==0 && frame_clock.world_updates==0);
+    }
+    refresh_idle_store_ui(nullptr);
+    std::cout << "actual store refresh preserves zero frames and native purchase price\n";
+    return 0;
+}
+int main(int argc,char** argv)
+{
+    if (argc==2 && std::strcmp(argv[1],"store-refresh")==0) return store_refresh_regressions();
     using namespace BenchmarkVisualEngine;
     reset(); manager.fuel_count=0;
     // Reproduce the old native failure without the refresh: J opens a map whose

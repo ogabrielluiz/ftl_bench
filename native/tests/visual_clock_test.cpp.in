@@ -60,6 +60,7 @@ struct Global {
 };
 namespace BenchmarkVisualEngine {
     unsigned hover_refreshes=0;
+    void refresh_idle_store_ui(CApp*) {}
     void refresh_pointer_hover(CApp*) { ++hover_refreshes; }
 }
 void CApp::GenInputEventsHook()
