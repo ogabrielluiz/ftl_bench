@@ -16,12 +16,16 @@ The probe covers the visible vanilla buy tab and made no model calls. The
 rebuilt runtime has scoped controller admission after eight protected startup
 checks, nine timing probes and eight independent rejection checks. A new
 36-cell challenge matrix and a separate sector pilot plus four full-game
-conditions are frozen. All nine Sol/image challenge cells are complete and
-eligible, with 0/3 combat successes, 3/3 fire and crew recovery successes, and
-0/3 repair, charge and escape successes. The matrix has 27 cells planned.
-The nine Sol/hybrid challenges come next, followed by the Sol pilot and two
-full games before the Luna trials. All five full-game entries remain planned.
-Rendered dashboard inspection is deferred while the operator is away. See the
+conditions are frozen. At the 02:42 UTC checkpoint, all 18 Sol challenge cells
+were complete and eligible, with 3/9 image-only successes and 7/9 hybrid
+successes. Combat was 0/3 image-only and 3/3 hybrid, fire and crew recovery
+was 3/3 in both modes, and repair, charge and escape was 0/3 image-only
+and 1/3 hybrid. The 18 Luna challenge cells and all five full-game entries
+were planned at this boundary. The Sol pilot and two full games were next.
+These results describe one seed and fixed situations. Resolved backend model
+identity and monetary cost are
+unavailable. Rendered dashboard inspection is deferred while the operator
+is away. See the
 [store refresh evidence](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/native-store-refresh.md).
 
 The visual benchmark remains an alpha with partial live validation. Codex CLI

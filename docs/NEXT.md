@@ -29,12 +29,67 @@ Budgets are listed as decisions, wall seconds and idle decisions.
 | `matrix-store-47db7f6-20261107` | `0c6bdfe7fbb03dd1c314ca8062d318be34cb9ed6c083e48dbbf39f187fbac942` | 36 challenge cells | 60 / 1,800 / 8 |
 | `fullgame-store-47db7f6-20261107` | `a4f81ad3fb081bda9a891c3d45855e137470ca26527ceb40eb04bcbfe9eb0b54` | Sol/image sector-one pilot, then four full-game cells | 1,500 / 86,400 / 8 |
 
+### Sol challenge checkpoint (02:42:04 UTC)
+
+All 18 Sol challenge cells finished and are eligible, with 10 task
+successes, 8 budget stops and zero technical exclusions. The 18 Luna
+challenge cells and all five full-game entries were planned at this boundary.
+
+| Challenge | Image-only | Hybrid | Native result |
+| --- | --- | --- | --- |
+| Combat | 0/3 | 3/3 | Image-only had two scout escapes and one original crew loss. Hybrid met the kill, reward and crew-survival criteria in all repeats. |
+| Fire and crew recovery | 3/3 | 3/3 | All fires extinguished, crew fully healed and oxygen restored at the original beacon. |
+| Repair, charge and escape | 0/3 | 1/3 | Only hybrid repeat one met the full repair criterion before departure. Other repeats left with engines at 1/2 despite a fully charged drive and reached a connected beacon with one fuel spent. |
+
+| Mode | Calls | Input tokens (cached) | Output tokens (reasoning) | CLI seconds | Median seconds |
+| --- | --- | --- | --- | --- | --- |
+| Image-only | 161 | 3,045,189 (2,306,048) | 37,692 (13,900) | 1,602.486 | 9.085 |
+| Hybrid | 71 | 1,348,872 (1,044,480) | 15,993 (5,508) | 687.876 | 9.241 |
+
+The 232 completed turns reported 4,394,061 input tokens (3,350,528 cached)
+and 53,685 output tokens (19,408 reasoning). Cached and reasoning counts are
+subsets of their respective totals. Total CLI latency was 2,290.362 seconds,
+with a pooled median of 9.1395 seconds and zero recorded reconnects. The
+native clock acknowledged 47,018 of 50,765 requested updates.
+
+Independent input review joined all 232 exact actor inputs and 250 PNGs to
+native acknowledgements. Every CLI event and answer hash was rederived, with
+no tool calls and a clear input guard. The 71 hybrid inputs reproduced the
+screenshot HUD extraction, including omitted numeric fields under overlays.
+Corresponding image and hybrid starts matched within each scenario.
+
+The boundary at 02:42:04 UTC verified 15 inventory roles, all seven original
+saves, 85 executable source pins, FTL closed and no pending-launch marker.
+Dashboard HTTP matched completed cell projections and saved replay image
+pairs. Rendered dashboard verification is deferred while the operator is away.
+
+These results describe the fixed situations and seed. The CLI did not report
+resolved backend model identity, and monetary cost remains unavailable.
+Live provider validation for the separate typed adapters remains pending.
+
+The planned sequence at this boundary was the Sol/image sector-one pilot,
+then the Sol/image and Sol/hybrid full games, followed by the 18 Luna
+challenges and two Luna full games.
+The pilot stays outside full-game completion totals.
+
+Local receipts under `dist/store-admission-47db7f6-20261107/`
+
+| File | SHA-256 |
+| --- | --- |
+| `store-matrix-sol-hybrid-repair-charge-escape-repeat03-independent-review.json` | `f060623dc9ab7f172b8f8dc4ddd5a69729bf75854850e3ea4416603bf329923f` |
+| `store-live-boundary-20261107T024204128346Z.json` | `9b1f72b2ae0fb129b0ef62bcd2e7a5e877cf6e66ff6d8a83bc0d187bf60e4b38` |
+
+The independent input aggregate is
+`dist/store-ui-build/matrix-store-sol-nine-hybrid-eighteen-cell-actor-input-independent-audit-20261107.json`,
+SHA-256 `6b94cfdad9cc14a52d74fedaace0d1b0085c40a91f8878de703c9cf9c59ab3ff`.
+
 ### Sol/image challenge checkpoint (02:00:58 UTC)
 
-All nine Sol/image cells finished and are eligible. Three met their native
-task criteria, and six stopped at their budgets. There were zero technical
-exclusions. The results describe this image-only condition and fixed seed.
-The remaining 27 challenge cells and all five full-game entries are planned.
+At this boundary, all nine Sol/image cells were finished and eligible. Three
+met their native task criteria, and six stopped at their budgets. There were
+zero technical exclusions. The results describe this image-only condition
+and fixed seed. The remaining 27 challenge cells and all five full-game
+entries were planned.
 
 | Challenge | Successes | Decisions by repeat | Native result |
 | --- | --- | --- | --- |
@@ -58,10 +113,8 @@ the final trial's first and last replay image pairs. The live boundary
 verified 15 inventory roles, seven original saves, 85 source pins, FTL
 closed and no pending-launch marker.
 
-The nine Sol/hybrid challenges come next. Then run the Sol/image sector-one
-pilot and both Sol full-game modes before the 18 Luna challenges and two Luna
-full games. Rendered dashboard verification is deferred while the operator
-is away.
+The next planned group at this boundary was Sol/hybrid, followed by the
+Sol/image sector-one pilot and both Sol full-game modes before the Luna trials.
 
 Local receipts under `dist/store-admission-47db7f6-20261107/`
 

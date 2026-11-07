@@ -12,10 +12,10 @@ with a cooperative stop and verified save restoration. The rebuilt runtime
 passed a protected vanilla store probe. At hull 22, the same zero-frame reopen
 and purchase charged 16 scrap on the new DLL and 6 on the prior DLL. Both probes
 restored the original saves and ran without model calls. The rebuilt runtime has
-scoped controller admission and two fresh frozen cohorts. All nine Sol/image
-challenge cells are complete and eligible. Combat succeeded in 0/3, fire and
-crew recovery in 3/3, and repair, charge and escape in 0/3. Sol/hybrid
-challenges are next, followed by the Sol pilot and two full games. See the
+scoped controller admission and two fresh frozen cohorts. At the 02:42 UTC
+checkpoint, all 18 Sol challenge cells were complete and eligible. Image-only
+achieved 3/9 task successes and hybrid 7/9 on the fixed seed. At this boundary,
+the Sol pilot and two full games were next, before the Luna trials. See the
 [store refresh evidence](docs/native-store-refresh.md) and [current work](docs/NEXT.md).
 The November 6 typed Decisions and Jev integrations have offline coverage.
 Live provider validation remains pending. The archived-image decision command
