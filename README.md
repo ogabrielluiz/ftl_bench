@@ -17,6 +17,12 @@ checkpoint, all 18 Sol challenge cells were complete and eligible. Image-only
 achieved 3/9 task successes and hybrid 7/9 on the fixed seed. At this boundary,
 the Sol pilot and two full games were next, before the Luna trials. See the
 [store refresh evidence](docs/native-store-refresh.md) and [current work](docs/NEXT.md).
+
+At the 03:11 UTC checkpoint, the Sol/image pilot had ended in audited
+crew-loss defeat after 117 decisions. The pilot is excluded from the four
+full-game totals. Sol/image full game was next at this boundary, followed
+by Sol/hybrid, then the Luna trials.
+
 The November 6 typed Decisions and Jev integrations have offline coverage.
 Live provider validation remains pending. The archived-image decision command
 is ready for a provider check with an explicitly selected credential file. See

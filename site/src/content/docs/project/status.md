@@ -28,6 +28,14 @@ unavailable. Rendered dashboard inspection is deferred while the operator
 is away. See the
 [store refresh evidence](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/native-store-refresh.md).
 
+At the 03:11 UTC checkpoint, the Sol/image pilot had ended in native crew-loss
+defeat after 117 decisions, four settled jumps and five visited beacons in
+native sector 0. The terminal screenshot and native state agreed on score
+160, hull 3 and oxygen 30%. Input and restoration audits passed. The pilot
+contributes zero full-game completions, leaving all four full-game conditions
+planned at this boundary. Sol/image full game was next, then Sol/hybrid and
+the Luna trials.
+
 The visual benchmark remains an alpha with partial live validation. Codex CLI
 is the default. Decisions and Jev now have separate typed visual adapters and
 an archived-image decision command; offline integration and packaging checks

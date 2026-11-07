@@ -2,6 +2,42 @@
 
 **WIP / alpha. Current status as of 2026-11-07 UTC. Historical snapshots retain their original dates.**
 
+## Sol/image pilot checkpoint (2026-11-07, 03:11:10 UTC)
+
+The sector-one pilot in `fullgame-store-47db7f6-20261107` ended with
+`native_game_over` after 117 decisions. Native telemetry and the terminal PNG
+agree on crew-loss defeat, score 160, hull 3 and oxygen 30%. Four settled
+jumps visited five beacons, all in native sector 0. The sector-one target
+was not reached. The pilot stays excluded from full-game totals, which
+remain zero of four completed at this boundary. All 18 Sol challenges retain
+their recorded results.
+
+Independent input review matched 117 exact prompts and acknowledgements,
+118 PNGs and all CLI event and answer hashes. Native updates advanced 20,598
+of 23,409 requested frames. The input guard remained clear, with zero
+recorded tools or reconnects. The 117 completed turns reported 2,212,790
+input tokens (1,683,712 cached) and 29,109 output tokens (10,611 reasoning).
+Total CLI latency was 1,233.547 seconds, with a median of 9.983 seconds.
+Resolved backend model identity and monetary cost remain unavailable.
+
+The live boundary verified 15 inventory roles, all seven original saves,
+85 executable source pins, FTL closed and no pending-launch marker.
+The next planned run was Sol/image full game, followed by Sol/hybrid, then
+the 18 Luna challenge cells and both Luna full games. Rendered dashboard
+verification remains deferred while the operator is away.
+
+Local review files under `dist/store-admission-47db7f6-20261107/`
+
+| File | SHA-256 |
+| --- | --- |
+| `store-fullgame-sol-image-pilot-independent-review.json` | `cf872d429bfeab2dbc89bef610bbb3c1e6f68f28229c3314598dc8676ea477a7` |
+| `store-fullgame-sol-image-pilot-terminal-readback-independent-review.json` | `c33145040ba24e875f07214b52cd5d2d620131884fa73c7b83c5fbb3a868cf1d` |
+| `store-live-boundary-20261107T031110381467Z.json` | `addf6aa185253f270e050a846e71147e350e6c3ae2edd5848d3a8752d47c9dde` |
+
+The independent input audit is
+`dist/store-ui-build/fullgame-store-sol-image-pilot-actor-input-independent-audit-20261107.json`,
+SHA-256 `e7e2b9ed1b6daf70e374f171d0f9fa35367a7a2684b7b1c4d58a5191eb8a74fa`.
+
 ## Scoped controller admission and new cohorts (2026-11-07 UTC)
 
 The protected `47db7f6` collection passed all eight startup checks and all nine
