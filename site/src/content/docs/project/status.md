@@ -3,6 +3,21 @@ title: Validation and baselines
 description: Current protocol, retained diagnostic evidence and comparable reporting.
 ---
 
+## Current launch hold
+
+The first Luna/hybrid combat attempt failed during protected startup at
+07:59 UTC, before any actor call or screenshot. Its pending launch guard
+remains unresolved and restoration is unverified. The seven save backups
+and prior Lua remain intact. Operator cancellation and FTL closure are
+required before recovery, and recovery alone leaves the frozen matrix
+controller blocked.
+
+The current ledger has 28 finished attempts and eight planned cells, with
+24 eligible trials, 12 successes and four technical exclusions. The fourth
+exclusion is this startup failure. The dashboard matches those counts but
+has null model and gameplay metrics and an empty replay for the failed cell.
+See [the recovery hold](https://github.com/ogabrielluiz/ftl_bench/blob/main/docs/NEXT.md#current-protected-launch-hold-2026-11-07-0759-utc).
+
 ## Visual benchmark status — November 7, 2026 UTC
 
 The Sol/hybrid full-game attempt stopped cooperatively after a stale store
@@ -53,8 +68,9 @@ planned at this boundary.
 At the 07:04 UTC checkpoint, 21 challenge attempts had finished, with 19
 eligible, 10 task successes and two technical exclusions. Of the three
 Luna/image combat attempts, one ended in crew loss and two were excluded
-because their CLI streams contained two final messages. The excluded attempts
-stay outside the success denominator, and complete usage remains unknown.
+because two completed agent messages were rejected by the frozen one-message
+contract. The excluded attempts stay outside the success denominator, and
+complete usage remains unknown.
 Fifteen Luna challenge cells were planned, with fire and crew recovery next.
 The two audited Sol full-game defeats and pilot exclusion were unchanged.
 
@@ -64,6 +80,13 @@ with incomplete healing, and one met all task criteria. The matrix had 24
 finished attempts, 22 eligible trials, 11 successes and the two retained
 combat CLI exclusions. Twelve Luna cells were planned at this boundary.
 Complete aggregate usage remained unknown.
+
+At the 07:53 UTC checkpoint, all nine Luna/image attempts had finished.
+Six were eligible, with two task successes, two crew-loss results and two
+budget stops. Three were technical exclusions under the frozen one-message
+contract. The matrix had 27 finished attempts, 24 eligible trials and 12
+successes. Complete usage remained unknown. The nine Luna/hybrid cells were
+next, followed by both Luna full games.
 
 The visual benchmark remains an alpha with partial live validation. Codex CLI
 is the default. Decisions and Jev now have separate typed visual adapters and

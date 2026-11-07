@@ -2,6 +2,107 @@
 
 **WIP / alpha. Current status as of 2026-11-07 UTC. Historical snapshots retain their original dates.**
 
+## Current protected launch hold (2026-11-07, 07:59 UTC)
+
+The first Luna/hybrid combat attempt ended in `protected_launch_error` at
+07:59:47 UTC. The controller exited 1 after its child exited 2. No actor
+call, screenshot, action or native observation was recorded. The pending
+launch guard remains owned by `6eaeb25a884c4ef2a52bcc38c3fff76a`.
+Operator cancellation has not been confirmed, and further launches and
+recovery are on hold.
+
+The seven save backups and prior deployed Lua match their declared hashes
+and the last clean 07:53 boundary. Restoration remains unverified, with
+`restoration.json` absent. The trial backup is
+
+`harness/runs/visual/matrix-store-47db7f6-20261107/trials/gpt-6-luna/hybrid/combat/repeat-01/repetition-01/combat/save-backup`.
+
+The ledger and current comparison contain 28 finished attempts and eight
+planned cells. There are 24 eligible trials, 12 successes and four technical
+exclusions, comprising three CLI message-contract exclusions and this startup
+failure. Actor evidence remains 27 trajectories, 477 calls and 474
+acknowledgements. Complete aggregate usage remains unknown. Dashboard HTTP
+matches the current ledger and comparison hashes, but the failed cell has
+null model, outcome and decision metrics and an empty replay. The nine
+condition summaries cover the 27 actor trajectories.
+
+After the operator cancels the pending Steam request and closes FTL,
+the documented recovery command from this checkout is
+
+```powershell
+uv run --directory harness ftlbench recover-protected --backup "C:/Users/Pichau/Projects/ftl_bench-store-ui-20261107/harness/runs/visual/matrix-store-47db7f6-20261107/trials/gpt-6-luna/hybrid/combat/repeat-01/repetition-01/combat/save-backup" --ownership-id 6eaeb25a884c4ef2a52bcc38c3fff76a --confirm-pending-launch-cancelled
+```
+
+This command has not been executed. It writes a separate
+`recovery-restoration.json` while preserving the failed attempt. Even after
+valid recovery, the frozen matrix controller still requires the original
+`restoration.json` and `run.save_restoration: verified` before continuation.
+The separate recovery receipt does not satisfy that gate. Preserve the
+failed receipts and original run metadata. A future controller fix cannot
+replace this cohort's pinned sources in place; it requires fresh admission
+and a new execution boundary. See
+[the recovery procedure](visual-iteration.md#pending-launch-recovery).
+
+The independent failure review is
+`dist/store-admission-47db7f6-20261107/store-matrix-luna-hybrid-combat-repeat01-protected-launch-failure-independent-review.json`,
+SHA-256 `a57322a1eab19ef9af48880cae5caf26e58a7e82047d64948b26780f022fbd09`.
+The scoped no-actor observation is
+`dist/store-ui-build/matrix-store-luna-hybrid-combat-repeat01-no-actor-infrastructure-observation-20261107.json`,
+SHA-256 `0e449e45c226d0a00c5267544d49c42dae3cef8df1c47c23f4f8a8f9f0d155e7`.
+
+## Luna/image nine-cell checkpoint (2026-11-07, 07:53:38 UTC)
+
+All nine Luna/image attempts finished, with six eligible trials, two task
+successes and three technical exclusions. The eligible trials comprised two
+successes, two crew-loss results and two budget stops. The matrix had 27
+finished attempts, 24 eligible trials and 12 successes. Nine Luna/hybrid
+cells remained planned at this boundary.
+
+| Challenge | Successes / eligible trials | Technical exclusions |
+| --- | --- | --- |
+| Combat | 0/1 | 2 |
+| Fire and crew recovery | 1/3 | 0 |
+| Repair, charge and escape | 1/2 | 1 |
+
+Repair repeat one fully repaired the engines and charged the drive but exhausted
+60 decisions without an actual jump. Repeat two had 25 acknowledgements
+before a completed-message contract rejection on call 26, with queued
+travel and no arrival. Repeat three met full repair before departing,
+spent one fuel and arrived at a connected beacon after 20 decisions.
+The three excluded attempts retain their original streams and remain
+outside the eligible denominator.
+
+Luna/image made 245 attempted calls and 242 acknowledged decisions. Observed
+completed-call usage covered 4,532,942 input tokens (3,056,256 cached) and
+60,831 output tokens (30,669 reasoning). Complete usage remains unknown
+because the three rejected calls have no validated usage. Total recorded
+CLI latency was 2,314.618 seconds, with a median of 8.063 seconds.
+Native updates totalled 48,200 of 50,521 requested.
+Independent input review matched 245 attempted prompts, 242 acknowledged
+CLI event and answer hashes, and 251 PNGs in the actor image chains. All
+nine canonical gameplay resets matched the corresponding Sol/image trials,
+with a clear input guard and zero recorded tools or reconnects.
+
+The live boundary verified 15 inventory roles, seven original saves,
+85 source pins, FTL closed and no pending-launch marker. The two Sol
+full-game defeats remain recorded, with the pilot excluded. The nine
+Luna/hybrid challenges were next, then the two Luna full games. Rendered
+dashboard verification remains deferred while the operator is away.
+
+Local review files under `dist/store-admission-47db7f6-20261107/`
+
+| File | SHA-256 |
+| --- | --- |
+| `store-matrix-luna-image-repair-charge-escape-repeat03-independent-review.json` | `90f9ea2e56e52805c39a4a9c22bd5cdc40918fbecdb00a273bf5970a3e70b4d2` |
+| `store-live-boundary-20261107T075338950058Z.json` | `e8197f9056aa965107f978df5ef6b5595cf3e563d1c16f853d62146d1cbd470c` |
+
+The independent input aggregate is
+`dist/store-ui-build/matrix-store-luna-image-nine-cell-actor-input-independent-audit-20261107.json`,
+SHA-256 `d1da5608b7a2b5c06074b6a157c4184728150c4e821f3e50b11a6acbf7a6dda1`.
+The retained CLI envelope clarification is
+`dist/store-ui-build/matrix-luna-three-failed-cli-phase-envelope-addendum-20261107.json`,
+SHA-256 `ca957b27f0a285da21a1072a390f9a940df1aa5260a47ca9e6590f490e75dfd8`.
+
 ## Luna/image fire checkpoint (2026-11-07, 07:25:46 UTC)
 
 The three fire and crew recovery trials were eligible, with one task success.
@@ -53,11 +154,17 @@ one eligible trial.
 | Repeat | Acknowledged decisions / attempted calls | Classification |
 | --- | --- | --- |
 | 1 | 20 / 20 | Eligible crew-loss result. |
-| 2 | 49 / 50 | Technical exclusion for two CLI final messages. First contained JSON plus trailing prose, second contained valid JSON. |
-| 3 | 21 / 22 | Technical exclusion for two CLI final messages. First was empty, second contained valid JSON. |
+| 2 | 49 / 50 | Technical exclusion for two completed agent messages rejected by the frozen one-message contract. First contained JSON plus trailing prose, second contained valid JSON. |
+| 3 | 21 / 22 | Technical exclusion for two completed agent messages rejected by the frozen one-message contract. First was empty, second contained valid JSON. |
 
-Both excluded final calls were rejected before dispatch under the frozen
-exactly-one-final policy. The attempts retain their original artifacts.
+Both excluded calls were rejected before dispatch under the frozen
+one-message contract. The attempts retain their original artifacts.
+The declared `ftl-codex-cli-reconnect-v1` policy reported the exact error
+`CLI completion requires one thread and exactly one final message`.
+The retained event envelopes contain `type` and `item`, and each completed
+agent-message item contains `id`, `type` and `text`. They provide no phase,
+channel, role or status label distinguishing commentary from final output.
+The parser did not ignore an existing phase label.
 All three recorded a scout escape without a reward. The excluded attempts
 remain outside the eligible denominator.
 

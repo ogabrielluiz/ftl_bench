@@ -6,6 +6,13 @@ An agent benchmark that drives the real **FTL: Faster Than Light** engine throug
 
 ## Status: work in progress
 
+**Current launch hold.** The first Luna/hybrid combat attempt failed during
+protected startup at 07:59 UTC, before any actor call or screenshot. Its pending
+launch guard remains unresolved and restoration is unverified. Operator
+cancellation and FTL closure are required before recovery. The frozen matrix
+controller also requires a separate continuation fix after recovery. See
+[current work](docs/NEXT.md) for the guard, backup and recovery limitations.
+
 The visual benchmark is an **alpha implementation with partial live validation**.
 The November 7 UTC hybrid run exposed stale native repair prices and ended
 with a cooperative stop and verified save restoration. The rebuilt runtime
@@ -35,13 +42,19 @@ planned. The pilot remains excluded. The Luna challenge matrix was next.
 
 At the 07:04 UTC checkpoint, 21 challenge attempts were finished, with 19
 eligible and 10 task successes. Luna/image combat produced one eligible
-crew-loss result and two technical exclusions for multiple CLI final messages.
+crew-loss result and two technical exclusions for two completed agent messages
+rejected by the frozen one-message contract.
 Fifteen Luna challenge cells were planned at this boundary.
 
 At the 07:25 UTC checkpoint, Luna/image fire and crew recovery had one
 success, one crew-loss result and one idle-budget stop, all eligible. The
 matrix had 24 finished attempts, 22 eligible trials and 11 task successes,
 with the two combat CLI exclusions preserved. Twelve Luna cells were planned.
+
+At the 07:53 UTC checkpoint, all nine Luna/image attempts were finished,
+with six eligible trials, two task successes and three technical exclusions.
+The matrix had 27 finished attempts, 24 eligible trials and 12 successes.
+The nine Luna/hybrid cells were next, with both Luna full games planned.
 
 The November 6 typed Decisions and Jev integrations have offline coverage.
 Live provider validation remains pending. The archived-image decision command
