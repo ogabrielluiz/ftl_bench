@@ -38,6 +38,11 @@ eligible and 10 task successes. Luna/image combat produced one eligible
 crew-loss result and two technical exclusions for multiple CLI final messages.
 Fifteen Luna challenge cells were planned at this boundary.
 
+At the 07:25 UTC checkpoint, Luna/image fire and crew recovery had one
+success, one crew-loss result and one idle-budget stop, all eligible. The
+matrix had 24 finished attempts, 22 eligible trials and 11 task successes,
+with the two combat CLI exclusions preserved. Twelve Luna cells were planned.
+
 The November 6 typed Decisions and Jev integrations have offline coverage.
 Live provider validation remains pending. The archived-image decision command
 is ready for a provider check with an explicitly selected credential file. See

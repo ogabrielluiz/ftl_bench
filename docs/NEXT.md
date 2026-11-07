@@ -2,6 +2,47 @@
 
 **WIP / alpha. Current status as of 2026-11-07 UTC. Historical snapshots retain their original dates.**
 
+## Luna/image fire checkpoint (2026-11-07, 07:25:46 UTC)
+
+The three fire and crew recovery trials were eligible, with one task success.
+The matrix had 24 finished attempts, 22 eligible trials, 11 successes and two
+technical exclusions. Twelve Luna cells remained planned at this boundary.
+
+| Repeat | Decisions | Native result |
+| --- | --- | --- |
+| 1 | 18 | Crew-loss defeat. Fire was out, but oxygen was 0% and its system remained damaged and unpowered. |
+| 2 | 16 | Idle-budget stop. Only full crew health remained unmet at 87.62 / 100 / 78.44. Oxygen was 98%, fire was out and the oxygen system was repaired and powered. |
+| 3 | 13 | All recovery criteria met, with full crew health, oxygen 99%, fire out and the oxygen system repaired and powered. |
+
+A bounded readback of repeat one's saved prefix through record 14 records
+32 left clicks, zero right clicks and unchanged crew rooms 0, 14 and 10.
+Fire extinction co-occurred with room oxygen depletion in that prefix.
+
+The group reported complete usage for 47 acknowledged calls, with 885,224
+input tokens (619,264 cached), 15,981 output tokens (9,288 reasoning) and
+563.207 seconds of CLI latency. Native updates totalled 16,760 of 16,920
+requested. Independent input review matched 47 exact prompts, 50 PNGs in
+the actor image chains and all CLI event and answer hashes, with a clear
+input guard and zero tools or recoveries.
+
+The two combat CLI exclusions are preserved. Complete matrix usage remains
+unknown. All 18 Sol challenge results and the two audited full-game defeats
+are preserved, with the pilot excluded. The live boundary verified 15 inventory roles,
+seven original saves, 85 source pins, FTL closed and no pending-launch marker.
+Luna/image repair, charge and escape was next at this boundary.
+
+Local review files under `dist/store-admission-47db7f6-20261107/`
+
+| File | SHA-256 |
+| --- | --- |
+| `store-matrix-luna-image-fire-crew-recovery-repeat03-independent-review.json` | `f7ad784f34749ad8c5ca9d8b73eca25720bac4eb28bc872244559c4c02519b26` |
+| `store-matrix-luna-image-fire01-left-click-and-oxygen-prefix-readback.json` | `37e419c623fc2b4117cf9375269b7106bffbc294992289f393b2782c03a5a574` |
+| `store-live-boundary-20261107T072546696459Z.json` | `fafa32cea3e3f69c979088dffc722477bf9686febb66203d2b25e4a9ce1000be` |
+
+The independent input batch audit is
+`dist/store-ui-build/matrix-store-luna-image-three-fire-input-independent-audit-20261107.json`,
+SHA-256 `d6b5a44605d7018eb0e2d9d12214fe9a73aa1fe70c3d7e03792eeb2d89f3f522`.
+
 ## Luna/image combat checkpoint (2026-11-07, 07:04:50 UTC)
 
 The matrix had 21 finished attempts, 19 eligible trials, 10 task successes

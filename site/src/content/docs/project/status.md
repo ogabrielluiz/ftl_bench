@@ -58,6 +58,13 @@ stay outside the success denominator, and complete usage remains unknown.
 Fifteen Luna challenge cells were planned, with fire and crew recovery next.
 The two audited Sol full-game defeats and pilot exclusion were unchanged.
 
+At the 07:25 UTC checkpoint, the three Luna/image fire and crew recovery
+trials were eligible. One ended in crew loss, one stopped at the idle budget
+with incomplete healing, and one met all task criteria. The matrix had 24
+finished attempts, 22 eligible trials, 11 successes and the two retained
+combat CLI exclusions. Twelve Luna cells were planned at this boundary.
+Complete aggregate usage remained unknown.
+
 The visual benchmark remains an alpha with partial live validation. Codex CLI
 is the default. Decisions and Jev now have separate typed visual adapters and
 an archived-image decision command; offline integration and packaging checks
