@@ -2,6 +2,46 @@
 
 **WIP / alpha. Current status as of 2026-11-07 UTC. Historical snapshots retain their original dates.**
 
+## Luna/image combat checkpoint (2026-11-07, 07:04:50 UTC)
+
+The matrix had 21 finished attempts, 19 eligible trials, 10 task successes
+and two technical exclusions. Fifteen Luna cells remained planned at this
+boundary. The three Luna/image combat attempts had zero successes among
+one eligible trial.
+
+| Repeat | Acknowledged decisions / attempted calls | Classification |
+| --- | --- | --- |
+| 1 | 20 / 20 | Eligible crew-loss result. |
+| 2 | 49 / 50 | Technical exclusion for two CLI final messages. First contained JSON plus trailing prose, second contained valid JSON. |
+| 3 | 21 / 22 | Technical exclusion for two CLI final messages. First was empty, second contained valid JSON. |
+
+Both excluded final calls were rejected before dispatch under the frozen
+exactly-one-final policy. The attempts retain their original artifacts.
+All three recorded a scout escape without a reward. The excluded attempts
+remain outside the eligible denominator.
+
+Independent input review joined 92 attempted calls, 90 acknowledged inputs
+and 93 PNGs in the actor image chains. Complete usage remains unknown because
+the two rejected completions have no validated usage. The retained raw
+failed-call usage is recorded separately from the 90 known completed calls.
+
+The live boundary verified 15 inventory roles, seven original saves,
+85 executable source pins, FTL closed and no pending-launch marker. All 18 Sol
+challenge results and both audited full-game defeats are preserved, with the pilot
+excluded. Luna/image fire and crew recovery was next at this boundary.
+Rendered dashboard verification remains deferred while the operator is away.
+
+Local review files under `dist/store-admission-47db7f6-20261107/`
+
+| File | SHA-256 |
+| --- | --- |
+| `store-matrix-luna-image-combat-repeat03-independent-review.json` | `1cac2de2f07ab3efb2898d67ed832d7cc77f9461f0e1701c0e55ca0cf1bbc541` |
+| `store-live-boundary-20261107T070450930211Z.json` | `e58c1dad7542aebade64781eeb11c70afbdc79aaccfe166c60cd0957a2eac935` |
+
+The independent input batch audit is
+`dist/store-ui-build/matrix-store-luna-image-three-combat-input-independent-audit-20261107.json`,
+SHA-256 `2504d711581ce749c71c8ec5fe5b831c602f416d2bbfd074fc0226cc528c6770`.
+
 ## Sol/hybrid full-game checkpoint (2026-11-07, 06:32:29 UTC)
 
 Sol/hybrid in `fullgame-store-47db7f6-20261107` ended with

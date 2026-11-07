@@ -50,6 +50,14 @@ Two of four full-game conditions were complete, with zero victories and the
 pilot excluded. The 18 Luna challenge cells and two Luna full games remained
 planned at this boundary.
 
+At the 07:04 UTC checkpoint, 21 challenge attempts had finished, with 19
+eligible, 10 task successes and two technical exclusions. Of the three
+Luna/image combat attempts, one ended in crew loss and two were excluded
+because their CLI streams contained two final messages. The excluded attempts
+stay outside the success denominator, and complete usage remains unknown.
+Fifteen Luna challenge cells were planned, with fire and crew recovery next.
+The two audited Sol full-game defeats and pilot exclusion were unchanged.
+
 The visual benchmark remains an alpha with partial live validation. Codex CLI
 is the default. Decisions and Jev now have separate typed visual adapters and
 an archived-image decision command; offline integration and packaging checks

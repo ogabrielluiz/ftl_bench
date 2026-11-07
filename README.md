@@ -33,6 +33,11 @@ crew-loss defeat after 655 decisions in native sector 5 (the sixth sector).
 Both Sol full-game conditions had native endings, leaving two Luna conditions
 planned. The pilot remains excluded. The Luna challenge matrix was next.
 
+At the 07:04 UTC checkpoint, 21 challenge attempts were finished, with 19
+eligible and 10 task successes. Luna/image combat produced one eligible
+crew-loss result and two technical exclusions for multiple CLI final messages.
+Fifteen Luna challenge cells were planned at this boundary.
+
 The November 6 typed Decisions and Jev integrations have offline coverage.
 Live provider validation remains pending. The archived-image decision command
 is ready for a provider check with an explicitly selected credential file. See
